@@ -17,7 +17,7 @@ type ReportItem = {
   fileType?: "pdf" | "docx" | "xlsx" | "images" | "zip" | "asset-preview" | "realestate-preview";
   approvalStatus?: "pending" | "approved" | "rejected";
   report?: string;
-  preview_files?: { docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
   isAssetReport?: boolean;
   isRealEstateReport?: boolean;
   property_type?: string;
@@ -130,7 +130,7 @@ export default function AdminApprovals() {
     updatedAt?: string;
     fairMarketValue: string;
     variants: { pdf?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
-    preview_files?: { docx?: string; excel?: string; images?: string };
+    preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
     isAssetReport?: boolean;
     isRealEstateReport?: boolean;
     files_regenerating?: boolean;
@@ -316,6 +316,7 @@ export default function AdminApprovals() {
                       {(g.isAssetReport || g.isRealEstateReport) && g.preview_files ? (
                         // AssetReport or RealEstateReport with preview files
                         <>
+                          <a href={g.preview_files.pdf} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.pdf ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>PDF</a>
                           <a href={g.preview_files.docx} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.docx ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>DOCX</a>
                           <a href={g.preview_files.excel} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.excel ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Excel</a>
                           <a href={g.preview_files.images} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.images ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>
@@ -323,6 +324,7 @@ export default function AdminApprovals() {
                       ) : (
                         // PdfReport with normal variants
                         <>
+                          <a href={g.variants.pdf ? `/api/admin/reports/${g.variants.pdf._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.variants.pdf ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>PDF</a>
                           <a href={g.variants.docx ? `/api/admin/reports/${g.variants.docx._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.variants.docx ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>DOCX</a>
                           <a href={g.variants.xlsx ? `/api/admin/reports/${g.variants.xlsx._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.variants.xlsx ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Excel</a>
                           <a href={g.variants.images ? `/api/admin/reports/${g.variants.images._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.variants.images ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>

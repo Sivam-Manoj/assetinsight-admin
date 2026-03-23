@@ -47,7 +47,7 @@ type ReportItem = {
   approvalStatus?: "pending" | "approved" | "rejected";
   report?: string;
   contract_no?: string;
-  preview_files?: { docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
   property_type?: string;
@@ -73,7 +73,7 @@ type ReportGroup = {
   isAssetReport?: boolean;
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
-  preview_files?: { docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
 };
 
 const ALL_PAGE_SIZE = 100000;
@@ -96,6 +96,7 @@ function buildDownloadLinks(group: ReportGroup) {
 
   if ((group.isAssetReport || group.isRealEstateReport) && group.preview_files) {
     return [
+      { label: "PDF", href: group.preview_files.pdf },
       { label: "DOCX", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
@@ -103,6 +104,13 @@ function buildDownloadLinks(group: ReportGroup) {
   }
 
   return [
+    {
+      label: "PDF",
+      href:
+        group.variants.pdf && group.variants.pdf.approvalStatus === "approved"
+          ? `/api/admin/reports/${group.variants.pdf._id}/download`
+          : undefined,
+    },
     {
       label: "DOCX",
       href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
@@ -344,7 +352,7 @@ export default function AdminReports() {
             direction="row"
             sx={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
               gap: 0.6,
               width: "100%",
               alignItems: "stretch",
@@ -706,7 +714,7 @@ export default function AdminReports() {
                               direction="row"
                               sx={{
                                 display: "grid",
-                                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
                                 gap: 0.9,
                                 width: "100%",
                                 alignItems: "stretch",
