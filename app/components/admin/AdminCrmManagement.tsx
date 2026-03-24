@@ -459,6 +459,7 @@ function normalizePhoneForKey(value: string): string {
 }
 
 function statusLabel(value: string): string {
+  if (value === "pending") return "Pending Leads";
   if (value === "completed") return "Archived";
   if (value === "archived") return "Archived";
   return value.replace(/_/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
