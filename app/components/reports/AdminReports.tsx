@@ -160,6 +160,10 @@ export default function AdminReports() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<ReportPreviewPayload | null>(null);
+  const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
+  const [previewSaving, setPreviewSaving] = useState(false);
+  const [previewSaveError, setPreviewSaveError] = useState<string | null>(null);
+  const [previewSaveSuccess, setPreviewSaveSuccess] = useState<string | null>(null);
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -203,10 +207,13 @@ export default function AdminReports() {
   }
 
   async function openPreview(id: string) {
+    setPreviewTargetId(id);
     setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewData(null);
+    setPreviewSaveError(null);
+    setPreviewSaveSuccess(null);
     try {
       const res = await fetch(`/api/admin/reports/${id}/preview`, {
         cache: "no-store",
@@ -221,6 +228,33 @@ export default function AdminReports() {
       setPreviewError(message);
     } finally {
       setPreviewLoading(false);
+    }
+  }
+
+  async function saveAssetScheduleSheet(assetScheduleSheet: NonNullable<ReportPreviewPayload["assetScheduleSheet"]>) {
+    if (!previewTargetId) return;
+    try {
+      setPreviewSaving(true);
+      setPreviewSaveError(null);
+      setPreviewSaveSuccess(null);
+      const res = await fetch(`/api/admin/reports/${previewTargetId}/asset-schedule-sheet`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ assetScheduleSheet }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((json as { message?: string })?.message || "Failed to save asset schedule sheet");
+      }
+      setPreviewData(json as ReportPreviewPayload);
+      setPreviewSaveSuccess("Changes saved.");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to save asset schedule sheet";
+      setPreviewSaveError(message);
+    } finally {
+      setPreviewSaving(false);
     }
   }
 
@@ -866,11 +900,19 @@ export default function AdminReports() {
         loading={previewLoading}
         error={previewError}
         preview={previewData}
+        savingAssetSheet={previewSaving}
+        assetSheetSaveError={previewSaveError}
+        assetSheetSaveSuccess={previewSaveSuccess}
+        onSaveAssetSheet={saveAssetScheduleSheet}
         onClose={() => {
           setPreviewOpen(false);
           setPreviewLoading(false);
           setPreviewError(null);
           setPreviewData(null);
+          setPreviewTargetId(null);
+          setPreviewSaving(false);
+          setPreviewSaveError(null);
+          setPreviewSaveSuccess(null);
         }}
       />
     </div>
