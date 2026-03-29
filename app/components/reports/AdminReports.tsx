@@ -11,6 +11,9 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import ConfirmModal from "@/app/components/common/ConfirmModal";
+import ReportPreviewModal, {
+  type ReportPreviewPayload,
+} from "@/app/components/reports/ReportPreviewModal";
 import {
   Alert,
   Button,
@@ -86,7 +89,17 @@ function getReportTypeLabel(reportType: string) {
   return reportType === "LotListing" ? "Lot Listing" : reportType;
 }
 
-function buildDownloadLinks(group: ReportGroup) {
+function getPreviewTargetId(group: ReportGroup) {
+  return (
+    group.variants.pdf?._id ||
+    group.variants.docx?._id ||
+    group.variants.xlsx?._id ||
+    group.variants.images?._id ||
+    group.key
+  );
+}
+
+function buildFileLinks(group: ReportGroup) {
   if (group.isLotListingReport && group.preview_files) {
     return [
       { label: "Excel", href: group.preview_files.excel },
@@ -96,7 +109,6 @@ function buildDownloadLinks(group: ReportGroup) {
 
   if ((group.isAssetReport || group.isRealEstateReport) && group.preview_files) {
     return [
-      { label: "PDF", href: group.preview_files.pdf },
       { label: "DOCX", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
@@ -104,13 +116,6 @@ function buildDownloadLinks(group: ReportGroup) {
   }
 
   return [
-    {
-      label: "PDF",
-      href:
-        group.variants.pdf && group.variants.pdf.approvalStatus === "approved"
-          ? `/api/admin/reports/${group.variants.pdf._id}/download`
-          : undefined,
-    },
     {
       label: "DOCX",
       href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
@@ -151,6 +156,10 @@ export default function AdminReports() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<ReportPreviewPayload | null>(null);
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -191,6 +200,28 @@ export default function AdminReports() {
   function openDelete(id: string) {
     setPendingDeleteId(id);
     setConfirmOpen(true);
+  }
+
+  async function openPreview(id: string) {
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewData(null);
+    try {
+      const res = await fetch(`/api/admin/reports/${id}/preview`, {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((json as { message?: string })?.message || "Failed to load report data");
+      }
+      setPreviewData(json as ReportPreviewPayload);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to load report data";
+      setPreviewError(message);
+    } finally {
+      setPreviewLoading(false);
+    }
   }
 
   async function confirmDelete() {
@@ -358,7 +389,19 @@ export default function AdminReports() {
               alignItems: "stretch",
             }}
           >
-            {buildDownloadLinks(row.original).map((link) => (
+            <Button
+              size="small"
+              variant="contained"
+              color="info"
+              sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.45, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
+              onClick={() => {
+                const previewId = getPreviewTargetId(row.original);
+                if (previewId) void openPreview(previewId);
+              }}
+            >
+              Data
+            </Button>
+            {buildFileLinks(row.original).map((link) => (
               <Button
                 key={`${row.original.key}-${link.label}`}
                 size="small"
@@ -720,7 +763,19 @@ export default function AdminReports() {
                                 alignItems: "stretch",
                               }}
                             >
-                              {buildDownloadLinks(g).map((link) => (
+                              <Button
+                                size="small"
+                                variant="contained"
+                                color="info"
+                                sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.55, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
+                                onClick={() => {
+                                  const previewId = getPreviewTargetId(g);
+                                  if (previewId) void openPreview(previewId);
+                                }}
+                              >
+                                Data
+                              </Button>
+                              {buildFileLinks(g).map((link) => (
                                 <Button
                                   key={`${g.key}-${link.label}`}
                                   size="small"
@@ -805,6 +860,18 @@ export default function AdminReports() {
           setPendingDeleteId(null);
         }}
         loading={deleting}
+      />
+      <ReportPreviewModal
+        open={previewOpen}
+        loading={previewLoading}
+        error={previewError}
+        preview={previewData}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewLoading(false);
+          setPreviewError(null);
+          setPreviewData(null);
+        }}
       />
     </div>
   );
