@@ -9,6 +9,17 @@ export type AssetAdminScheduleMarketCheck = {
   market_saturation: "" | "Low" | "Moderate" | "High";
   market_velocity: "" | "Fast" | "Normal" | "Slow";
   regional_demand: "" | "Strong" | "Average" | "Weak";
+  notes: string;
+};
+
+export type AssetAdminScheduleBuyersPremiumBasis = "uncapped" | "capped";
+
+export type AssetAdminScheduleFileSummary = {
+  buyers_premium_basis: AssetAdminScheduleBuyersPremiumBasis;
+  total_risk_weighted_value: number | null;
+  file_risk_multiplier: number | null;
+  commission_percent_no_guarantee: number | null;
+  capped_threshold_percent: number;
 };
 
 export type AssetAdminScheduleEvaluatorColumn = {
@@ -28,6 +39,7 @@ export type AssetAdminScheduleRow = {
   condition_score: string;
   location: string;
   pictures: number;
+  picture_urls: string[];
   market_check: AssetAdminScheduleMarketCheck;
   asset_insight: string;
   evaluator_values: Record<string, number | null>;
@@ -48,6 +60,7 @@ export type AssetAdminScheduleRow = {
 export type AssetAdminScheduleSheet = {
   evaluator_columns: AssetAdminScheduleEvaluatorColumn[];
   rows: AssetAdminScheduleRow[];
+  file_summary: AssetAdminScheduleFileSummary;
 };
 
 export type ReportPreviewPayload = {
