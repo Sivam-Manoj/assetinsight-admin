@@ -98,7 +98,9 @@ type CrmLeadItem = {
   website?: string;
   listItems?: string[];
   status: string;
+  lostReason?: string;
   priority: string;
+  statusChangedAt?: string;
   taskStartDate?: string;
   dueDate?: string;
   latestComment?: string;
@@ -122,6 +124,7 @@ type CrmLeadUpdateItem = {
   _id?: string;
   comment?: string;
   status?: string;
+  lostReason?: string;
   attachmentUrls?: string[];
   recordingUrl?: string;
   createdBy?: { _id?: string; email?: string; username?: string; role?: string };
@@ -198,11 +201,21 @@ type DuplicateIssue = {
 };
 
 const CRM_STATUSES = [
-  "pending",
-  "in_progress",
-  "completed",
-  "no_answer",
+  "new_lead",
+  "contacted",
+  "inspection_required",
+  "inspection_complete",
+  "proposal_submitted",
+  "decision_pending",
+  "won",
+  "lost",
+] as const;
+
+const CRM_LOST_REASONS = [
   "not_interested",
+  "timing",
+  "competitor",
+  "no_assets",
 ] as const;
 
 const MONTH_OPTIONS = [
@@ -459,10 +472,29 @@ function normalizePhoneForKey(value: string): string {
 }
 
 function statusLabel(value: string): string {
-  if (value === "pending") return "Pending Leads";
-  if (value === "completed") return "Archived";
-  if (value === "archived") return "Archived";
+  if (value === "new_lead") return "New Lead";
+  if (value === "contacted") return "Contacted";
+  if (value === "inspection_required") return "Inspection Required";
+  if (value === "inspection_complete") return "Inspection Complete";
+  if (value === "proposal_submitted") return "Proposal Submitted";
+  if (value === "decision_pending") return "Decision Pending";
+  if (value === "won" || value === "archived") return "Won";
+  if (value === "lost") return "Lost";
   return value.replace(/_/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
+}
+
+function lostReasonLabel(value?: string): string {
+  if (value === "not_interested") return "Not Interested";
+  if (value === "timing") return "Timing";
+  if (value === "competitor") return "Competitor";
+  if (value === "no_assets") return "No Assets";
+  return value ? statusLabel(value) : "";
+}
+
+function statusWithLostReasonLabel(status?: string, lostReason?: string): string {
+  const base = statusLabel(status || "");
+  const reason = lostReasonLabel(lostReason);
+  return status === "lost" && reason ? `${base} • ${reason}` : base;
 }
 
 function toDateTimeValue(value?: string): string {
@@ -659,11 +691,13 @@ export default function AdminCrmManagement() {
   const [leadDetailsError, setLeadDetailsError] = useState("");
   const [adminReply, setAdminReply] = useState("");
   const [adminReplyStatus, setAdminReplyStatus] = useState<string>("");
+  const [adminReplyLostReason, setAdminReplyLostReason] = useState<string>("");
   const [submittingAdminReply, setSubmittingAdminReply] = useState(false);
   const [timelineBusyKey, setTimelineBusyKey] = useState<string | null>(null);
   const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null);
   const [editingComment, setEditingComment] = useState("");
-  const [editingStatus, setEditingStatus] = useState<string>("pending");
+  const [editingStatus, setEditingStatus] = useState<string>("new_lead");
+  const [editingLostReason, setEditingLostReason] = useState<string>("");
 
   const [importFiles, setImportFiles] = useState<ImportFilesResponse | null>(null);
   const [loadingImportFiles, setLoadingImportFiles] = useState(false);
@@ -673,8 +707,6 @@ export default function AdminCrmManagement() {
   const [loadingAssignments, setLoadingAssignments] = useState(false);
 
   const [excelFile, setExcelFile] = useState<File | null>(null);
-  const [taskStartDate, setTaskStartDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
   const [importing, setImporting] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showCrmOpsModal, setShowCrmOpsModal] = useState(false);
@@ -878,8 +910,6 @@ export default function AdminCrmManagement() {
       if (effectiveAssigneeIds.length > 0) {
         formData.append("assignedToUserIds", JSON.stringify(effectiveAssigneeIds));
       }
-      if (taskStartDate) formData.append("taskStartDate", taskStartDate);
-      if (dueDate) formData.append("dueDate", dueDate);
 
       const res = await fetch(`/api/admin/crm/leads/import`, {
         method: "POST",
@@ -898,8 +928,6 @@ export default function AdminCrmManagement() {
       setDuplicateIssues([]);
       setPreviewParseError("");
       setPreviewSheetName("");
-      setTaskStartDate("");
-      setDueDate("");
       setShowImportModal(false);
       await Promise.all([loadLeads(), loadImportFiles()]);
     } catch (e: unknown) {
@@ -967,10 +995,12 @@ export default function AdminCrmManagement() {
     setLeadDetailsError("");
     setAdminReply("");
     setAdminReplyStatus("");
+    setAdminReplyLostReason("");
     setTimelineBusyKey(null);
     setEditingUpdateId(null);
     setEditingComment("");
-    setEditingStatus("pending");
+    setEditingStatus("new_lead");
+    setEditingLostReason("");
   }
 
   async function openLeadDetailsModal(leadId: string) {
@@ -986,8 +1016,10 @@ export default function AdminCrmManagement() {
 
       const item = json?.item as CrmLeadItem;
       setActiveLeadDetails(item);
-      setAdminReplyStatus(item?.status || "pending");
-      setEditingStatus(item?.status || "pending");
+      setAdminReplyStatus(item?.status || "new_lead");
+      setAdminReplyLostReason(item?.lostReason || "");
+      setEditingStatus(item?.status || "new_lead");
+      setEditingLostReason(item?.lostReason || "");
     } catch (e: unknown) {
       setLeadDetailsError(e instanceof Error ? e.message : "Failed to load lead details");
     } finally {
@@ -1011,13 +1043,15 @@ export default function AdminCrmManagement() {
     if (!updateId) return;
     setEditingUpdateId(updateId);
     setEditingComment(update.comment || "");
-    setEditingStatus(update.status || activeLeadDetails?.status || "pending");
+    setEditingStatus(update.status || activeLeadDetails?.status || "new_lead");
+    setEditingLostReason(update.lostReason || activeLeadDetails?.lostReason || "");
   }
 
   function cancelEditLeadUpdate() {
     setEditingUpdateId(null);
     setEditingComment("");
-    setEditingStatus(activeLeadDetails?.status || "pending");
+    setEditingStatus(activeLeadDetails?.status || "new_lead");
+    setEditingLostReason(activeLeadDetails?.lostReason || "");
   }
 
   async function saveEditedLeadUpdate(update: CrmLeadUpdateItem) {
@@ -1027,6 +1061,11 @@ export default function AdminCrmManagement() {
     const safeLeadId = encodeURIComponent(leadId);
     const safeUpdateId = encodeURIComponent(updateId);
 
+    if (editingStatus === "lost" && !editingLostReason) {
+      pushToast("Lost reason is required", "error");
+      return;
+    }
+
     try {
       setTimelineBusyKey(`edit:${updateId}`);
       const res = await fetch(`/api/admin/crm/leads/${safeLeadId}/updates/${safeUpdateId}`, {
@@ -1035,6 +1074,7 @@ export default function AdminCrmManagement() {
         body: JSON.stringify({
           comment: editingComment,
           status: editingStatus,
+          lostReason: editingStatus === "lost" ? editingLostReason : undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -1044,6 +1084,7 @@ export default function AdminCrmManagement() {
       applyLeadMutation(item);
       setEditingUpdateId(null);
       setEditingComment("");
+      setEditingLostReason("");
       pushToast("Update edited", "success");
     } catch (e: unknown) {
       pushToast(e instanceof Error ? e.message : "Failed to edit update", "error");
@@ -1138,6 +1179,10 @@ export default function AdminCrmManagement() {
       pushToast("Reply comment is required", "error");
       return;
     }
+    if ((adminReplyStatus || activeLeadDetails.status) === "lost" && !(adminReplyLostReason || activeLeadDetails.lostReason)) {
+      pushToast("Lost reason is required", "error");
+      return;
+    }
 
     try {
       setSubmittingAdminReply(true);
@@ -1147,6 +1192,10 @@ export default function AdminCrmManagement() {
         body: JSON.stringify({
           comment,
           status: adminReplyStatus || activeLeadDetails.status,
+          lostReason:
+            (adminReplyStatus || activeLeadDetails.status) === "lost"
+              ? (adminReplyLostReason || activeLeadDetails.lostReason)
+              : undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -1156,6 +1205,7 @@ export default function AdminCrmManagement() {
       setActiveLeadDetails(item);
       setAdminReply("");
       setAdminReplyStatus(item?.status || adminReplyStatus);
+      setAdminReplyLostReason(item?.lostReason || "");
       pushToast("Reply sent to CRM thread", "success");
       await loadLeads();
     } catch (e: unknown) {
@@ -1197,7 +1247,7 @@ export default function AdminCrmManagement() {
   const overdueLeadsCount = useMemo(() => {
     const now = Date.now();
     return (leads?.items || []).filter((lead) => {
-      if (lead.status === "completed") return false;
+      if (lead.status === "won" || lead.status === "lost") return false;
       if (!lead.dueDate) return false;
       const due = new Date(lead.dueDate);
       return Number.isFinite(due.getTime()) && due.getTime() < now;
@@ -1239,7 +1289,7 @@ export default function AdminCrmManagement() {
         {
           label: "Leads",
           data: counts,
-          backgroundColor: ["#64748B", "#0EA5E9", "#16A34A", "#F59E0B", "#EF4444", "#4F46E5"],
+          backgroundColor: ["#0EA5E9", "#2563EB", "#F59E0B", "#6366F1", "#EC4899", "#7C3AED", "#16A34A", "#EF4444"],
           borderRadius: 6,
         },
       ],
@@ -1357,14 +1407,16 @@ export default function AdminCrmManagement() {
       datasets: [{
         data: counts,
         backgroundColor: [
-          "rgba(100,116,139,0.8)",
           "rgba(14,165,233,0.8)",
-          "rgba(22,163,74,0.8)",
+          "rgba(37,99,235,0.8)",
           "rgba(245,158,11,0.8)",
+          "rgba(99,102,241,0.8)",
+          "rgba(236,72,153,0.8)",
+          "rgba(124,58,237,0.8)",
+          "rgba(22,163,74,0.8)",
           "rgba(239,68,68,0.8)",
-          "rgba(79,70,229,0.8)",
         ],
-        borderColor: ["#64748B", "#0EA5E9", "#16A34A", "#F59E0B", "#EF4444", "#4F46E5"],
+        borderColor: ["#0EA5E9", "#2563EB", "#F59E0B", "#6366F1", "#EC4899", "#7C3AED", "#16A34A", "#EF4444"],
         borderWidth: 1.5,
       }],
     };
@@ -1620,8 +1672,7 @@ export default function AdminCrmManagement() {
                   <InputLabel>Status</InputLabel>
                   <Select value={leadStatus} label="Status" onChange={(e) => setLeadStatus(e.target.value)}>
                     <MenuItem value="">All</MenuItem>
-                    <MenuItem value="archived">Archived</MenuItem>
-                    {CRM_STATUSES.filter((s) => s !== "completed").map((s) => <MenuItem key={s} value={s}>{statusLabel(s)}</MenuItem>)}
+                    {CRM_STATUSES.map((s) => <MenuItem key={s} value={s}>{statusLabel(s)}</MenuItem>)}
                   </Select>
                 </FormControl>
                 <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -1679,7 +1730,7 @@ export default function AdminCrmManagement() {
                         <Typography variant="body2">{(lead.assignedTo?.username || lead.assignedTo?.email || "-") as string}</Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip label={statusLabel(lead.status)} size="small" variant="outlined" />
+                        <Chip label={statusWithLostReasonLabel(lead.status, lead.lostReason)} size="small" variant="outlined" />
                       </TableCell>
                       <TableCell>
                         <Typography variant="caption" display="block">Start: {toIsoDateValue(lead.taskStartDate) || "-"}</Typography>
@@ -2050,16 +2101,9 @@ export default function AdminCrmManagement() {
                   {parsingPreview && <LinearProgress sx={{ mt: 2 }} />}
                   {previewParseError && <Alert severity="error" sx={{ mt: 2 }}>{previewParseError}</Alert>}
 
-                  {/* Deadlines */}
-                  <Card variant="outlined" sx={{ mt: 2 }}>
-                    <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
-                      <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6rem" }}>Upload Deadline</Typography>
-                      <Stack direction="row" spacing={1} mt={1}>
-                        <TextField size="small" type="date" label="Task Start" value={taskStartDate} onChange={(e) => setTaskStartDate(e.target.value)} fullWidth slotProps={{ inputLabel: { shrink: true } }} />
-                        <TextField size="small" type="date" label="Due Date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} fullWidth slotProps={{ inputLabel: { shrink: true } }} />
-                      </Stack>
-                    </CardContent>
-                  </Card>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Imported CRM leads now start as <strong>New Lead</strong>. Reminder scheduling is handled automatically from the selected status.
+                  </Alert>
 
                   {/* Stats */}
                   <Grid container spacing={1} sx={{ mt: 1.5 }}>
@@ -2197,7 +2241,7 @@ export default function AdminCrmManagement() {
                           {activeLeadDetails.companyName || "No company"} · {activeLeadDetails.email || "No email"}
                         </Typography>
                       </Box>
-                      <Chip label={statusLabel(activeLeadDetails.status)} variant="outlined" size="small" />
+                      <Chip label={statusWithLostReasonLabel(activeLeadDetails.status, activeLeadDetails.lostReason)} variant="outlined" size="small" />
                     </Stack>
                     <Grid container spacing={1} sx={{ mt: 1.5 }}>
                       <Grid size={{ xs: 6 }}><Typography variant="caption"><strong>Phone:</strong> {activeLeadDetails.phoneFormatted || activeLeadDetails.phoneRaw || "-"}</Typography></Grid>
@@ -2222,6 +2266,14 @@ export default function AdminCrmManagement() {
                           {CRM_STATUSES.map((status) => <MenuItem key={status} value={status}>{statusLabel(status)}</MenuItem>)}
                         </Select>
                       </FormControl>
+                      {(adminReplyStatus || activeLeadDetails?.status) === "lost" ? (
+                        <FormControl size="small" sx={{ minWidth: 180 }}>
+                          <InputLabel>Lost Reason</InputLabel>
+                          <Select value={adminReplyLostReason} label="Lost Reason" onChange={(e) => setAdminReplyLostReason(e.target.value)}>
+                            {CRM_LOST_REASONS.map((reason) => <MenuItem key={reason} value={reason}>{lostReasonLabel(reason)}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+                      ) : null}
                       <TextField
                         size="small"
                         fullWidth
@@ -2266,7 +2318,7 @@ export default function AdminCrmManagement() {
                                   <Typography variant="caption" fontWeight={700}>{leadUpdateAuthorLabel(update)}</Typography>
                                   <Typography variant="caption" color="text.secondary">{toDateTimeValue(update.createdAt)}</Typography>
                                 </Stack>
-                                <Typography variant="caption" color="text.secondary">Status: {statusLabel(update.status || activeLeadDetails.status)}</Typography>
+                                <Typography variant="caption" color="text.secondary">Status: {statusWithLostReasonLabel(update.status || activeLeadDetails.status, update.lostReason || activeLeadDetails.lostReason)}</Typography>
 
                                 <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
                                   {update.editedAt && !update.isDeleted && <Chip label="Edited" size="small" color="info" variant="outlined" sx={{ height: 18, fontSize: "0.6rem" }} />}
@@ -2285,6 +2337,14 @@ export default function AdminCrmManagement() {
                                         {CRM_STATUSES.map((status) => <MenuItem key={`${updateId}-${status}`} value={status}>{statusLabel(status)}</MenuItem>)}
                                       </Select>
                                     </FormControl>
+                                    {editingStatus === "lost" ? (
+                                      <FormControl size="small" fullWidth>
+                                        <InputLabel>Lost Reason</InputLabel>
+                                        <Select value={editingLostReason} label="Lost Reason" onChange={(e) => setEditingLostReason(e.target.value)}>
+                                          {CRM_LOST_REASONS.map((reason) => <MenuItem key={`${updateId}-${reason}`} value={reason}>{lostReasonLabel(reason)}</MenuItem>)}
+                                        </Select>
+                                      </FormControl>
+                                    ) : null}
                                     <Stack direction="row" spacing={1} justifyContent="flex-end">
                                       <Button size="small" variant="outlined" onClick={cancelEditLeadUpdate} disabled={timelineBusyKey === `edit:${updateId}`}>Cancel</Button>
                                       <Button size="small" variant="contained" onClick={() => void saveEditedLeadUpdate(update)} disabled={timelineBusyKey === `edit:${updateId}`}>
