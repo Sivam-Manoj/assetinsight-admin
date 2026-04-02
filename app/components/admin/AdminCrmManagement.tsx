@@ -118,6 +118,11 @@ type LeadsResponse = {
   total: number;
   page: number;
   limit: number;
+  statusCounts?: Array<{
+    _id: string;
+    count: number;
+  }>;
+  overdueCount?: number;
 };
 
 type CrmLeadUpdateItem = {
@@ -1244,15 +1249,20 @@ export default function AdminCrmManagement() {
     () => (users?.items || []).filter((u) => u.isCrmAgent),
     [users?.items]
   );
-  const overdueLeadsCount = useMemo(() => {
-    const now = Date.now();
-    return (leads?.items || []).filter((lead) => {
-      if (lead.status === "won" || lead.status === "lost") return false;
-      if (!lead.dueDate) return false;
-      const due = new Date(lead.dueDate);
-      return Number.isFinite(due.getTime()) && due.getTime() < now;
-    }).length;
-  }, [leads?.items]);
+  const leadStatusCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    CRM_STATUSES.forEach((status) => {
+      map.set(status, 0);
+    });
+    (leads?.statusCounts || []).forEach((entry) => {
+      const key = typeof entry?._id === "string" ? entry._id : "";
+      if (!map.has(key)) return;
+      map.set(key, Number(entry?.count || 0));
+    });
+    return map;
+  }, [leads?.statusCounts]);
+
+  const overdueLeadsCount = Number(leads?.overdueCount || 0);
 
   const yearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -1280,9 +1290,7 @@ export default function AdminCrmManagement() {
   }, [crmUsersCount, totalUsersCount]);
 
   const leadStatusChartData = useMemo(() => {
-    const counts = CRM_STATUSES.map((status) =>
-      (leads?.items || []).filter((lead) => lead.status === status).length
-    );
+    const counts = CRM_STATUSES.map((status) => leadStatusCountMap.get(status) || 0);
     return {
       labels: CRM_STATUSES.map((status) => statusLabel(status)),
       datasets: [
@@ -1294,7 +1302,7 @@ export default function AdminCrmManagement() {
         },
       ],
     };
-  }, [leads?.items]);
+  }, [leadStatusCountMap]);
 
   const importTrendChartData = useMemo(() => {
     const items = (importFiles?.items || []).slice(0, 7).reverse();
@@ -1400,8 +1408,7 @@ export default function AdminCrmManagement() {
   );
 
   const leadStatusPieData = useMemo(() => {
-    const items = leads?.items || [];
-    const counts = CRM_STATUSES.map((s) => items.filter((l) => l.status === s).length);
+    const counts = CRM_STATUSES.map((status) => leadStatusCountMap.get(status) || 0);
     return {
       labels: CRM_STATUSES.map(statusLabel),
       datasets: [{
@@ -1420,7 +1427,7 @@ export default function AdminCrmManagement() {
         borderWidth: 1.5,
       }],
     };
-  }, [leads?.items]);
+  }, [leadStatusCountMap]);
 
   const leadStatusLegendItems = useMemo(
     () =>
