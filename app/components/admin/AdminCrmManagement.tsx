@@ -216,6 +216,8 @@ const CRM_STATUSES = [
   "lost",
 ] as const;
 
+const CRM_STATUS_FILTER_OPTIONS = [...CRM_STATUSES, "archived"] as const;
+
 const CRM_LOST_REASONS = [
   "not_interested",
   "timing",
@@ -483,9 +485,24 @@ function statusLabel(value: string): string {
   if (value === "inspection_complete") return "Inspection Complete";
   if (value === "proposal_submitted") return "Proposal Submitted";
   if (value === "decision_pending") return "Decision Pending";
-  if (value === "won" || value === "archived") return "Won";
+  if (value === "won") return "Won";
+  if (value === "archived") return "Archived";
   if (value === "lost") return "Lost";
   return value.replace(/_/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
+}
+
+function normalizeLeadStatus(value?: string, lostReason?: string): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "new_lead" || raw === "contacted" || raw === "inspection_required" || raw === "inspection_complete" || raw === "proposal_submitted" || raw === "decision_pending" || raw === "won") {
+    return raw;
+  }
+  if (raw === "lost") return "lost";
+  if (raw === "pending" || !raw) return "new_lead";
+  if (raw === "in_progress" || raw === "no_answer") return "contacted";
+  if (raw === "completed" || raw === "archived") return "won";
+  if (raw === "not_interested") return "lost";
+  if (String(lostReason || "").trim()) return "lost";
+  return "new_lead";
 }
 
 function lostReasonLabel(value?: string): string {
@@ -497,7 +514,8 @@ function lostReasonLabel(value?: string): string {
 }
 
 function statusWithLostReasonLabel(status?: string, lostReason?: string): string {
-  const base = statusLabel(status || "");
+  const normalizedStatus = normalizeLeadStatus(status, lostReason);
+  const base = statusLabel(normalizedStatus);
   const reason = lostReasonLabel(lostReason);
   return status === "lost" && reason ? `${base} • ${reason}` : base;
 }
@@ -1259,8 +1277,18 @@ export default function AdminCrmManagement() {
       if (!map.has(key)) return;
       map.set(key, Number(entry?.count || 0));
     });
+
+    const hasServerCounts = Array.from(map.values()).some((count) => count > 0);
+    if (!hasServerCounts && (leads?.items || []).length > 0) {
+      (leads?.items || []).forEach((lead) => {
+        const normalizedStatus = normalizeLeadStatus(lead.status, lead.lostReason);
+        if (!map.has(normalizedStatus)) return;
+        map.set(normalizedStatus, (map.get(normalizedStatus) || 0) + 1);
+      });
+    }
+
     return map;
-  }, [leads?.statusCounts]);
+  }, [leads?.items, leads?.statusCounts]);
 
   const overdueLeadsCount = Number(leads?.overdueCount || 0);
 
@@ -1679,7 +1707,11 @@ export default function AdminCrmManagement() {
                   <InputLabel>Status</InputLabel>
                   <Select value={leadStatus} label="Status" onChange={(e) => setLeadStatus(e.target.value)}>
                     <MenuItem value="">All</MenuItem>
-                    {CRM_STATUSES.map((s) => <MenuItem key={s} value={s}>{statusLabel(s)}</MenuItem>)}
+                    {CRM_STATUS_FILTER_OPTIONS.map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s === "archived" ? "Archived (Won)" : statusLabel(s)}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
                 <FormControl size="small" sx={{ minWidth: 140 }}>
