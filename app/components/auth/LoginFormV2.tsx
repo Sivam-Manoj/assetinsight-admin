@@ -96,6 +96,15 @@ function ArrowRightIcon({ className }: { className?: string }) {
   );
 }
 
+const ADMIN_FEATURES = [
+  "CRM leads",
+  "User profiles",
+  "File imports",
+  "Upload assignments",
+  "Report previews",
+  "Report downloads",
+];
+
 function ParticleField({ theme }: { theme: "light" | "dark" }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -407,12 +416,26 @@ function LoginShell({
             </div>
 
             <div className="space-y-5">
-              <h1 className="max-w-lg font-sans text-5xl font-semibold leading-none tracking-[-0.05em] text-balance sm:text-6xl">
+              <h1 className="hidden max-w-lg font-sans text-5xl font-semibold leading-none tracking-[-0.05em] text-balance sm:block sm:text-6xl">
                 Asset Insight admin portal.
               </h1>
-              <p className={`max-w-lg text-base leading-7 sm:text-lg ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+              <p className={`hidden max-w-lg text-base leading-7 sm:block sm:text-lg ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                 Sign in to access reports, approvals, users, and internal operations.
               </p>
+              <div className="flex max-w-2xl flex-wrap gap-3 pt-2">
+                {ADMIN_FEATURES.map((feature) => (
+                  <span
+                    key={feature}
+                    className={`rounded-full px-4 py-2 text-sm font-medium backdrop-blur-xl ${
+                      isDark
+                        ? "border border-white/12 bg-white/8 text-slate-100 shadow-[0_10px_30px_rgba(2,6,23,0.18)]"
+                        : "border border-white/70 bg-white/55 text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+                    }`}
+                  >
+                    {feature}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -480,7 +503,7 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
             <h2 className={`text-3xl font-semibold tracking-[-0.04em] sm:text-4xl ${isDark ? "text-white" : "text-slate-950"}`}>
               Sign in to manage reports, approvals, and operations.
             </h2>
-            <p className={`max-w-lg text-sm leading-6 sm:text-base ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+            <p className={`hidden max-w-lg text-sm leading-6 sm:block sm:text-base ${isDark ? "text-slate-300" : "text-slate-600"}`}>
               Built for speed and clarity, with a cleaner visual hierarchy and motion-led background that still keeps the login action front and center.
             </p>
           </div>
