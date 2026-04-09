@@ -20,6 +20,8 @@ type Edge = {
   color: string;
   pulseOffset: number;
   pulseSpeed: number;
+  flickerPhase: number;
+  branchSeed: number;
 };
 
 function IconWrapper({
@@ -156,6 +158,8 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
             color: getEdgeColor(i),
             pulseOffset: Math.random(),
             pulseSpeed: 0.003 + Math.random() * 0.006,
+            flickerPhase: Math.random() * Math.PI * 2,
+            branchSeed: Math.random(),
           });
         }
       }
@@ -218,12 +222,14 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
 
         const opacity = 1 - distance / 210;
         const stroke = edge.color.replace(/[\d.]+\)$/u, `${opacity})`);
+        const flicker = Math.max(0, Math.sin(tick * 0.055 + edge.flickerPhase)) ** 6;
+        const energetic = flicker > 0.45;
 
         context.beginPath();
         context.moveTo(from.x, from.y);
         context.lineTo(to.x, to.y);
         context.strokeStyle = stroke;
-        context.lineWidth = 1.15;
+        context.lineWidth = energetic ? 1.75 : 1.15;
         context.stroke();
 
         const progress = (edge.pulseOffset + tick * edge.pulseSpeed) % 1;
@@ -237,6 +243,33 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
         context.shadowBlur = 18;
         context.shadowColor = pulseColor;
         context.fill();
+
+        if (energetic) {
+          const midX = from.x + (to.x - from.x) * (0.25 + edge.branchSeed * 0.5);
+          const midY = from.y + (to.y - from.y) * (0.25 + edge.branchSeed * 0.5);
+          const normalX = -dy / distance;
+          const normalY = dx / distance;
+          const branchLength = 8 + flicker * 18;
+          const branchDirection = edge.branchSeed > 0.5 ? 1 : -1;
+          const branchX = midX + normalX * branchLength * branchDirection;
+          const branchY = midY + normalY * branchLength * branchDirection;
+
+          context.beginPath();
+          context.moveTo(midX, midY);
+          context.lineTo(branchX, branchY);
+          context.strokeStyle = pulseColor.replace(/[\d.]+\)$/u, `${0.32 + flicker * 0.5})`);
+          context.lineWidth = 1.1 + flicker * 0.8;
+          context.shadowBlur = 14;
+          context.shadowColor = pulseColor;
+          context.stroke();
+
+          context.beginPath();
+          context.moveTo(midX, midY);
+          context.lineTo(pulseX, pulseY);
+          context.strokeStyle = pulseColor.replace(/[\d.]+\)$/u, `${0.18 + flicker * 0.45})`);
+          context.lineWidth = 0.9 + flicker * 0.7;
+          context.stroke();
+        }
       }
 
       for (const particle of particles) {
