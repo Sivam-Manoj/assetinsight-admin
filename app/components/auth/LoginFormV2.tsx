@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useAdminTheme } from "@/app/components/providers/AdminThemeProvider";
 
 type Particle = {
   x: number;
@@ -81,30 +82,6 @@ function ArrowRightIcon({ className }: { className?: string }) {
       <path d="m13 5 7 7-7 7" />
     </IconWrapper>
   );
-}
-
-function useResolvedTheme() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-
-  useEffect(() => {
-    const updateTheme = () => {
-      if (typeof document === "undefined") return;
-      const isDark = document.documentElement.classList.contains("dark");
-      setTheme(isDark ? "dark" : "light");
-    };
-
-    updateTheme();
-
-    const observer = new MutationObserver(updateTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
-    return () => observer.disconnect();
-  }, []);
-
-  return theme;
 }
 
 function ParticleField({ theme }: { theme: "light" | "dark" }) {
@@ -238,7 +215,8 @@ function LoginShell({
   children: React.ReactNode;
   embedded: boolean;
 }) {
-  const theme = useResolvedTheme();
+  const { mode } = useAdminTheme();
+  const theme = mode === "dark" ? "dark" : "light";
 
   if (embedded) {
     return <div className="w-full">{children}</div>;
