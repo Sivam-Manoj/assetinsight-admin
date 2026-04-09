@@ -245,12 +245,12 @@ function LoginShell({
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-100 text-slate-950 transition-colors dark:bg-slate-950 dark:text-slate-50">
+    <div className="fixed inset-0 z-50 overflow-auto bg-slate-100 text-slate-950 transition-colors dark:bg-slate-950 dark:text-slate-50">
       <ParticleField theme={theme} />
 
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.22),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.2),_transparent_26%),linear-gradient(135deg,_rgba(255,255,255,0.84),_rgba(241,245,249,0.68))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.28),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.24),_transparent_26%),linear-gradient(135deg,_rgba(2,6,23,0.88),_rgba(15,23,42,0.74))]" />
 
-      <div className="relative z-10 grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="relative z-10 grid min-h-full lg:min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
         <section className="flex items-center px-6 py-12 sm:px-10 lg:px-16 xl:px-24">
           <div className="max-w-xl">
             <div className="mb-8 inline-flex items-center gap-4 rounded-full border border-white/50 bg-white/55 px-4 py-3 shadow-[0_10px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-white/5 dark:shadow-[0_10px_40px_rgba(0,0,0,0.25)]">
