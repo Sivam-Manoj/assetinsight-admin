@@ -106,10 +106,10 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
             blueLine: "rgba(96, 165, 250, 0.18)",
           }
         : {
-            red: "rgba(220, 38, 38, 0.9)",
-            blue: "rgba(37, 99, 235, 0.9)",
-            redLine: "rgba(220, 38, 38, 0.12)",
-            blueLine: "rgba(37, 99, 235, 0.12)",
+            red: "rgba(220, 38, 38, 0.88)",
+            blue: "rgba(37, 99, 235, 0.88)",
+            redLine: "rgba(220, 38, 38, 0.14)",
+            blueLine: "rgba(37, 99, 235, 0.14)",
           };
 
     const resize = () => {
@@ -199,13 +199,7 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
     };
   }, [theme]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      className="absolute inset-0 h-full w-full opacity-90"
-    />
-  );
+  return <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 h-full w-full opacity-90" />;
 }
 
 function LoginShell({
@@ -216,32 +210,41 @@ function LoginShell({
   embedded: boolean;
 }) {
   const { mode } = useAdminTheme();
-  const theme = mode === "dark" ? "dark" : "light";
+  const isDark = mode === "dark";
+  const theme = isDark ? "dark" : "light";
 
   if (embedded) {
     return <div className="w-full">{children}</div>;
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-auto bg-slate-100 text-slate-950 transition-colors dark:bg-slate-950 dark:text-slate-50">
+    <div className={`fixed inset-0 z-50 overflow-auto transition-colors ${isDark ? "bg-slate-950 text-slate-50" : "bg-slate-100 text-slate-950"}`}>
       <ParticleField theme={theme} />
 
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.22),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.2),_transparent_26%),linear-gradient(135deg,_rgba(255,255,255,0.84),_rgba(241,245,249,0.68))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.28),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.24),_transparent_26%),linear-gradient(135deg,_rgba(2,6,23,0.88),_rgba(15,23,42,0.74))]" />
+      <div
+        className={`absolute inset-0 ${
+          isDark
+            ? "bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.28),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.24),_transparent_26%),linear-gradient(135deg,_rgba(2,6,23,0.88),_rgba(15,23,42,0.74))]"
+            : "bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.16),_transparent_26%),linear-gradient(135deg,_rgba(255,255,255,0.94),_rgba(241,245,249,0.82))]"
+        }`}
+      />
 
       <div className="relative z-10 grid min-h-full lg:min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
         <section className="flex items-center px-6 py-12 sm:px-10 lg:px-16 xl:px-24">
           <div className="max-w-xl">
-            <div className="mb-10 inline-flex items-center gap-5 rounded-[2rem] bg-transparent">
-              <div className="relative h-20 w-20 overflow-hidden rounded-[1.75rem] bg-transparent dark:ring-2 dark:ring-white/80 dark:ring-offset-4 dark:ring-offset-slate-950">
-                <Image src="/logo.png" alt="Asset Insight logo" fill className="object-contain p-2" priority />
+            <div className="mb-10 inline-flex items-center gap-5">
+              <div
+                className={`relative h-32 w-32 overflow-hidden rounded-[2.2rem] ${
+                  isDark ? "bg-white/6 ring-2 ring-white/85 ring-offset-4 ring-offset-slate-950" : "bg-white shadow-[0_20px_50px_rgba(15,23,42,0.10)]"
+                }`}
+              >
+                <Image src="/logo.png" alt="Asset Insight logo" fill className="object-contain p-1" priority />
               </div>
               <div>
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.38em] text-slate-500 dark:text-slate-400">
+                <p className={`text-[0.7rem] font-semibold uppercase tracking-[0.38em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                   Asset Insight
                 </p>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  Admin access
-                </p>
+                <p className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>Admin access</p>
               </div>
             </div>
 
@@ -249,7 +252,7 @@ function LoginShell({
               <h1 className="max-w-lg font-sans text-5xl font-semibold leading-none tracking-[-0.05em] text-balance sm:text-6xl">
                 Asset Insight admin portal.
               </h1>
-              <p className="max-w-lg text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-lg">
+              <p className={`max-w-lg text-base leading-7 sm:text-lg ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                 Sign in to access reports, approvals, users, and internal operations.
               </p>
             </div>
@@ -268,6 +271,8 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/reports";
+  const { mode } = useAdminTheme();
+  const isDark = mode === "dark";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -303,17 +308,21 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
     <LoginShell embedded={embedded}>
       <form
         onSubmit={onSubmit}
-        className="ml-auto w-full max-w-xl rounded-[2rem] border border-white/50 bg-white/72 p-6 shadow-[0_30px_120px_rgba(15,23,42,0.16)] backdrop-blur-2xl transition-colors dark:border-white/10 dark:bg-slate-900/55 dark:shadow-[0_30px_120px_rgba(2,6,23,0.55)] sm:p-8"
+        className={`ml-auto w-full max-w-xl rounded-[2rem] p-6 backdrop-blur-2xl transition-colors sm:p-8 ${
+          isDark
+            ? "border border-white/10 bg-slate-900/55 shadow-[0_30px_120px_rgba(2,6,23,0.55)]"
+            : "border border-white/60 bg-white/75 shadow-[0_30px_120px_rgba(15,23,42,0.14)]"
+        }`}
       >
         <div className="space-y-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">
+          <p className={`text-sm font-semibold uppercase tracking-[0.28em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
             Admin portal
           </p>
           <div className="space-y-2">
-            <h2 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white sm:text-4xl">
+            <h2 className={`text-3xl font-semibold tracking-[-0.04em] sm:text-4xl ${isDark ? "text-white" : "text-slate-950"}`}>
               Sign in to manage reports, approvals, and operations.
             </h2>
-            <p className="max-w-lg text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
+            <p className={`max-w-lg text-sm leading-6 sm:text-base ${isDark ? "text-slate-300" : "text-slate-600"}`}>
               Built for speed and clarity, with a cleaner visual hierarchy and motion-led background that still keeps the login action front and center.
             </p>
           </div>
@@ -321,9 +330,9 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
 
         <div className="mt-8 space-y-5">
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Email address</span>
+            <span className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>Email address</span>
             <span className="relative block">
-              <MailIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+              <MailIcon className={`pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${isDark ? "text-slate-500" : "text-slate-400"}`} />
               <input
                 type="email"
                 required
@@ -331,15 +340,19 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
                 onChange={(event) => setEmail(event.target.value)}
                 disabled={loading}
                 placeholder="admin@assetinsight.com"
-                className="h-14 w-full rounded-2xl border border-slate-200/80 bg-white/90 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 disabled:cursor-not-allowed disabled:opacity-70 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-red-400 dark:focus:ring-red-400/10"
+                className={`h-14 w-full rounded-2xl pl-12 pr-4 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                  isDark
+                    ? "border border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-red-400 focus:ring-4 focus:ring-red-400/10"
+                    : "border border-slate-200/80 bg-white/90 text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+                }`}
               />
             </span>
           </label>
 
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Password</span>
+            <span className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>Password</span>
             <span className="relative block">
-              <LockIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+              <LockIcon className={`pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${isDark ? "text-slate-500" : "text-slate-400"}`} />
               <input
                 type={showPassword ? "text" : "password"}
                 required
@@ -347,14 +360,22 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
                 onChange={(event) => setPassword(event.target.value)}
                 disabled={loading}
                 placeholder="Enter your password"
-                className="h-14 w-full rounded-2xl border border-slate-200/80 bg-white/90 pl-12 pr-14 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-70 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400/10"
+                className={`h-14 w-full rounded-2xl pl-12 pr-14 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                  isDark
+                    ? "border border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10"
+                    : "border border-slate-200/80 bg-white/90 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                }`}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((value) => !value)}
                 disabled={loading}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-900/5 hover:text-slate-700 disabled:cursor-not-allowed dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+                className={`absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition disabled:cursor-not-allowed ${
+                  isDark
+                    ? "text-slate-400 hover:bg-white/10 hover:text-white"
+                    : "text-slate-500 hover:bg-slate-900/5 hover:text-slate-700"
+                }`}
               >
                 {showPassword ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
               </button>
@@ -363,20 +384,24 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
         </div>
 
         {error ? (
-          <div className="mt-5 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-200">
+          <div className={`mt-5 rounded-2xl px-4 py-3 text-sm ${isDark ? "border border-red-400/20 bg-red-400/10 text-red-200" : "border border-red-500/25 bg-red-500/10 text-red-700"}`}>
             {error}
           </div>
         ) : null}
 
         <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
+          <p className={`text-sm ${isDark ? "text-slate-300" : "text-slate-600"}`}>
             Protected access only for verified internal administrators.
           </p>
 
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            className={`inline-flex h-14 items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
+              isDark
+                ? "bg-white text-slate-950 hover:scale-[1.01] hover:bg-slate-200"
+                : "bg-slate-950 text-white hover:scale-[1.01] hover:bg-slate-800"
+            }`}
           >
             <span>{loading ? "Signing in..." : "Enter dashboard"}</span>
             <ArrowRightIcon className={`h-4 w-4 ${loading ? "animate-pulse" : ""}`} />
