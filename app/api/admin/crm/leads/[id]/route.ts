@@ -20,3 +20,15 @@ export async function DELETE(
     method: "DELETE",
   });
 }
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  return proxyJsonWithAdminAuth(request, `/api/crm/admin/leads/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: await request.text(),
+  });
+}

@@ -716,6 +716,7 @@ export default function AdminCrmManagement() {
   const [adminReplyStatus, setAdminReplyStatus] = useState<string>("");
   const [adminReplyLostReason, setAdminReplyLostReason] = useState<string>("");
   const [submittingAdminReply, setSubmittingAdminReply] = useState(false);
+  const [savingLeadStatus, setSavingLeadStatus] = useState(false);
   const [timelineBusyKey, setTimelineBusyKey] = useState<string | null>(null);
   const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null);
   const [editingComment, setEditingComment] = useState("");
@@ -1012,7 +1013,7 @@ export default function AdminCrmManagement() {
   }
 
   function closeLeadDetailsModal() {
-    if (submittingAdminReply) return;
+    if (submittingAdminReply || savingLeadStatus) return;
     setShowLeadDetailsModal(false);
     setActiveLeadDetails(null);
     setLeadDetailsError("");
@@ -1052,6 +1053,8 @@ export default function AdminCrmManagement() {
 
   function applyLeadMutation(item: CrmLeadItem) {
     setActiveLeadDetails(item);
+    setAdminReplyStatus(item?.status || "new_lead");
+    setAdminReplyLostReason(item?.lostReason || "");
     setLeads((prev) => {
       if (!prev) return prev;
       return {
@@ -1235,6 +1238,40 @@ export default function AdminCrmManagement() {
       pushToast(e instanceof Error ? e.message : "Failed to submit admin reply", "error");
     } finally {
       setSubmittingAdminReply(false);
+    }
+  }
+
+  async function saveAdminLeadStatus() {
+    if (!activeLeadDetails) return;
+    const nextStatus = adminReplyStatus || activeLeadDetails.status || "new_lead";
+    const nextLostReason = nextStatus === "lost" ? adminReplyLostReason : "";
+
+    if (nextStatus === "lost" && !nextLostReason) {
+      pushToast("Lost reason is required", "error");
+      return;
+    }
+
+    try {
+      setSavingLeadStatus(true);
+      const res = await fetch(`/api/admin/crm/leads/${activeLeadDetails._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: nextStatus,
+          lostReason: nextStatus === "lost" ? nextLostReason : undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to save lead status");
+
+      const item = json?.item as CrmLeadItem;
+      applyLeadMutation(item);
+      pushToast("Lead status updated", "success");
+      await loadLeads();
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to save lead status", "error");
+    } finally {
+      setSavingLeadStatus(false);
     }
   }
 
@@ -2259,7 +2296,7 @@ export default function AdminCrmManagement() {
               <Typography variant="h6" fontWeight={800}>Lead Conversation & Files</Typography>
               <Typography variant="body2" color="text.secondary">Review CRM history, play recordings, and reply to the assigned rep.</Typography>
             </Box>
-            <IconButton size="small" onClick={closeLeadDetailsModal} disabled={submittingAdminReply}><CloseRoundedIcon /></IconButton>
+            <IconButton size="small" onClick={closeLeadDetailsModal} disabled={submittingAdminReply || savingLeadStatus}><CloseRoundedIcon /></IconButton>
           </DialogTitle>
           <DialogContent dividers>
             {leadDetailsLoadingId ? (
@@ -2323,12 +2360,26 @@ export default function AdminCrmManagement() {
                         onChange={(e) => setAdminReply(e.target.value)}
                       />
                     </Stack>
-                    <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1.5 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, flexWrap: "wrap", mt: 1.5 }}>
+                      <Button
+                        variant="outlined"
+                        onClick={() => void saveAdminLeadStatus()}
+                        disabled={
+                          savingLeadStatus ||
+                          (
+                            (adminReplyStatus || activeLeadDetails.status || "new_lead") === (activeLeadDetails.status || "new_lead") &&
+                            (((adminReplyStatus || activeLeadDetails.status || "new_lead") !== "lost") ||
+                              (adminReplyLostReason || "") === (activeLeadDetails.lostReason || ""))
+                          )
+                        }
+                      >
+                        {savingLeadStatus ? "Saving..." : "Save Status"}
+                      </Button>
                       <Button
                         variant="contained"
                         startIcon={<SendRoundedIcon />}
                         onClick={() => void submitAdminLeadReply()}
-                        disabled={submittingAdminReply || !adminReply.trim()}
+                        disabled={submittingAdminReply || savingLeadStatus || !adminReply.trim()}
                       >
                         {submittingAdminReply ? "Sending…" : "Send Reply"}
                       </Button>
