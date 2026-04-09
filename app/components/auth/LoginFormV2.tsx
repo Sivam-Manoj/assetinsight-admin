@@ -231,29 +231,26 @@ function LoginShell({
       <div className="relative z-10 grid min-h-full lg:min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
         <section className="flex items-center px-6 py-12 sm:px-10 lg:px-16 xl:px-24">
           <div className="max-w-xl">
-            <div className="mb-8 inline-flex items-center gap-4 rounded-full border border-white/50 bg-white/55 px-4 py-3 shadow-[0_10px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-white/5 dark:shadow-[0_10px_40px_rgba(0,0,0,0.25)]">
-              <div className="relative h-11 w-11 overflow-hidden rounded-2xl bg-white/80 ring-1 ring-black/5 dark:bg-white/10 dark:ring-white/10">
-                <Image src="/logo.png" alt="ClearValue logo" fill className="object-contain p-2" priority />
+            <div className="mb-10 inline-flex items-center gap-5 rounded-[2rem] bg-transparent">
+              <div className="relative h-20 w-20 overflow-hidden rounded-[1.75rem] bg-transparent dark:ring-2 dark:ring-white/80 dark:ring-offset-4 dark:ring-offset-slate-950">
+                <Image src="/logo.png" alt="Asset Insight logo" fill className="object-contain p-2" priority />
               </div>
               <div>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.38em] text-slate-500 dark:text-slate-400">
-                  ClearValue
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.38em] text-slate-500 dark:text-slate-400">
+                  Asset Insight
                 </p>
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  Secure admin access
+                  Admin access
                 </p>
               </div>
             </div>
 
-            <div className="space-y-6">
-              <p className="inline-flex items-center rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-red-600 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300">
-                Nanotech login surface
-              </p>
+            <div className="space-y-5">
               <h1 className="max-w-lg font-sans text-5xl font-semibold leading-none tracking-[-0.05em] text-balance sm:text-6xl">
-                A sharper login page for the control layer.
+                Asset Insight admin portal.
               </h1>
               <p className="max-w-lg text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-lg">
-                Live particle links, polished motion, and a focused sign-in flow built for both light and dark theme without the old boxed card feel.
+                Sign in to access reports, approvals, users, and internal operations.
               </p>
             </div>
           </div>
@@ -333,7 +330,7 @@ export default function LoginFormV2({ embedded = false }: { embedded?: boolean }
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 disabled={loading}
-                placeholder="admin@clearvalue.com"
+                placeholder="admin@assetinsight.com"
                 className="h-14 w-full rounded-2xl border border-slate-200/80 bg-white/90 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 disabled:cursor-not-allowed disabled:opacity-70 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-red-400 dark:focus:ring-red-400/10"
               />
             </span>
