@@ -14,6 +14,14 @@ type Particle = {
   color: string;
 };
 
+type Edge = {
+  from: number;
+  to: number;
+  color: string;
+  pulseOffset: number;
+  pulseSpeed: number;
+};
+
 function IconWrapper({
   children,
   className = "h-5 w-5",
@@ -96,21 +104,64 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
 
     let animationFrame = 0;
     let particles: Particle[] = [];
+    let edges: Edge[] = [];
+    let tick = 0;
 
     const palette =
       theme === "dark"
         ? {
-            red: "rgba(248, 113, 113, 0.95)",
-            blue: "rgba(96, 165, 250, 0.95)",
-            redLine: "rgba(248, 113, 113, 0.18)",
-            blueLine: "rgba(96, 165, 250, 0.18)",
+            red: "rgba(248, 113, 113, 0.98)",
+            blue: "rgba(96, 165, 250, 0.98)",
+            redLine: "rgba(248, 113, 113, 0.24)",
+            blueLine: "rgba(96, 165, 250, 0.24)",
+            redGlow: "rgba(252, 165, 165, 0.95)",
+            blueGlow: "rgba(147, 197, 253, 0.95)",
           }
         : {
-            red: "rgba(220, 38, 38, 0.88)",
-            blue: "rgba(37, 99, 235, 0.88)",
-            redLine: "rgba(220, 38, 38, 0.14)",
-            blueLine: "rgba(37, 99, 235, 0.14)",
+            red: "rgba(220, 38, 38, 0.96)",
+            blue: "rgba(37, 99, 235, 0.96)",
+            redLine: "rgba(220, 38, 38, 0.2)",
+            blueLine: "rgba(37, 99, 235, 0.2)",
+            redGlow: "rgba(248, 113, 113, 0.92)",
+            blueGlow: "rgba(96, 165, 250, 0.92)",
           };
+
+    const getEdgeColor = (index: number) => (index % 2 === 0 ? palette.redLine : palette.blueLine);
+    const getPulseColor = (index: number) => (index % 2 === 0 ? palette.redGlow : palette.blueGlow);
+
+    const rebuildEdges = () => {
+      const nextEdges: Edge[] = [];
+
+      for (let i = 0; i < particles.length; i += 1) {
+        const ranked: Array<{ index: number; distance: number }> = [];
+
+        for (let j = 0; j < particles.length; j += 1) {
+          if (i === j) continue;
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance <= 190) {
+            ranked.push({ index: j, distance });
+          }
+        }
+
+        ranked.sort((a, b) => a.distance - b.distance);
+
+        for (const neighbor of ranked.slice(0, 4)) {
+          if (neighbor.index < i) continue;
+
+          nextEdges.push({
+            from: i,
+            to: neighbor.index,
+            color: getEdgeColor(i),
+            pulseOffset: Math.random(),
+            pulseSpeed: 0.003 + Math.random() * 0.006,
+          });
+        }
+      }
+
+      edges = nextEdges;
+    };
 
     const resize = () => {
       const { innerWidth, innerHeight, devicePixelRatio } = window;
@@ -122,23 +173,25 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
       canvas.style.height = `${innerHeight}px`;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-      const count = Math.max(26, Math.min(72, Math.floor(innerWidth / 22)));
+      const count = Math.max(54, Math.min(120, Math.floor(innerWidth / 12)));
       particles = Array.from({ length: count }, (_, index) => {
         const isRed = index % 2 === 0;
         return {
           x: Math.random() * innerWidth,
           y: Math.random() * innerHeight,
-          vx: (Math.random() - 0.5) * 0.45,
-          vy: (Math.random() - 0.5) * 0.45,
-          radius: 1.2 + Math.random() * 2.2,
+          vx: (Math.random() - 0.5) * 0.65,
+          vy: (Math.random() - 0.5) * 0.65,
+          radius: 1.8 + Math.random() * 2.8,
           color: isRed ? palette.red : palette.blue,
         };
       });
+      rebuildEdges();
     };
 
     const draw = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
+      tick += 1;
 
       context.clearRect(0, 0, width, height);
 
@@ -150,36 +203,47 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
         if (particle.y <= 0 || particle.y >= height) particle.vy *= -1;
       }
 
-      for (let i = 0; i < particles.length; i += 1) {
-        for (let j = i + 1; j < particles.length; j += 1) {
-          const a = particles[i];
-          const b = particles[j];
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
+      if (tick % 18 === 0) {
+        rebuildEdges();
+      }
 
-          if (distance > 150) continue;
+      for (const edge of edges) {
+        const from = particles[edge.from];
+        const to = particles[edge.to];
+        const dx = from.x - to.x;
+        const dy = from.y - to.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
 
-          const opacity = 1 - distance / 150;
-          const stroke =
-            i % 2 === 0
-              ? palette.redLine.replace(/[\d.]+\)$/u, `${opacity * 0.9})`)
-              : palette.blueLine.replace(/[\d.]+\)$/u, `${opacity * 0.9})`);
+        if (distance > 210) continue;
 
-          context.beginPath();
-          context.moveTo(a.x, a.y);
-          context.lineTo(b.x, b.y);
-          context.strokeStyle = stroke;
-          context.lineWidth = 1;
-          context.stroke();
-        }
+        const opacity = 1 - distance / 210;
+        const stroke = edge.color.replace(/[\d.]+\)$/u, `${opacity})`);
+
+        context.beginPath();
+        context.moveTo(from.x, from.y);
+        context.lineTo(to.x, to.y);
+        context.strokeStyle = stroke;
+        context.lineWidth = 1.15;
+        context.stroke();
+
+        const progress = (edge.pulseOffset + tick * edge.pulseSpeed) % 1;
+        const pulseX = from.x + (to.x - from.x) * progress;
+        const pulseY = from.y + (to.y - from.y) * progress;
+        const pulseColor = getPulseColor(edge.from);
+
+        context.beginPath();
+        context.arc(pulseX, pulseY, 2.1, 0, Math.PI * 2);
+        context.fillStyle = pulseColor;
+        context.shadowBlur = 18;
+        context.shadowColor = pulseColor;
+        context.fill();
       }
 
       for (const particle of particles) {
         context.beginPath();
         context.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
         context.fillStyle = particle.color;
-        context.shadowBlur = 14;
+        context.shadowBlur = 22;
         context.shadowColor = particle.color;
         context.fill();
       }
