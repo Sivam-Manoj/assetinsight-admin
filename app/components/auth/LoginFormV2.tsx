@@ -22,6 +22,7 @@ type Edge = {
   pulseSpeed: number;
   flickerPhase: number;
   branchSeed: number;
+  surgeOffset: number;
 };
 
 function IconWrapper({
@@ -108,6 +109,11 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
     let particles: Particle[] = [];
     let edges: Edge[] = [];
     let tick = 0;
+    let pointer = {
+      x: 0,
+      y: 0,
+      active: false,
+    };
 
     const palette =
       theme === "dark"
@@ -157,9 +163,10 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
             to: neighbor.index,
             color: getEdgeColor(i),
             pulseOffset: Math.random(),
-            pulseSpeed: 0.003 + Math.random() * 0.006,
+            pulseSpeed: 0.0018 + Math.random() * 0.0032,
             flickerPhase: Math.random() * Math.PI * 2,
             branchSeed: Math.random(),
+            surgeOffset: Math.random() * Math.PI * 2,
           });
         }
       }
@@ -183,8 +190,8 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
         return {
           x: Math.random() * innerWidth,
           y: Math.random() * innerHeight,
-          vx: (Math.random() - 0.5) * 0.65,
-          vy: (Math.random() - 0.5) * 0.65,
+          vx: (Math.random() - 0.5) * 0.34,
+          vy: (Math.random() - 0.5) * 0.34,
           radius: 1.8 + Math.random() * 2.8,
           color: isRed ? palette.red : palette.blue,
         };
@@ -200,14 +207,32 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
       context.clearRect(0, 0, width, height);
 
       for (const particle of particles) {
+        if (pointer.active) {
+          const pdx = pointer.x - particle.x;
+          const pdy = pointer.y - particle.y;
+          const pdistance = Math.sqrt(pdx * pdx + pdy * pdy);
+
+          if (pdistance < 220 && pdistance > 0.001) {
+            const influence = (1 - pdistance / 220) * 0.018;
+            particle.vx += (pdx / pdistance) * influence;
+            particle.vy += (pdy / pdistance) * influence;
+          }
+        }
+
         particle.x += particle.vx;
         particle.y += particle.vy;
 
+        particle.vx *= 0.9985;
+        particle.vy *= 0.9985;
+
         if (particle.x <= 0 || particle.x >= width) particle.vx *= -1;
         if (particle.y <= 0 || particle.y >= height) particle.vy *= -1;
+
+        particle.vx += (Math.sin((tick + particle.y) * 0.0025) * 0.0025);
+        particle.vy += (Math.cos((tick + particle.x) * 0.002) * 0.0025);
       }
 
-      if (tick % 18 === 0) {
+      if (tick % 36 === 0) {
         rebuildEdges();
       }
 
@@ -222,14 +247,21 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
 
         const opacity = 1 - distance / 210;
         const stroke = edge.color.replace(/[\d.]+\)$/u, `${opacity})`);
-        const flicker = Math.max(0, Math.sin(tick * 0.055 + edge.flickerPhase)) ** 6;
-        const energetic = flicker > 0.45;
+        const flicker = Math.max(0, Math.sin(tick * 0.032 + edge.flickerPhase)) ** 10;
+        const surge = Math.max(0, Math.sin(tick * 0.012 + edge.surgeOffset)) ** 18;
+        const nearPointer =
+          pointer.active &&
+          ((Math.hypot(from.x - pointer.x, from.y - pointer.y) < 180) ||
+            Math.hypot(to.x - pointer.x, to.y - pointer.y) < 180);
+        const pointerBoost = nearPointer ? 0.45 : 0;
+        const energetic = flicker + pointerBoost > 0.72 || surge + pointerBoost > 0.52;
+        const energyStrength = Math.min(1, Math.max(flicker, surge) + pointerBoost);
 
         context.beginPath();
         context.moveTo(from.x, from.y);
         context.lineTo(to.x, to.y);
         context.strokeStyle = stroke;
-        context.lineWidth = energetic ? 1.75 : 1.15;
+        context.lineWidth = energetic ? 1.4 + energyStrength * 1.8 : 1.05;
         context.stroke();
 
         const progress = (edge.pulseOffset + tick * edge.pulseSpeed) % 1;
@@ -238,9 +270,9 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
         const pulseColor = getPulseColor(edge.from);
 
         context.beginPath();
-        context.arc(pulseX, pulseY, 2.1, 0, Math.PI * 2);
+        context.arc(pulseX, pulseY, 1.8 + energyStrength * 1.5, 0, Math.PI * 2);
         context.fillStyle = pulseColor;
-        context.shadowBlur = 18;
+        context.shadowBlur = 16 + energyStrength * 18;
         context.shadowColor = pulseColor;
         context.fill();
 
@@ -249,7 +281,7 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
           const midY = from.y + (to.y - from.y) * (0.25 + edge.branchSeed * 0.5);
           const normalX = -dy / distance;
           const normalY = dx / distance;
-          const branchLength = 8 + flicker * 18;
+          const branchLength = 10 + energyStrength * 24;
           const branchDirection = edge.branchSeed > 0.5 ? 1 : -1;
           const branchX = midX + normalX * branchLength * branchDirection;
           const branchY = midY + normalY * branchLength * branchDirection;
@@ -257,17 +289,17 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
           context.beginPath();
           context.moveTo(midX, midY);
           context.lineTo(branchX, branchY);
-          context.strokeStyle = pulseColor.replace(/[\d.]+\)$/u, `${0.32 + flicker * 0.5})`);
-          context.lineWidth = 1.1 + flicker * 0.8;
-          context.shadowBlur = 14;
+          context.strokeStyle = pulseColor.replace(/[\d.]+\)$/u, `${0.24 + energyStrength * 0.58})`);
+          context.lineWidth = 1 + energyStrength * 1.1;
+          context.shadowBlur = 12 + energyStrength * 14;
           context.shadowColor = pulseColor;
           context.stroke();
 
           context.beginPath();
           context.moveTo(midX, midY);
           context.lineTo(pulseX, pulseY);
-          context.strokeStyle = pulseColor.replace(/[\d.]+\)$/u, `${0.18 + flicker * 0.45})`);
-          context.lineWidth = 0.9 + flicker * 0.7;
+          context.strokeStyle = pulseColor.replace(/[\d.]+\)$/u, `${0.15 + energyStrength * 0.4})`);
+          context.lineWidth = 0.8 + energyStrength * 0.9;
           context.stroke();
         }
       }
@@ -285,14 +317,28 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
       animationFrame = window.requestAnimationFrame(draw);
     };
 
+    const handlePointerMove = (event: PointerEvent) => {
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      pointer.active = true;
+    };
+
+    const handlePointerLeave = () => {
+      pointer.active = false;
+    };
+
     resize();
     draw();
 
     window.addEventListener("resize", resize);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerleave", handlePointerLeave);
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerleave", handlePointerLeave);
     };
   }, [theme]);
 
