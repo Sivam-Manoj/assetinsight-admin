@@ -8,8 +8,11 @@ import { useAdminTheme } from "@/app/components/providers/AdminThemeProvider";
 type Particle = {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
+  anchorX: number;
+  anchorY: number;
+  phase: number;
+  speed: number;
+  orbit: number;
   radius: number;
   color: string;
 };
@@ -117,12 +120,19 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
 
     let animationFrame = 0;
     let particles: Particle[] = [];
-    let edges: Edge[] = [];
     let tick = 0;
     const pointer = {
       x: 0,
       y: 0,
       active: false,
+    };
+    const RULES = {
+      maxDistance: 210,
+      maxNeighbors: 5,
+      repelDistance: 36,
+      spring: 0.055,
+      pulseMin: 0.0018,
+      pulseVariance: 0.0032,
     };
 
     const palette =
@@ -147,45 +157,6 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
     const getEdgeColor = (index: number) => (index % 2 === 0 ? palette.redLine : palette.blueLine);
     const getPulseColor = (index: number) => (index % 2 === 0 ? palette.redGlow : palette.blueGlow);
 
-    const rebuildEdges = () => {
-      const nextEdges: Edge[] = [];
-      const thresholdSq = 210 * 210;
-
-      for (let i = 0; i < particles.length; i += 1) {
-        const ranked: Array<{ index: number; distance: number }> = [];
-
-        for (let j = 0; j < particles.length; j += 1) {
-          if (i === j) continue;
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const distanceSq = dx * dx + dy * dy;
-          if (distanceSq <= thresholdSq) {
-            ranked.push({ index: j, distance: distanceSq });
-          }
-        }
-
-        ranked.sort((a, b) => a.distance - b.distance);
-
-        for (const neighbor of ranked.slice(0, 4)) {
-          if (neighbor.index < i) continue;
-
-          nextEdges.push({
-            from: i,
-            to: neighbor.index,
-            color: getEdgeColor(i),
-            pulseOffset: Math.random(),
-            pulseSpeed: 0.0018 + Math.random() * 0.0032,
-            flickerPhase: Math.random() * Math.PI * 2,
-            branchSeed: Math.random(),
-            surgeOffset: Math.random() * Math.PI * 2,
-            breakProgress: 0,
-          });
-        }
-      }
-
-      edges = nextEdges;
-    };
-
     const resize = () => {
       const { innerWidth, innerHeight, devicePixelRatio } = window;
       const ratio = Math.min(devicePixelRatio || 1, 1.5);
@@ -196,57 +167,117 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
       canvas.style.height = `${innerHeight}px`;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-      const count = Math.max(52, Math.min(96, Math.floor(innerWidth / 14)));
+      const count = Math.max(56, Math.min(104, Math.floor(innerWidth / 13)));
+      const cols = Math.max(6, Math.ceil(Math.sqrt((count * innerWidth) / Math.max(innerHeight, 1))));
+      const rows = Math.max(5, Math.ceil(count / cols));
+      const cellWidth = innerWidth / cols;
+      const cellHeight = innerHeight / rows;
+
       particles = Array.from({ length: count }, (_, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const anchorX = (col + 0.5) * cellWidth + (Math.random() - 0.5) * cellWidth * 0.42;
+        const anchorY = (row + 0.5) * cellHeight + (Math.random() - 0.5) * cellHeight * 0.42;
         const isRed = index % 2 === 0;
+
         return {
-          x: Math.random() * innerWidth,
-          y: Math.random() * innerHeight,
-          vx: (Math.random() - 0.5) * 0.18,
-          vy: (Math.random() - 0.5) * 0.18,
-          radius: 1.9 + Math.random() * 2.6,
+          x: anchorX,
+          y: anchorY,
+          anchorX,
+          anchorY,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.55 + Math.random() * 0.95,
+          orbit: 10 + Math.random() * 28,
+          radius: 1.9 + Math.random() * 2.5,
           color: isRed ? palette.red : palette.blue,
         };
       });
-      rebuildEdges();
     };
 
     const draw = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
       tick += 1;
+      const t = tick * 0.012;
 
       context.clearRect(0, 0, width, height);
 
       for (const particle of particles) {
+        const targetX =
+          particle.anchorX +
+          Math.cos(t * particle.speed + particle.phase) * particle.orbit;
+        const targetY =
+          particle.anchorY +
+          Math.sin(t * (particle.speed * 0.82) + particle.phase) * particle.orbit * 0.76;
+
+        particle.x += (targetX - particle.x) * RULES.spring;
+        particle.y += (targetY - particle.y) * RULES.spring;
+
         if (pointer.active) {
           const pdx = pointer.x - particle.x;
           const pdy = pointer.y - particle.y;
           const pdistanceSq = pdx * pdx + pdy * pdy;
 
-          if (pdistanceSq < 210 * 210 && pdistanceSq > 0.001) {
+          if (pdistanceSq < 220 * 220 && pdistanceSq > 0.001) {
             const pdistance = Math.sqrt(pdistanceSq);
-            const influence = (1 - pdistance / 210) * 0.012;
-            particle.vx += (pdx / pdistance) * influence * 0.35;
-            particle.vy += (pdy / pdistance) * influence * 0.35;
+            const influence = (1 - pdistance / 220) * 8.5;
+            particle.x -= (pdx / pdistance) * influence * 0.12;
+            particle.y -= (pdy / pdistance) * influence * 0.12;
           }
         }
-
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-
-        particle.vx *= 0.9985;
-        particle.vy *= 0.9985;
-
-        if (particle.x <= 0 || particle.x >= width) particle.vx *= -1;
-        if (particle.y <= 0 || particle.y >= height) particle.vy *= -1;
-
-        particle.vx += (Math.sin((tick + particle.y) * 0.0025) * 0.0025);
-        particle.vy += (Math.cos((tick + particle.x) * 0.002) * 0.0025);
       }
 
-      if (tick % 96 === 0) {
-        rebuildEdges();
+      for (let i = 0; i < particles.length; i += 1) {
+        for (let j = i + 1; j < particles.length; j += 1) {
+          const a = particles[i];
+          const b = particles[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const distanceSq = dx * dx + dy * dy;
+
+          if (distanceSq < RULES.repelDistance * RULES.repelDistance && distanceSq > 0.01) {
+            const distance = Math.sqrt(distanceSq);
+            const force = (1 - distance / RULES.repelDistance) * 0.42;
+            const pushX = (dx / distance) * force;
+            const pushY = (dy / distance) * force;
+            a.x -= pushX;
+            a.y -= pushY;
+            b.x += pushX;
+            b.y += pushY;
+          }
+        }
+      }
+
+      const edges: Edge[] = [];
+      const neighborCounts = new Array(particles.length).fill(0);
+
+      for (let i = 0; i < particles.length; i += 1) {
+        for (let j = i + 1; j < particles.length; j += 1) {
+          if (neighborCounts[i] >= RULES.maxNeighbors || neighborCounts[j] >= RULES.maxNeighbors) {
+            continue;
+          }
+
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const distanceSq = dx * dx + dy * dy;
+
+          if (distanceSq > RULES.maxDistance * RULES.maxDistance) continue;
+
+          edges.push({
+            from: i,
+            to: j,
+            color: getEdgeColor(i),
+            pulseOffset: (i * 0.173 + j * 0.119) % 1,
+            pulseSpeed: RULES.pulseMin + ((i + j) % 7) * (RULES.pulseVariance / 7),
+            flickerPhase: (i + 1) * 0.71 + j * 0.37,
+            branchSeed: ((i * 17 + j * 13) % 100) / 100,
+            surgeOffset: (i + j) * 0.29,
+            breakProgress: 0,
+          });
+
+          neighborCounts[i] += 1;
+          neighborCounts[j] += 1;
+        }
       }
 
       for (const edge of edges) {
@@ -254,30 +285,25 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
         const to = particles[edge.to];
         const dx = from.x - to.x;
         const dy = from.y - to.y;
-        const distanceSq = dx * dx + dy * dy;
-
-        if (distanceSq > 240 * 240) continue;
-        const distance = Math.sqrt(distanceSq);
+        const distance = Math.sqrt(dx * dx + dy * dy);
 
         const nearPointer =
           pointer.active &&
-          ((((from.x - pointer.x) * (from.x - pointer.x)) + ((from.y - pointer.y) * (from.y - pointer.y))) < 220 * 220 ||
-            (((to.x - pointer.x) * (to.x - pointer.x)) + ((to.y - pointer.y) * (to.y - pointer.y))) < 220 * 220);
+          ((((from.x - pointer.x) * (from.x - pointer.x)) + ((from.y - pointer.y) * (from.y - pointer.y))) < 210 * 210 ||
+            (((to.x - pointer.x) * (to.x - pointer.x)) + ((to.y - pointer.y) * (to.y - pointer.y))) < 210 * 210);
 
-        if (nearPointer) {
-          edge.breakProgress = Math.min(1, edge.breakProgress + 0.032);
-        } else {
-          edge.breakProgress = Math.max(0, edge.breakProgress - 0.012);
-        }
+        const dynamicBreak = nearPointer
+          ? Math.min(1, Math.max(0, 1 - distance / RULES.maxDistance) * 0.72 + 0.22)
+          : 0;
 
-        const opacity = (1 - distance / 240) * (1 - edge.breakProgress * 0.72);
+        const opacity = (1 - distance / RULES.maxDistance) * (1 - dynamicBreak * 0.7);
         const stroke = edge.color.replace(/[\d.]+\)$/u, `${Math.max(0.02, opacity)})`);
         const flicker = Math.max(0, Math.sin(tick * 0.032 + edge.flickerPhase)) ** 10;
         const surge = Math.max(0, Math.sin(tick * 0.012 + edge.surgeOffset)) ** 18;
-        const pointerBoost = nearPointer ? 0.26 : 0;
+        const pointerBoost = nearPointer ? 0.24 : 0;
         const energetic = flicker + pointerBoost > 0.8 || surge + pointerBoost > 0.62;
         const energyStrength = Math.min(1, Math.max(flicker, surge) + pointerBoost);
-        const breakOffset = edge.breakProgress * Math.min(26, distance * 0.18);
+        const breakOffset = dynamicBreak * Math.min(24, distance * 0.18);
         const offsetX = distance > 0 ? (-dy / distance) * breakOffset : 0;
         const offsetY = distance > 0 ? (dx / distance) * breakOffset : 0;
         const startX = from.x + offsetX;
@@ -289,7 +315,7 @@ function ParticleField({ theme }: { theme: "light" | "dark" }) {
         context.moveTo(startX, startY);
         context.lineTo(endX, endY);
         context.strokeStyle = stroke;
-        context.lineWidth = energetic ? 1.35 + energyStrength * 1.35 : 1.05;
+        context.lineWidth = energetic ? 1.35 + energyStrength * 1.2 : 1.05;
         context.stroke();
 
         const progress = (edge.pulseOffset + tick * edge.pulseSpeed) % 1;
