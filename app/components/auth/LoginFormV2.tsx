@@ -411,18 +411,20 @@ function LoginShell({
   }
 
   return (
-    <div className={`fixed inset-0 z-50 overflow-auto transition-colors ${isDark ? "bg-slate-950 text-slate-50" : "bg-slate-100 text-slate-950"}`}>
-      <ParticleField theme={theme} />
+    <div className={`relative min-h-screen overflow-x-clip transition-colors ${isDark ? "bg-slate-950 text-slate-50" : "bg-slate-100 text-slate-950"}`}>
+      <div className="fixed inset-0 z-0">
+        <ParticleField theme={theme} />
 
-      <div
-        className={`absolute inset-0 ${
-          isDark
-            ? "bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.28),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.24),_transparent_26%),linear-gradient(135deg,_rgba(2,6,23,0.88),_rgba(15,23,42,0.74))]"
-            : "bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.16),_transparent_26%),linear-gradient(135deg,_rgba(255,255,255,0.94),_rgba(241,245,249,0.82))]"
-        }`}
-      />
+        <div
+          className={`absolute inset-0 ${
+            isDark
+              ? "bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.28),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.24),_transparent_26%),linear-gradient(135deg,_rgba(2,6,23,0.88),_rgba(15,23,42,0.74))]"
+              : "bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(37,99,235,0.16),_transparent_26%),linear-gradient(135deg,_rgba(255,255,255,0.94),_rgba(241,245,249,0.82))]"
+          }`}
+        />
+      </div>
 
-      <div className="relative z-10 grid min-h-full lg:min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="relative z-10 grid min-h-screen w-full lg:grid-cols-[1.05fr_0.95fr]">
         <section className="flex items-center px-6 py-12 sm:px-10 lg:px-16 xl:px-24">
           <div className="max-w-xl">
             <div className="mb-10 inline-flex items-center gap-5">
