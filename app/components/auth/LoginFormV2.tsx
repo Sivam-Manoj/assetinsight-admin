@@ -425,7 +425,7 @@ function LoginShell({
       </div>
 
       <div className="relative z-10 grid min-h-screen w-full lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="flex items-center px-6 py-12 sm:px-10 lg:px-16 xl:px-24">
+        <section className="hidden items-center px-6 py-12 sm:px-10 lg:flex lg:px-16 xl:px-24">
           <div className="max-w-xl">
             <div className="mb-10 inline-flex items-center gap-5">
               <div
@@ -468,7 +468,7 @@ function LoginShell({
           </div>
         </section>
 
-        <section className="flex items-center px-6 pb-12 sm:px-10 lg:px-12 lg:py-12 xl:px-16">
+        <section className="flex min-h-screen items-center px-6 py-10 sm:px-10 lg:min-h-0 lg:px-12 lg:py-12 xl:px-16">
           <div className="w-full">{children}</div>
         </section>
       </div>
