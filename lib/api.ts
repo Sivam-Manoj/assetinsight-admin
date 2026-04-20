@@ -54,3 +54,17 @@ export async function blockAdminAPI(id: string, blocked: boolean) {
   if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.message || "Failed to update block status");
   return res.json();
 }
+
+export async function updateAdminPasswordAPI(id: string, password: string) {
+  const res = await fetch(`/api/admin/admins/${id}/password`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      (await res.json().catch(() => ({})))?.message || "Failed to update password"
+    );
+  }
+  return res.json();
+}

@@ -14,6 +14,7 @@ import {
   createAdminAPI,
   deleteAdminAPI,
   listAdminsAPI,
+  updateAdminPasswordAPI,
 } from "@/lib/api";
 import Link from "next/link";
 import Modal from "@/app/components/common/Modal";
@@ -75,6 +76,12 @@ export default function AdminManagement() {
   const [confirmType, setConfirmType] = useState<"delete" | "block">("delete");
   const [targetUser, setTargetUser] = useState<AdminUser | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordTarget, setPasswordTarget] = useState<AdminUser | null>(null);
+  const [nextPassword, setNextPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
 
   function pushToast(
     message: string,
@@ -144,6 +151,14 @@ export default function AdminManagement() {
     setConfirmOpen(true);
   }
 
+  function openPasswordModal(u: AdminUser) {
+    setPasswordTarget(u);
+    setNextPassword("");
+    setConfirmPassword("");
+    setPasswordError(null);
+    setPasswordOpen(true);
+  }
+
   async function confirmAction() {
     if (!targetUser) return;
     try {
@@ -166,6 +181,40 @@ export default function AdminManagement() {
       pushToast(message, "error");
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function onPasswordSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!passwordTarget) return;
+
+    if (nextPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    if (nextPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      return;
+    }
+
+    try {
+      setUpdatingPassword(true);
+      setPasswordError(null);
+      await updateAdminPasswordAPI(passwordTarget._id, nextPassword);
+      setPasswordOpen(false);
+      setPasswordTarget(null);
+      setNextPassword("");
+      setConfirmPassword("");
+      pushToast(`Password updated for ${passwordTarget.email}`, "success");
+      await load();
+    } catch (e: unknown) {
+      const message =
+        e instanceof Error ? e.message : "Failed to update password";
+      setPasswordError(message);
+      pushToast(message, "error");
+    } finally {
+      setUpdatingPassword(false);
     }
   }
 
@@ -250,6 +299,13 @@ export default function AdminManagement() {
           const u = row.original;
           return (
             <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end">
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => openPasswordModal(u)}
+              >
+                Password
+              </Button>
               <Button
                 size="small"
                 variant="outlined"
@@ -524,6 +580,13 @@ export default function AdminManagement() {
                               <Button
                                 size="small"
                                 variant="outlined"
+                                onClick={() => openPasswordModal(u)}
+                              >
+                                Password
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
                                 color="secondary"
                                 disabled={u.role === "superadmin"}
                                 onClick={() => openBlock(u)}
@@ -641,6 +704,95 @@ export default function AdminManagement() {
         {error && (
           <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">
             {error}
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={passwordOpen}
+        onClose={() => {
+          setPasswordOpen(false);
+          setPasswordTarget(null);
+          setNextPassword("");
+          setConfirmPassword("");
+          setPasswordError(null);
+        }}
+        title={
+          passwordTarget?.role === "superadmin"
+            ? "Change Superadmin Password"
+            : "Change Admin Password"
+        }
+        maxWidthClass="max-w-lg"
+        footer={
+          <>
+            <button
+              onClick={() => {
+                setPasswordOpen(false);
+                setPasswordTarget(null);
+                setNextPassword("");
+                setConfirmPassword("");
+                setPasswordError(null);
+              }}
+              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 active:bg-gray-100 shadow-sm hover:shadow transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              form="change-admin-password-form"
+              type="submit"
+              disabled={updatingPassword}
+              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 active:bg-rose-700 text-white font-medium shadow-md hover:shadow-lg active:shadow-sm transition-all disabled:opacity-60"
+            >
+              {updatingPassword ? "Saving..." : "Update Password"}
+            </button>
+          </>
+        }
+      >
+        <form
+          id="change-admin-password-form"
+          onSubmit={onPasswordSubmit}
+          className="grid grid-cols-1 gap-4"
+        >
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Account
+            </label>
+            <div className="mt-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700">
+              {passwordTarget?.email || "-"}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              New Password
+            </label>
+            <input
+              value={nextPassword}
+              onChange={(e) => setNextPassword(e.target.value)}
+              required
+              minLength={6}
+              type="password"
+              className="mt-1 w-full rounded-xl border border-gray-300 hover:border-gray-400 focus:border-rose-400 focus:ring-rose-400 shadow-sm px-3 py-2.5"
+              placeholder="At least 6 characters"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Confirm Password
+            </label>
+            <input
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={6}
+              type="password"
+              className="mt-1 w-full rounded-xl border border-gray-300 hover:border-gray-400 focus:border-rose-400 focus:ring-rose-400 shadow-sm px-3 py-2.5"
+              placeholder="Re-enter the password"
+            />
+          </div>
+        </form>
+        {passwordError && (
+          <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">
+            {passwordError}
           </p>
         )}
       </Modal>
