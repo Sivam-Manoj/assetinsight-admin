@@ -302,6 +302,22 @@ function defaultAutoFindCategories(categories?: string[]): string[] {
     .slice(0, 4);
 }
 
+function sanitizeAdminErrorMessage(message: string): string {
+  const text = String(message || "").trim();
+  if (!text) return text;
+  const normalized = text.toLowerCase();
+  if (
+    normalized.includes("quota") ||
+    normalized.includes("billing") ||
+    normalized.includes("insufficient_quota") ||
+    normalized.includes("platform.openai.com") ||
+    normalized.includes("openai")
+  ) {
+    return "Please check billing or usage limits of the Web Search API.";
+  }
+  return text;
+}
+
 function parseCrmQuadrants(value?: string): string[] {
   return String(value || "")
     .split(",")
@@ -735,7 +751,7 @@ export default function AdminCrmManagement() {
   const [toasts, setToasts] = useState<{ id: number; type: "success" | "error" | "info"; message: string }[]>([]);
   function pushToast(message: string, type: "success" | "error" | "info" = "info") {
     const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, type, message }]);
+    setToasts((prev) => [...prev, { id, type, message: sanitizeAdminErrorMessage(message) }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
   }
 
@@ -3066,7 +3082,25 @@ export default function AdminCrmManagement() {
       {/* ── Toast notifications ── */}
       {toasts.map((t) => (
         <Snackbar key={t.id} open anchorOrigin={{ vertical: "bottom", horizontal: "right" }} sx={{ position: "fixed" }}>
-          <Alert severity={t.type === "success" ? "success" : t.type === "error" ? "error" : "info"} variant="filled" sx={{ width: "100%" }}>
+          <Alert
+            severity={t.type === "success" ? "success" : t.type === "error" ? "error" : "info"}
+            variant="filled"
+            sx={(theme) => {
+              const severity = t.type === "success" ? "success" : t.type === "error" ? "error" : "info";
+              const shade = theme.palette.mode === "dark" ? "dark" : "main";
+              const bg = theme.palette[severity][shade];
+              return {
+                width: "100%",
+                bgcolor: bg,
+                color: theme.palette.getContrastText(bg),
+                border: "1px solid",
+                borderColor: theme.palette.mode === "dark" ? theme.palette[severity].light : theme.palette[severity].dark,
+                "& .MuiAlert-icon": {
+                  color: "inherit",
+                },
+              };
+            }}
+          >
             {t.message}
           </Alert>
         </Snackbar>
