@@ -1046,6 +1046,11 @@ export default function AdminCrmManagement() {
     });
   }
 
+  function deleteAutoFindRow(id: string) {
+    setAutoFindResults((prev) => prev.filter((item) => item.searchResultId !== id));
+    setSelectedAutoFindIds((prev) => prev.filter((value) => value !== id));
+  }
+
   function resetAutoFindFilters() {
     setAutoFindRegions([]);
     setAutoFindCategories(defaultAutoFindCategories(autoFindOptions?.categories));
@@ -1162,6 +1167,13 @@ export default function AdminCrmManagement() {
         "Company Linkedin": lead.companyLinkedinUrl,
         Industry: lead.industry,
         "CRM Specialization": lead.suggestedSpecialization,
+        Categories: (lead.categories || []).join(", "),
+        "Source URL": lead.sourceUrl,
+        "Source Title": lead.sourceTitle,
+        "Source Platform": lead.sourcePlatform,
+        Confidence: Math.round((lead.confidence || 0) * 100),
+        Evidence: lead.evidence,
+        "Query Used": lead.queryUsed,
         Notes: [lead.evidence, lead.sourceUrl ? `Source: ${lead.sourceUrl}` : ""].filter(Boolean).join(" | "),
         List: ["Auto Find", ...(lead.categories || [])].join(", "),
       };
@@ -1173,7 +1185,11 @@ export default function AdminCrmManagement() {
   }
 
   function downloadAutoFindJson() {
-    const payload = autoFindRawJson || { items: autoFindResults };
+    const payload = {
+      leads: autoFindResults.map((item) => item.lead),
+      items: autoFindResults,
+      original: autoFindRawJson,
+    };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -2120,15 +2136,27 @@ export default function AdminCrmManagement() {
 
             {autoFindResults.length > 0 && (
               <TableContainer sx={{ maxHeight: 420, mt: 2 }}>
-                <Table size="small" stickyHeader sx={{ minWidth: 980 }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 2200 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell padding="checkbox" />
-                      <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Category</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Client Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Company Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Website</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Company Location</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Contact Location</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Socials</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>LinkedIn</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Industry</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Specialization</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Categories</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Fit</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Confidence</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Evidence</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -2146,28 +2174,58 @@ export default function AdminCrmManagement() {
                             />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" fontWeight={700}>{lead.companyName || lead.clientName}</Typography>
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              {[lead.email, lead.phoneRaw, lead.website].filter(Boolean).join(" · ") || "-"}
-                            </Typography>
-                            {item.duplicate && (
-                              <Typography variant="caption" color="warning.main" display="block">
-                                {item.duplicateReasons.join("; ")}
-                              </Typography>
+                            <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 180 }}>{lead.clientName || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>{lead.companyName || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" noWrap sx={{ display: "block", maxWidth: 180 }}>{lead.email || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" noWrap sx={{ display: "block", maxWidth: 140 }}>{lead.phoneRaw || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            {lead.website ? (
+                              <Button href={lead.website} target="_blank" rel="noreferrer" size="small" variant="text" sx={{ maxWidth: 180, justifyContent: "flex-start", p: 0 }}>
+                                <Typography variant="caption" noWrap>{lead.website}</Typography>
+                              </Button>
+                            ) : (
+                              <Typography variant="caption">-</Typography>
                             )}
                           </TableCell>
                           <TableCell>
-                            <Typography variant="caption">{lead.companyLocation || lead.contactLocation || "-"}</Typography>
+                            <Typography variant="caption" noWrap sx={{ display: "block", maxWidth: 190 }}>{lead.companyLocation || "-"}</Typography>
                           </TableCell>
                           <TableCell>
-                            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5}>
-                              {(lead.categories || []).slice(0, 3).map((category) => (
-                                <Chip key={category} label={category} size="small" variant="outlined" sx={{ maxWidth: 180 }} />
-                              ))}
-                              {lead.suggestedSpecialization && (
-                                <Chip label={CRM_SPECIALIZATION_LABELS[lead.suggestedSpecialization] || lead.suggestedSpecialization} size="small" color="info" variant="outlined" />
-                              )}
+                            <Typography variant="caption" noWrap sx={{ display: "block", maxWidth: 190 }}>{lead.contactLocation || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" noWrap sx={{ display: "block", maxWidth: 180 }}>{lead.contactSocials || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.25}>
+                              {lead.contactLinkedinUrl ? (
+                                <Button href={lead.contactLinkedinUrl} target="_blank" rel="noreferrer" size="small" variant="text" sx={{ maxWidth: 170, justifyContent: "flex-start", p: 0 }}>
+                                  <Typography variant="caption" noWrap>Contact</Typography>
+                                </Button>
+                              ) : null}
+                              {lead.companyLinkedinUrl ? (
+                                <Button href={lead.companyLinkedinUrl} target="_blank" rel="noreferrer" size="small" variant="text" sx={{ maxWidth: 170, justifyContent: "flex-start", p: 0 }}>
+                                  <Typography variant="caption" noWrap>Company</Typography>
+                                </Button>
+                              ) : null}
+                              {!lead.contactLinkedinUrl && !lead.companyLinkedinUrl && <Typography variant="caption">-</Typography>}
                             </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" noWrap sx={{ display: "block", maxWidth: 170 }}>{lead.industry || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip label={CRM_SPECIALIZATION_LABELS[lead.suggestedSpecialization] || lead.suggestedSpecialization || "-"} size="small" color="info" variant="outlined" />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" noWrap sx={{ display: "block", maxWidth: 240 }}>{(lead.categories || []).join(", ") || "-"}</Typography>
                           </TableCell>
                           <TableCell>
                             <Button
@@ -2181,11 +2239,6 @@ export default function AdminCrmManagement() {
                             >
                               <Typography variant="caption" noWrap>{lead.sourceTitle || lead.sourcePlatform || "Source"}</Typography>
                             </Button>
-                            {lead.evidence && (
-                              <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ maxWidth: 280 }}>
-                                {lead.evidence}
-                              </Typography>
-                            )}
                           </TableCell>
                           <TableCell>
                             <Chip
@@ -2194,6 +2247,30 @@ export default function AdminCrmManagement() {
                               color={(lead.confidence || 0) >= 0.75 ? "success" : "default"}
                               variant="outlined"
                             />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ maxWidth: 320 }}>
+                              {lead.evidence || "-"}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            {item.duplicate ? (
+                              <Typography variant="caption" color="warning.main" display="block" sx={{ maxWidth: 260 }}>
+                                {item.duplicateReasons.join("; ")}
+                              </Typography>
+                            ) : (
+                              <Chip label="Ready" size="small" color="success" variant="outlined" />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => deleteAutoFindRow(item.searchResultId)}
+                              disabled={autoFindImporting}
+                            >
+                              <DeleteRoundedIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
                           </TableCell>
                         </TableRow>
                       );
