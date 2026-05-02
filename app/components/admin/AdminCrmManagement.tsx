@@ -20,6 +20,7 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CloudUploadRoundedIcon from "@mui/icons-material/CloudUploadRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import MicRoundedIcon from "@mui/icons-material/MicRounded";
@@ -203,6 +204,44 @@ type DuplicateIssue = {
   rowNumber: number;
   duplicateKey: string;
   reason: string;
+};
+
+type AutoFindLead = {
+  clientName: string;
+  companyName: string;
+  email: string;
+  phoneRaw: string;
+  website: string;
+  companyLocation: string;
+  contactLocation: string;
+  contactSocials: string;
+  contactLinkedinUrl: string;
+  companyLinkedinUrl: string;
+  industry: string;
+  suggestedSpecialization: string;
+  categories: string[];
+  sourceUrl: string;
+  sourceTitle: string;
+  sourcePlatform: string;
+  confidence: number;
+  evidence: string;
+  queryUsed: string;
+};
+
+type AutoFindResultItem = {
+  searchResultId: string;
+  fingerprint: string;
+  duplicate: boolean;
+  duplicateReasons: string[];
+  lead: AutoFindLead;
+};
+
+type AutoFindOptions = {
+  countries: string[];
+  canadaProvinces: string[];
+  usStates: string[];
+  categories: string[];
+  maxResults: number;
 };
 
 const CRM_STATUSES = [
@@ -740,6 +779,17 @@ export default function AdminCrmManagement() {
   const [previewParseError, setPreviewParseError] = useState<string>("");
   const [previewSheetName, setPreviewSheetName] = useState("");
 
+  const [autoFindOptions, setAutoFindOptions] = useState<AutoFindOptions | null>(null);
+  const [autoFindCountry, setAutoFindCountry] = useState<"Canada" | "United States">("Canada");
+  const [autoFindRegions, setAutoFindRegions] = useState<string[]>([]);
+  const [autoFindCategories, setAutoFindCategories] = useState<string[]>([]);
+  const [autoFindKeywords, setAutoFindKeywords] = useState("");
+  const [autoFinding, setAutoFinding] = useState(false);
+  const [autoFindImporting, setAutoFindImporting] = useState(false);
+  const [autoFindResults, setAutoFindResults] = useState<AutoFindResultItem[]>([]);
+  const [selectedAutoFindIds, setSelectedAutoFindIds] = useState<string[]>([]);
+  const [autoFindRawJson, setAutoFindRawJson] = useState<unknown>(null);
+
   const userQuery = useMemo(() => {
     const p = new URLSearchParams();
     if (userQ.trim()) p.set("q", userQ.trim());
@@ -838,6 +888,24 @@ export default function AdminCrmManagement() {
     }
   }
 
+  async function loadAutoFindOptions() {
+    try {
+      const res = await fetch(`/api/admin/crm/leads/auto-find`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to load auto-find options");
+      const options = json as AutoFindOptions;
+      setAutoFindOptions(options);
+      if (!autoFindCategories.length && Array.isArray(options.categories)) {
+        const defaults = options.categories
+          .filter((category) => ["Salvage And Seized Vehicles", "Heavy Trucks", "Tractors", "Excavators"].includes(category))
+          .slice(0, 4);
+        setAutoFindCategories(defaults);
+      }
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to load auto-find options", "error");
+    }
+  }
+
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -851,6 +919,7 @@ export default function AdminCrmManagement() {
   useEffect(() => {
     loadImportFiles();
     loadAssignmentsByUpload();
+    loadAutoFindOptions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -959,6 +1028,129 @@ export default function AdminCrmManagement() {
     } finally {
       setImporting(false);
     }
+  }
+
+  function toggleAutoFindSelection(id: string, checked: boolean) {
+    setSelectedAutoFindIds((prev) => {
+      if (checked) {
+        if (prev.includes(id)) return prev;
+        return [...prev, id];
+      }
+      return prev.filter((value) => value !== id);
+    });
+  }
+
+  async function onAutoFindClients() {
+    if (autoFindCategories.length === 0) {
+      pushToast("Select at least one category", "error");
+      return;
+    }
+
+    try {
+      setAutoFinding(true);
+      setAutoFindResults([]);
+      setSelectedAutoFindIds([]);
+      setAutoFindRawJson(null);
+      const res = await fetch(`/api/admin/crm/leads/auto-find`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: autoFindCountry,
+          regions: autoFindRegions,
+          categories: autoFindCategories,
+          keywords: autoFindKeywords,
+          maxResults: 10,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to auto find clients");
+      const items = Array.isArray(json?.items) ? (json.items as AutoFindResultItem[]) : [];
+      setAutoFindResults(items);
+      setAutoFindRawJson(json?.rawJson || { items });
+      setSelectedAutoFindIds(items.filter((item) => !item.duplicate).map((item) => item.searchResultId));
+      pushToast(`Found ${items.length} client lead${items.length === 1 ? "" : "s"}`, "success");
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to auto find clients", "error");
+    } finally {
+      setAutoFinding(false);
+    }
+  }
+
+  async function onImportAutoFoundLeads() {
+    if (selectedAutoFindIds.length === 0) {
+      pushToast("Select at least one auto-found lead", "error");
+      return;
+    }
+
+    try {
+      setAutoFindImporting(true);
+      const effectiveAssigneeIds = leadAssignedTo ? [leadAssignedTo] : selectedUserIds;
+      const res = await fetch(`/api/admin/crm/leads/auto-find/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resultIds: selectedAutoFindIds,
+          assignedToUserIds: effectiveAssigneeIds,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to import auto-found leads");
+      const dupCount = Number(json?.duplicateCount || 0);
+      const msg = dupCount > 0
+        ? `Imported ${json?.imported || 0} auto-found leads (${dupCount} duplicate${dupCount === 1 ? "" : "s"} skipped)`
+        : `Imported ${json?.imported || 0} auto-found leads`;
+      pushToast(msg, "success");
+      setSelectedAutoFindIds([]);
+      await Promise.all([loadLeads(), loadImportFiles(), loadAssignmentsByUpload()]);
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to import auto-found leads", "error");
+    } finally {
+      setAutoFindImporting(false);
+    }
+  }
+
+  function exportAutoFindExcel() {
+    if (autoFindResults.length === 0) {
+      pushToast("No auto-find results to export", "error");
+      return;
+    }
+    const rows = autoFindResults.map((item) => {
+      const lead = item.lead;
+      return {
+        Title: "CRM Auto Find Client",
+        "Client Name": lead.clientName,
+        "Company Name": lead.companyName,
+        Email: lead.email,
+        Phone: lead.phoneRaw,
+        Website: lead.website,
+        "Company Location": lead.companyLocation,
+        "Contact Location": lead.contactLocation,
+        "Contact Socials": lead.contactSocials,
+        "Contact Linkedin": lead.contactLinkedinUrl,
+        "Company Linkedin": lead.companyLinkedinUrl,
+        Industry: lead.industry,
+        "CRM Specialization": lead.suggestedSpecialization,
+        Notes: [lead.evidence, lead.sourceUrl ? `Source: ${lead.sourceUrl}` : ""].filter(Boolean).join(" | "),
+        List: ["Auto Find", ...(lead.categories || [])].join(", "),
+      };
+    });
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Auto Find Leads");
+    XLSX.writeFile(workbook, `crm-auto-find-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function downloadAutoFindJson() {
+    const payload = autoFindRawJson || { items: autoFindResults };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `crm-auto-find-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   async function deleteImportedFile(item: CrmImportFileItem) {
@@ -1296,6 +1488,17 @@ export default function AdminCrmManagement() {
     () => (users?.items || []).filter((u) => effectiveImportAssigneeIds.includes(u._id)),
     [effectiveImportAssigneeIds, users?.items]
   );
+  const autoFindRegionOptions = useMemo(
+    () => (autoFindCountry === "Canada" ? autoFindOptions?.canadaProvinces || [] : autoFindOptions?.usStates || []),
+    [autoFindCountry, autoFindOptions?.canadaProvinces, autoFindOptions?.usStates]
+  );
+  const selectedAutoFindReadyCount = useMemo(
+    () => autoFindResults.filter((item) => selectedAutoFindIds.includes(item.searchResultId)).length,
+    [autoFindResults, selectedAutoFindIds]
+  );
+  useEffect(() => {
+    setAutoFindRegions((prev) => prev.filter((region) => autoFindRegionOptions.includes(region)));
+  }, [autoFindRegionOptions]);
   const activeLeadUpdates = useMemo(
     () => sortedLeadUpdates(activeLeadDetails?.updates),
     [activeLeadDetails?.updates]
@@ -1719,6 +1922,227 @@ export default function AdminCrmManagement() {
                 size="small"
                 sx={{ mt: 1.5 }}
               />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Auto Find Clients */}
+        <Card>
+          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "flex-start" }} spacing={2}>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>Auto Find Clients</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Search public web results for CRM prospects, preview them, then import selected leads.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", md: "auto" } }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadRoundedIcon />}
+                  onClick={exportAutoFindExcel}
+                  disabled={autoFindResults.length === 0}
+                >
+                  Excel
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={downloadAutoFindJson}
+                  disabled={autoFindResults.length === 0}
+                >
+                  JSON
+                </Button>
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<CloudUploadRoundedIcon />}
+                  onClick={() => void onImportAutoFoundLeads()}
+                  disabled={autoFindImporting || selectedAutoFindReadyCount === 0}
+                >
+                  {autoFindImporting ? "Importing…" : `Import ${selectedAutoFindReadyCount}`}
+                </Button>
+              </Stack>
+            </Stack>
+
+            <Grid container spacing={1.5} sx={{ mt: 2 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Country</InputLabel>
+                  <Select
+                    value={autoFindCountry}
+                    label="Country"
+                    onChange={(e) => {
+                      setAutoFindCountry(e.target.value as "Canada" | "United States");
+                      setAutoFindRegions([]);
+                    }}
+                  >
+                    {(autoFindOptions?.countries || ["Canada", "United States"]).map((country) => (
+                      <MenuItem key={country} value={country}>{country}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>{autoFindCountry === "Canada" ? "Provinces" : "States"}</InputLabel>
+                  <Select
+                    multiple
+                    value={autoFindRegions}
+                    label={autoFindCountry === "Canada" ? "Provinces" : "States"}
+                    renderValue={(selected) => (selected as string[]).length ? (selected as string[]).join(", ") : "All"}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setAutoFindRegions(typeof value === "string" ? value.split(",") : value);
+                    }}
+                    MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
+                  >
+                    {autoFindRegionOptions.map((region) => (
+                      <MenuItem key={region} value={region}>
+                        <Checkbox size="small" checked={autoFindRegions.includes(region)} />
+                        {region}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Categories</InputLabel>
+                  <Select
+                    multiple
+                    value={autoFindCategories}
+                    label="Categories"
+                    renderValue={(selected) => (selected as string[]).join(", ")}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setAutoFindCategories(typeof value === "string" ? value.split(",") : value);
+                    }}
+                    MenuProps={{ PaperProps: { sx: { maxHeight: 420 } } }}
+                  >
+                    {(autoFindOptions?.categories || []).map((category) => (
+                      <MenuItem key={category} value={category}>
+                        <Checkbox size="small" checked={autoFindCategories.includes(category)} />
+                        {category}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  size="small"
+                  label="Keywords"
+                  placeholder="auction, fleet, insurance"
+                  value={autoFindKeywords}
+                  onChange={(e) => setAutoFindKeywords(e.target.value)}
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={1.5} sx={{ mt: 1.5 }}>
+              <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5}>
+                {selectedAssignees.length > 0 ? selectedAssignees.map((agent) => (
+                  <Chip key={agent._id} label={`Import to ${agent.username || agent.email}`} size="small" variant="outlined" />
+                )) : (
+                  <Chip label="Imports auto-distribute to all active CRM agents" size="small" variant="outlined" />
+                )}
+              </Stack>
+              <Button
+                variant="contained"
+                startIcon={<SearchRoundedIcon />}
+                onClick={() => void onAutoFindClients()}
+                disabled={autoFinding || autoFindCategories.length === 0}
+              >
+                {autoFinding ? "Searching…" : "Find Clients"}
+              </Button>
+            </Stack>
+
+            {autoFinding && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
+
+            {autoFindResults.length > 0 && (
+              <TableContainer sx={{ maxHeight: 420, mt: 2 }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 980 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox" />
+                      <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Category</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Fit</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {autoFindResults.map((item) => {
+                      const lead = item.lead;
+                      const selected = selectedAutoFindIds.includes(item.searchResultId);
+                      return (
+                        <TableRow key={item.searchResultId} hover>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              size="small"
+                              checked={selected}
+                              disabled={autoFindImporting}
+                              onChange={(e) => toggleAutoFindSelection(item.searchResultId, e.target.checked)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={700}>{lead.companyName || lead.clientName}</Typography>
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {[lead.email, lead.phoneRaw, lead.website].filter(Boolean).join(" · ") || "-"}
+                            </Typography>
+                            {item.duplicate && (
+                              <Typography variant="caption" color="warning.main" display="block">
+                                {item.duplicateReasons.join("; ")}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption">{lead.companyLocation || lead.contactLocation || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5}>
+                              {(lead.categories || []).slice(0, 3).map((category) => (
+                                <Chip key={category} label={category} size="small" variant="outlined" sx={{ maxWidth: 180 }} />
+                              ))}
+                              {lead.suggestedSpecialization && (
+                                <Chip label={CRM_SPECIALIZATION_LABELS[lead.suggestedSpecialization] || lead.suggestedSpecialization} size="small" color="info" variant="outlined" />
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              href={lead.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              size="small"
+                              variant="text"
+                              startIcon={<OpenInNewRoundedIcon sx={{ fontSize: 14 }} />}
+                              sx={{ maxWidth: 260, justifyContent: "flex-start" }}
+                            >
+                              <Typography variant="caption" noWrap>{lead.sourceTitle || lead.sourcePlatform || "Source"}</Typography>
+                            </Button>
+                            {lead.evidence && (
+                              <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ maxWidth: 280 }}>
+                                {lead.evidence}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={`${Math.round((lead.confidence || 0) * 100)}%`}
+                              size="small"
+                              color={(lead.confidence || 0) >= 0.75 ? "success" : "default"}
+                              variant="outlined"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
           </CardContent>
         </Card>
