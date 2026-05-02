@@ -2054,7 +2054,7 @@ export default function AdminCrmManagement() {
                 onClick={() => void onAutoFindClients()}
                 disabled={autoFinding || autoFindCategories.length === 0}
               >
-                {autoFinding ? "Searching…" : "Find Clients"}
+                {autoFinding ? "Searching…" : "Find New Clients"}
               </Button>
             </Stack>
 
