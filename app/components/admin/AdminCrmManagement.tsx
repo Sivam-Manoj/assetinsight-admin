@@ -244,6 +244,8 @@ type AutoFindOptions = {
   maxResults: number;
 };
 
+const AUTO_SELECT_ALL_VALUE = "__all__";
+
 const CRM_STATUSES = [
   "new_lead",
   "contacted",
@@ -291,6 +293,13 @@ function formatCrmSpecializations(values?: string[]): string {
     .map((value) => CRM_SPECIALIZATION_LABELS[value] || value)
     .filter(Boolean)
     .join(", ");
+}
+
+function defaultAutoFindCategories(categories?: string[]): string[] {
+  if (!Array.isArray(categories)) return [];
+  return categories
+    .filter((category) => ["Salvage And Seized Vehicles", "Heavy Trucks", "Tractors", "Excavators"].includes(category))
+    .slice(0, 4);
 }
 
 function parseCrmQuadrants(value?: string): string[] {
@@ -896,10 +905,7 @@ export default function AdminCrmManagement() {
       const options = json as AutoFindOptions;
       setAutoFindOptions(options);
       if (!autoFindCategories.length && Array.isArray(options.categories)) {
-        const defaults = options.categories
-          .filter((category) => ["Salvage And Seized Vehicles", "Heavy Trucks", "Tractors", "Excavators"].includes(category))
-          .slice(0, 4);
-        setAutoFindCategories(defaults);
+        setAutoFindCategories(defaultAutoFindCategories(options.categories));
       }
     } catch (e: unknown) {
       pushToast(e instanceof Error ? e.message : "Failed to load auto-find options", "error");
@@ -1038,6 +1044,32 @@ export default function AdminCrmManagement() {
       }
       return prev.filter((value) => value !== id);
     });
+  }
+
+  function resetAutoFindFilters() {
+    setAutoFindRegions([]);
+    setAutoFindCategories(defaultAutoFindCategories(autoFindOptions?.categories));
+  }
+
+  function applyAutoFindRegionSelection(value: string | string[]) {
+    const values = typeof value === "string" ? value.split(",") : value;
+    if (values.includes(AUTO_SELECT_ALL_VALUE)) {
+      const allSelected = autoFindRegions.length === autoFindRegionOptions.length && autoFindRegionOptions.length > 0;
+      setAutoFindRegions(allSelected ? [] : [...autoFindRegionOptions]);
+      return;
+    }
+    setAutoFindRegions(values);
+  }
+
+  function applyAutoFindCategorySelection(value: string | string[]) {
+    const values = typeof value === "string" ? value.split(",") : value;
+    const categoryOptions = autoFindOptions?.categories || [];
+    if (values.includes(AUTO_SELECT_ALL_VALUE)) {
+      const allSelected = autoFindCategories.length === categoryOptions.length && categoryOptions.length > 0;
+      setAutoFindCategories(allSelected ? defaultAutoFindCategories(categoryOptions) : [...categoryOptions]);
+      return;
+    }
+    setAutoFindCategories(values);
   }
 
   async function onAutoFindClients() {
@@ -1492,6 +1524,8 @@ export default function AdminCrmManagement() {
     () => (autoFindCountry === "Canada" ? autoFindOptions?.canadaProvinces || [] : autoFindOptions?.usStates || []),
     [autoFindCountry, autoFindOptions?.canadaProvinces, autoFindOptions?.usStates]
   );
+  const allAutoFindRegionsSelected = autoFindRegionOptions.length > 0 && autoFindRegions.length === autoFindRegionOptions.length;
+  const allAutoFindCategoriesSelected = Boolean(autoFindOptions?.categories?.length) && autoFindCategories.length === (autoFindOptions?.categories || []).length;
   const selectedAutoFindReadyCount = useMemo(
     () => autoFindResults.filter((item) => selectedAutoFindIds.includes(item.searchResultId)).length,
     [autoFindResults, selectedAutoFindIds]
@@ -1989,13 +2023,20 @@ export default function AdminCrmManagement() {
                     multiple
                     value={autoFindRegions}
                     label={autoFindCountry === "Canada" ? "Provinces" : "States"}
-                    renderValue={(selected) => (selected as string[]).length ? (selected as string[]).join(", ") : "All"}
+                    renderValue={(selected) => {
+                      const values = selected as string[];
+                      if (!values.length || values.length === autoFindRegionOptions.length) return "All";
+                      return values.join(", ");
+                    }}
                     onChange={(e) => {
-                      const value = e.target.value;
-                      setAutoFindRegions(typeof value === "string" ? value.split(",") : value);
+                      applyAutoFindRegionSelection(e.target.value);
                     }}
                     MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
                   >
+                    <MenuItem value={AUTO_SELECT_ALL_VALUE}>
+                      <Checkbox size="small" checked={allAutoFindRegionsSelected || autoFindRegions.length === 0} />
+                      All
+                    </MenuItem>
                     {autoFindRegionOptions.map((region) => (
                       <MenuItem key={region} value={region}>
                         <Checkbox size="small" checked={autoFindRegions.includes(region)} />
@@ -2012,13 +2053,20 @@ export default function AdminCrmManagement() {
                     multiple
                     value={autoFindCategories}
                     label="Categories"
-                    renderValue={(selected) => (selected as string[]).join(", ")}
+                    renderValue={(selected) => {
+                      const values = selected as string[];
+                      if (values.length === (autoFindOptions?.categories || []).length) return "All";
+                      return values.join(", ");
+                    }}
                     onChange={(e) => {
-                      const value = e.target.value;
-                      setAutoFindCategories(typeof value === "string" ? value.split(",") : value);
+                      applyAutoFindCategorySelection(e.target.value);
                     }}
                     MenuProps={{ PaperProps: { sx: { maxHeight: 420 } } }}
                   >
+                    <MenuItem value={AUTO_SELECT_ALL_VALUE}>
+                      <Checkbox size="small" checked={allAutoFindCategoriesSelected} />
+                      All
+                    </MenuItem>
                     {(autoFindOptions?.categories || []).map((category) => (
                       <MenuItem key={category} value={category}>
                         <Checkbox size="small" checked={autoFindCategories.includes(category)} />
@@ -2048,14 +2096,24 @@ export default function AdminCrmManagement() {
                   <Chip label="Imports auto-distribute to all active CRM agents" size="small" variant="outlined" />
                 )}
               </Stack>
-              <Button
-                variant="contained"
-                startIcon={<SearchRoundedIcon />}
-                onClick={() => void onAutoFindClients()}
-                disabled={autoFinding || autoFindCategories.length === 0}
-              >
-                {autoFinding ? "Searching…" : "Find New Leads"}
-              </Button>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshRoundedIcon />}
+                  onClick={resetAutoFindFilters}
+                  disabled={autoFinding}
+                >
+                  Reset
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<SearchRoundedIcon />}
+                  onClick={() => void onAutoFindClients()}
+                  disabled={autoFinding || autoFindCategories.length === 0}
+                >
+                  {autoFinding ? "Searching…" : "Find New Leads"}
+                </Button>
+              </Stack>
             </Stack>
 
             {autoFinding && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
