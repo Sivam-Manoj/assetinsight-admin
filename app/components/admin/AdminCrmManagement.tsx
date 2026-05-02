@@ -1931,7 +1931,7 @@ export default function AdminCrmManagement() {
           <CardContent sx={{ p: { xs: 2, md: 3 } }}>
             <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "flex-start" }} spacing={2}>
               <Box>
-                <Typography variant="subtitle1" fontWeight={700}>Auto Find Clients</Typography>
+                <Typography variant="subtitle1" fontWeight={700}>Auto Find New Clients</Typography>
                 <Typography variant="body2" color="text.secondary">
                   Search public web results for CRM prospects, preview them, then import selected leads.
                 </Typography>
