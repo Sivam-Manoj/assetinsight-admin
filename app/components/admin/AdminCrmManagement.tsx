@@ -185,6 +185,8 @@ type AssignmentByUploadSummary = {
 
 type ExcelRow = Record<string, unknown>;
 
+type ImportPreviewSource = "excel" | "autoFind";
+
 type PreviewLeadRow = {
   rowNumber: number;
   title: string;
@@ -746,6 +748,34 @@ function buildPreviewRows(rows: ExcelRow[]): {
   return { parsedRows, duplicateIssues };
 }
 
+function autoFindResultToExcelRow(item: AutoFindResultItem): ExcelRow {
+  const lead = item.lead;
+  return {
+    Title: "CRM Auto Find Client",
+    "Client Name": lead.clientName,
+    "Company Name": lead.companyName,
+    Email: lead.email,
+    Phone: lead.phoneRaw,
+    Website: lead.website,
+    "Company Location": lead.companyLocation,
+    "Contact Location": lead.contactLocation,
+    "Contact Socials": lead.contactSocials,
+    "Contact Linkedin": lead.contactLinkedinUrl,
+    "Company Linkedin": lead.companyLinkedinUrl,
+    Industry: lead.industry,
+    "CRM Specialization": lead.suggestedSpecialization,
+    Categories: (lead.categories || []).join(", "),
+    "Source URL": lead.sourceUrl,
+    "Source Title": lead.sourceTitle,
+    "Source Platform": lead.sourcePlatform,
+    Confidence: Math.round((lead.confidence || 0) * 100),
+    Evidence: lead.evidence,
+    "Query Used": lead.queryUsed,
+    Notes: [lead.evidence, lead.sourceUrl ? `Source: ${lead.sourceUrl}` : ""].filter(Boolean).join(" | "),
+    List: ["Auto Find", ...(lead.categories || [])].join(", "),
+  };
+}
+
 export default function AdminCrmManagement() {
   const crmTheme = useTheme();
   const matchesMd = useMediaQuery(crmTheme.breakpoints.up("md"));
@@ -860,6 +890,7 @@ export default function AdminCrmManagement() {
   const [loadingAssignments, setLoadingAssignments] = useState(false);
 
   const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [importPreviewSource, setImportPreviewSource] = useState<ImportPreviewSource>("excel");
   const [importing, setImporting] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showCrmOpsModal, setShowCrmOpsModal] = useState(false);
@@ -875,9 +906,9 @@ export default function AdminCrmManagement() {
   const [autoFindCategories, setAutoFindCategories] = useState<string[]>([]);
   const [autoFindKeywords, setAutoFindKeywords] = useState("");
   const [autoFinding, setAutoFinding] = useState(false);
-  const [autoFindImporting, setAutoFindImporting] = useState(false);
   const [autoFindResults, setAutoFindResults] = useState<AutoFindResultItem[]>([]);
   const [selectedAutoFindIds, setSelectedAutoFindIds] = useState<string[]>([]);
+  const [autoFindPreviewResultIds, setAutoFindPreviewResultIds] = useState<string[]>([]);
   const [autoFindRawJson, setAutoFindRawJson] = useState<unknown>(null);
 
   const userQuery = useMemo(() => {
@@ -1044,7 +1075,36 @@ export default function AdminCrmManagement() {
     });
   }
 
+  function resetPreviewState() {
+    setExcelFile(null);
+    setPreviewRows([]);
+    setDuplicateIssues([]);
+    setPreviewParseError("");
+    setPreviewSheetName("");
+  }
+
+  function openExcelImportModal() {
+    if (importPreviewSource !== "excel") {
+      resetPreviewState();
+      setImportPreviewSource("excel");
+      setAutoFindPreviewResultIds([]);
+    }
+    setShowImportModal(true);
+  }
+
+  function closeImportPreviewModal() {
+    if (importing) return;
+    setShowImportModal(false);
+    if (importPreviewSource === "autoFind") {
+      resetPreviewState();
+      setImportPreviewSource("excel");
+      setAutoFindPreviewResultIds([]);
+    }
+  }
+
   async function handleExcelFileChange(file: File | null) {
+    setImportPreviewSource("excel");
+    setAutoFindPreviewResultIds([]);
     setExcelFile(file);
     setPreviewRows([]);
     setDuplicateIssues([]);
@@ -1081,8 +1141,14 @@ export default function AdminCrmManagement() {
       return;
     }
 
+    if (duplicateIssues.length > 0) {
+      pushToast("Remove duplicate rows before importing", "error");
+      return;
+    }
+
     try {
       setImporting(true);
+      const wasAutoFindPreview = importPreviewSource === "autoFind";
       const formData = new FormData();
       formData.append("file", excelFile);
       formData.append("duplicateMode", "skip");
@@ -1103,13 +1169,18 @@ export default function AdminCrmManagement() {
         ? `Imported ${json?.imported || 0} CRM leads (${dupCount} duplicate${dupCount === 1 ? "" : "s"} skipped)`
         : `Imported ${json?.imported || 0} CRM leads`;
       pushToast(msg, "success");
-      setExcelFile(null);
-      setPreviewRows([]);
-      setDuplicateIssues([]);
-      setPreviewParseError("");
-      setPreviewSheetName("");
+      resetPreviewState();
+      setImportPreviewSource("excel");
+      if (wasAutoFindPreview) {
+        setSelectedAutoFindIds([]);
+      }
+      setAutoFindPreviewResultIds([]);
       setShowImportModal(false);
-      await Promise.all([loadLeads(), loadImportFiles()]);
+      await Promise.all([
+        loadLeads(),
+        loadImportFiles(),
+        ...(wasAutoFindPreview ? [loadAssignmentsByUpload()] : []),
+      ]);
     } catch (e: unknown) {
       pushToast(e instanceof Error ? e.message : "Failed to import CRM leads", "error");
     } finally {
@@ -1136,6 +1207,7 @@ export default function AdminCrmManagement() {
   function deleteAutoFindRow(id: string) {
     setAutoFindResults((prev) => prev.filter((item) => item.searchResultId !== id));
     setSelectedAutoFindIds((prev) => prev.filter((value) => value !== id));
+    setAutoFindPreviewResultIds((prev) => prev.filter((value) => value !== id));
   }
 
   function resetAutoFindFilters() {
@@ -1174,6 +1246,7 @@ export default function AdminCrmManagement() {
       setAutoFinding(true);
       setAutoFindResults([]);
       setSelectedAutoFindIds([]);
+      setAutoFindPreviewResultIds([]);
       setAutoFindRawJson(null);
       const res = await fetch(`/api/admin/crm/leads/auto-find`, {
         method: "POST",
@@ -1200,41 +1273,37 @@ export default function AdminCrmManagement() {
     }
   }
 
-  async function onImportAutoFoundLeads() {
-    const readySelectedIds = autoFindResults
+  function openAutoFindImportPreview() {
+    const readySelectedItems = autoFindResults
       .filter((item) => !item.duplicate && selectedAutoFindIds.includes(item.searchResultId))
-      .map((item) => item.searchResultId);
+      .filter((item) => item.searchResultId);
+    const readySelectedIds = readySelectedItems.map((item) => item.searchResultId);
 
     if (readySelectedIds.length === 0) {
       pushToast("Select at least one auto-found lead", "error");
       return;
     }
 
-    try {
-      setAutoFindImporting(true);
-      const effectiveAssigneeIds = leadAssignedTo ? [leadAssignedTo] : selectedUserIds;
-      const res = await fetch(`/api/admin/crm/leads/auto-find/import`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          resultIds: readySelectedIds,
-          assignedToUserIds: effectiveAssigneeIds,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || "Failed to import auto-found leads");
-      const dupCount = Number(json?.duplicateCount || 0);
-      const msg = dupCount > 0
-        ? `Imported ${json?.imported || 0} auto-found leads (${dupCount} duplicate${dupCount === 1 ? "" : "s"} skipped)`
-        : `Imported ${json?.imported || 0} auto-found leads`;
-      pushToast(msg, "success");
-      setSelectedAutoFindIds([]);
-      await Promise.all([loadLeads(), loadImportFiles(), loadAssignmentsByUpload()]);
-    } catch (e: unknown) {
-      pushToast(e instanceof Error ? e.message : "Failed to import auto-found leads", "error");
-    } finally {
-      setAutoFindImporting(false);
-    }
+    const excelRows = readySelectedItems.map(autoFindResultToExcelRow);
+    const built = buildPreviewRows(excelRows);
+    const worksheet = XLSX.utils.json_to_sheet(excelRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Auto Find");
+    const workbookOutput = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+    const generatedFile = new File(
+      [workbookOutput],
+      `crm-auto-find-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+    );
+
+    setImportPreviewSource("autoFind");
+    setExcelFile(generatedFile);
+    setPreviewRows(built.parsedRows);
+    setDuplicateIssues(built.duplicateIssues);
+    setPreviewParseError("");
+    setPreviewSheetName("Auto Find");
+    setAutoFindPreviewResultIds(readySelectedIds);
+    setShowImportModal(true);
   }
 
   function exportAutoFindExcel() {
@@ -1637,6 +1706,14 @@ export default function AdminCrmManagement() {
     () => autoFindResults.filter((item) => !item.duplicate && selectedAutoFindIds.includes(item.searchResultId)).length,
     [autoFindResults, selectedAutoFindIds]
   );
+  const isAutoFindImportPreview = importPreviewSource === "autoFind";
+  const importPreviewBusy = importing;
+  const importPreviewCanImport =
+    !importPreviewBusy &&
+    !parsingPreview &&
+    previewRows.length > 0 &&
+    duplicateIssues.length === 0 &&
+    Boolean(excelFile);
   useEffect(() => {
     setAutoFindRegions((prev) => prev.filter((region) => autoFindRegionOptions.includes(region)));
   }, [autoFindRegionOptions]);
@@ -2050,7 +2127,7 @@ export default function AdminCrmManagement() {
                   Upload Excel, preview extracted rows, and block duplicates before import.
                 </Typography>
               </Box>
-              <Button variant="contained" startIcon={<CloudUploadRoundedIcon />} onClick={() => setShowImportModal(true)}>
+              <Button variant="contained" startIcon={<CloudUploadRoundedIcon />} onClick={openExcelImportModal}>
                 Upload Preview
               </Button>
             </Stack>
@@ -2097,10 +2174,10 @@ export default function AdminCrmManagement() {
                   variant="contained"
                   color="success"
                   startIcon={<CloudUploadRoundedIcon />}
-                  onClick={() => void onImportAutoFoundLeads()}
-                  disabled={autoFindImporting || selectedAutoFindReadyCount === 0}
+                  onClick={openAutoFindImportPreview}
+                  disabled={selectedAutoFindReadyCount === 0}
                 >
-                  {autoFindImporting ? "Importing…" : `Import ${selectedAutoFindReadyCount}`}
+                  {`Import ${selectedAutoFindReadyCount}`}
                 </Button>
               </Stack>
             </Stack>
@@ -2278,7 +2355,7 @@ export default function AdminCrmManagement() {
                             <Checkbox
                               size="small"
                               checked={selected}
-                              disabled={autoFindImporting || item.duplicate}
+                              disabled={item.duplicate}
                               onChange={(e) => toggleAutoFindSelection(item.searchResultId, e.target.checked)}
                             />
                           </TableCell>
@@ -2376,7 +2453,7 @@ export default function AdminCrmManagement() {
                               size="small"
                               color="error"
                               onClick={() => deleteAutoFindRow(item.searchResultId)}
-                              disabled={autoFindImporting}
+                              disabled={importing}
                             >
                               <DeleteRoundedIcon sx={{ fontSize: 18 }} />
                             </IconButton>
@@ -2791,13 +2868,13 @@ export default function AdminCrmManagement() {
         </Dialog>
 
         {/* ── Import Preview Dialog ── */}
-        <Dialog open={showImportModal} onClose={() => !importing && setShowImportModal(false)} maxWidth="xl" fullWidth fullScreen={!matchesMd} scroll="paper">
+        <Dialog open={showImportModal} onClose={closeImportPreviewModal} maxWidth="xl" fullWidth fullScreen={!matchesMd} scroll="paper">
           <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
             <Box>
               <Typography variant="h6" fontWeight={800}>CRM Excel Upload Preview</Typography>
               <Typography variant="body2" color="text.secondary">Extracted rows shown below. Duplicates are blocked before upload.</Typography>
             </Box>
-            <IconButton size="small" disabled={importing} onClick={() => setShowImportModal(false)}><CloseRoundedIcon /></IconButton>
+            <IconButton size="small" disabled={importPreviewBusy} onClick={closeImportPreviewModal}><CloseRoundedIcon /></IconButton>
           </DialogTitle>
           <DialogContent dividers sx={{ p: 0 }}>
             <Grid container sx={{ minHeight: 500 }}>
@@ -2811,11 +2888,11 @@ export default function AdminCrmManagement() {
                     size="large"
                     startIcon={<CloudUploadRoundedIcon />}
                     onClick={() => void onImportLeads()}
-                    disabled={importing || parsingPreview || !excelFile || previewRows.length === 0}
+                    disabled={!importPreviewCanImport}
                   >
-                    {importing ? "Importing…" : "Import Leads to CRM"}
+                    {importPreviewBusy ? "Importing…" : "Import Leads to CRM"}
                   </Button>
-                  {previewRows.length > 0 && !duplicateIssues.length && excelFile && (
+                  {previewRows.length > 0 && !duplicateIssues.length && (excelFile || isAutoFindImportPreview) && (
                     <Typography variant="caption" color="success.main" sx={{ mt: 0.5, display: "block", textAlign: "center" }}>
                       {readyPreviewRows} leads ready to import
                     </Typography>
@@ -2823,23 +2900,41 @@ export default function AdminCrmManagement() {
                 </Box>
 
                 <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
-                  {/* File upload zone */}
-                  <Button
-                    component="label"
-                    variant="outlined"
-                    fullWidth
-                    color={excelFile ? "success" : "primary"}
-                    startIcon={excelFile ? <CheckCircleRoundedIcon /> : <CloudUploadRoundedIcon />}
-                    sx={{ py: 3, border: "2px dashed", borderColor: excelFile ? "success.main" : "divider" }}
-                  >
-                    {excelFile ? excelFile.name : "Click to upload .xlsx, .xls, .csv"}
-                    <input type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => void handleExcelFileChange(e.target.files?.[0] || null)} />
-                  </Button>
+                  {isAutoFindImportPreview ? (
+                    <Card variant="outlined">
+                      <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <CheckCircleRoundedIcon color="success" sx={{ fontSize: 20 }} />
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" fontWeight={700}>Auto Find leads selected</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {autoFindPreviewResultIds.length} selected result{autoFindPreviewResultIds.length === 1 ? "" : "s"} prefilled for review
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <>
+                      {/* File upload zone */}
+                      <Button
+                        component="label"
+                        variant="outlined"
+                        fullWidth
+                        color={excelFile ? "success" : "primary"}
+                        startIcon={excelFile ? <CheckCircleRoundedIcon /> : <CloudUploadRoundedIcon />}
+                        sx={{ py: 3, border: "2px dashed", borderColor: excelFile ? "success.main" : "divider" }}
+                      >
+                        {excelFile ? excelFile.name : "Click to upload .xlsx, .xls, .csv"}
+                        <input type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => void handleExcelFileChange(e.target.files?.[0] || null)} />
+                      </Button>
 
-                  {excelFile && !importing && (
-                    <Button fullWidth variant="outlined" color="error" size="small" sx={{ mt: 1.5 }} onClick={() => { setExcelFile(null); setPreviewRows([]); setDuplicateIssues([]); setPreviewParseError(""); setPreviewSheetName(""); }}>
-                      Cancel Upload
-                    </Button>
+                      {excelFile && !importing && (
+                        <Button fullWidth variant="outlined" color="error" size="small" sx={{ mt: 1.5 }} onClick={resetPreviewState}>
+                          Cancel Upload
+                        </Button>
+                      )}
+                    </>
                   )}
 
                   {parsingPreview && <LinearProgress sx={{ mt: 2 }} />}
@@ -2883,7 +2978,9 @@ export default function AdminCrmManagement() {
                   {duplicateIssues.length > 0 && (
                     <Alert severity="warning" sx={{ mt: 2 }}>
                       <Typography variant="subtitle2">Duplicate entries detected</Typography>
-                      <Typography variant="caption">Remove duplicates from file before importing.</Typography>
+                      <Typography variant="caption">
+                        {isAutoFindImportPreview ? "Remove duplicate auto-found rows before importing." : "Remove duplicates from file before importing."}
+                      </Typography>
                       <Box component="ul" sx={{ mt: 1, pl: 2, maxHeight: 120, overflow: "auto" }}>
                         {duplicateIssues.slice(0, 12).map((issue, idx) => (
                           <Typography component="li" variant="caption" key={`${issue.rowNumber}-${idx}`}>Row {issue.rowNumber}: {issue.reason}</Typography>
@@ -2907,8 +3004,12 @@ export default function AdminCrmManagement() {
                 {previewRows.length === 0 ? (
                   <Box sx={{ textAlign: "center", py: 8, color: "text.secondary" }}>
                     <CloudUploadRoundedIcon sx={{ fontSize: 48, opacity: 0.3 }} />
-                    <Typography variant="body2" sx={{ mt: 1.5 }}>Upload an Excel file to preview leads</Typography>
-                    <Typography variant="caption">Supported: .xlsx, .xls, .csv</Typography>
+                    <Typography variant="body2" sx={{ mt: 1.5 }}>
+                      {isAutoFindImportPreview ? "Select auto-found leads to preview" : "Upload an Excel file to preview leads"}
+                    </Typography>
+                    <Typography variant="caption">
+                      {isAutoFindImportPreview ? "Auto Find rows will appear here before import" : "Supported: .xlsx, .xls, .csv"}
+                    </Typography>
                   </Box>
                 ) : (
                   <Grid container spacing={1.5}>
