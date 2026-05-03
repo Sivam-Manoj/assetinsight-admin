@@ -46,6 +46,7 @@ import {
   InputAdornment,
   InputLabel,
   LinearProgress,
+  ListSubheader,
   MenuItem,
   Select,
   Snackbar,
@@ -779,6 +780,39 @@ export default function AdminCrmManagement() {
     whiteSpace: "normal",
     wordBreak: "break-word",
   };
+  const [openAutoFindDropdown, setOpenAutoFindDropdown] = useState<"country" | "regions" | "categories" | null>(null);
+  function renderAutoFindMenuHeader(label: string) {
+    return (
+      <ListSubheader
+        disableSticky
+        sx={{
+          bgcolor: "background.paper",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          lineHeight: "normal",
+          px: 1,
+          py: 0.5,
+        }}
+      >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+          <Typography variant="caption" color="text.secondary" fontWeight={700}>
+            {label}
+          </Typography>
+          <IconButton
+            size="small"
+            aria-label={`Close ${label} dropdown`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setOpenAutoFindDropdown(null);
+            }}
+          >
+            <CloseRoundedIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Stack>
+      </ListSubheader>
+    );
+  }
   const [toasts, setToasts] = useState<{ id: number; type: "success" | "error" | "info"; message: string }[]>([]);
   function pushToast(message: string, type: "success" | "error" | "info" = "info") {
     const id = Date.now() + Math.random();
@@ -2078,6 +2112,9 @@ export default function AdminCrmManagement() {
                   <Select
                     value={autoFindCountry}
                     label="Country"
+                    open={openAutoFindDropdown === "country"}
+                    onOpen={() => setOpenAutoFindDropdown("country")}
+                    onClose={() => setOpenAutoFindDropdown(null)}
                     MenuProps={autoFindSelectMenuProps}
                     sx={autoFindSelectSx}
                     onChange={(e) => {
@@ -2085,6 +2122,7 @@ export default function AdminCrmManagement() {
                       setAutoFindRegions([]);
                     }}
                   >
+                    {renderAutoFindMenuHeader("Country")}
                     {(autoFindOptions?.countries || ["Canada", "United States"]).map((country) => (
                       <MenuItem key={country} value={country} sx={autoFindMenuItemSx}>
                         <Typography variant="body2">{country}</Typography>
@@ -2100,6 +2138,9 @@ export default function AdminCrmManagement() {
                     multiple
                     value={autoFindRegions}
                     label={autoFindCountry === "Canada" ? "Provinces" : "States"}
+                    open={openAutoFindDropdown === "regions"}
+                    onOpen={() => setOpenAutoFindDropdown("regions")}
+                    onClose={() => setOpenAutoFindDropdown(null)}
                     MenuProps={autoFindSelectMenuProps}
                     sx={autoFindSelectSx}
                     renderValue={(selected) => {
@@ -2111,6 +2152,7 @@ export default function AdminCrmManagement() {
                       applyAutoFindRegionSelection(e.target.value);
                     }}
                   >
+                    {renderAutoFindMenuHeader(autoFindCountry === "Canada" ? "Provinces" : "States")}
                     <MenuItem value={AUTO_SELECT_ALL_VALUE} sx={autoFindMenuItemSx}>
                       <Checkbox size="small" checked={allAutoFindRegionsSelected || autoFindRegions.length === 0} sx={{ flexShrink: 0 }} />
                       <Typography variant="body2">All</Typography>
@@ -2131,6 +2173,9 @@ export default function AdminCrmManagement() {
                     multiple
                     value={autoFindCategories}
                     label="Categories"
+                    open={openAutoFindDropdown === "categories"}
+                    onOpen={() => setOpenAutoFindDropdown("categories")}
+                    onClose={() => setOpenAutoFindDropdown(null)}
                     MenuProps={autoFindSelectMenuProps}
                     sx={autoFindSelectSx}
                     renderValue={(selected) => {
@@ -2142,6 +2187,7 @@ export default function AdminCrmManagement() {
                       applyAutoFindCategorySelection(e.target.value);
                     }}
                   >
+                    {renderAutoFindMenuHeader("Categories")}
                     <MenuItem value={AUTO_SELECT_ALL_VALUE} sx={autoFindMenuItemSx}>
                       <Checkbox size="small" checked={allAutoFindCategoriesSelected} sx={{ flexShrink: 0 }} />
                       <Typography variant="body2">All</Typography>
