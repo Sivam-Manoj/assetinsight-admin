@@ -748,6 +748,37 @@ function buildPreviewRows(rows: ExcelRow[]): {
 export default function AdminCrmManagement() {
   const crmTheme = useTheme();
   const matchesMd = useMediaQuery(crmTheme.breakpoints.up("md"));
+  const autoFindSelectMenuProps = useMemo(
+    () => ({
+      PaperProps: {
+        sx: {
+          maxHeight: { xs: "calc(100dvh - 96px)", md: 420 },
+          maxWidth: { xs: "calc(100vw - 32px)", sm: 440 },
+          overflowY: "auto",
+        },
+      },
+      MenuListProps: {
+        dense: true,
+        sx: { py: 0.5 },
+      },
+    }),
+    []
+  );
+  const autoFindSelectSx = {
+    "& .MuiSelect-select": {
+      display: "block",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+  };
+  const autoFindMenuItemSx = {
+    alignItems: "flex-start",
+    gap: 0.75,
+    minHeight: 36,
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+  };
   const [toasts, setToasts] = useState<{ id: number; type: "success" | "error" | "info"; message: string }[]>([]);
   function pushToast(message: string, type: "success" | "error" | "info" = "info") {
     const id = Date.now() + Math.random();
@@ -1053,6 +1084,12 @@ export default function AdminCrmManagement() {
   }
 
   function toggleAutoFindSelection(id: string, checked: boolean) {
+    const item = autoFindResults.find((result) => result.searchResultId === id);
+    if (item?.duplicate) {
+      setSelectedAutoFindIds((prev) => prev.filter((value) => value !== id));
+      return;
+    }
+
     setSelectedAutoFindIds((prev) => {
       if (checked) {
         if (prev.includes(id)) return prev;
@@ -1130,7 +1167,11 @@ export default function AdminCrmManagement() {
   }
 
   async function onImportAutoFoundLeads() {
-    if (selectedAutoFindIds.length === 0) {
+    const readySelectedIds = autoFindResults
+      .filter((item) => !item.duplicate && selectedAutoFindIds.includes(item.searchResultId))
+      .map((item) => item.searchResultId);
+
+    if (readySelectedIds.length === 0) {
       pushToast("Select at least one auto-found lead", "error");
       return;
     }
@@ -1142,7 +1183,7 @@ export default function AdminCrmManagement() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          resultIds: selectedAutoFindIds,
+          resultIds: readySelectedIds,
           assignedToUserIds: effectiveAssigneeIds,
         }),
       });
@@ -1559,7 +1600,7 @@ export default function AdminCrmManagement() {
   const allAutoFindRegionsSelected = autoFindRegionOptions.length > 0 && autoFindRegions.length === autoFindRegionOptions.length;
   const allAutoFindCategoriesSelected = Boolean(autoFindOptions?.categories?.length) && autoFindCategories.length === (autoFindOptions?.categories || []).length;
   const selectedAutoFindReadyCount = useMemo(
-    () => autoFindResults.filter((item) => selectedAutoFindIds.includes(item.searchResultId)).length,
+    () => autoFindResults.filter((item) => !item.duplicate && selectedAutoFindIds.includes(item.searchResultId)).length,
     [autoFindResults, selectedAutoFindIds]
   );
   useEffect(() => {
@@ -2037,13 +2078,17 @@ export default function AdminCrmManagement() {
                   <Select
                     value={autoFindCountry}
                     label="Country"
+                    MenuProps={autoFindSelectMenuProps}
+                    sx={autoFindSelectSx}
                     onChange={(e) => {
                       setAutoFindCountry(e.target.value as "Canada" | "United States");
                       setAutoFindRegions([]);
                     }}
                   >
                     {(autoFindOptions?.countries || ["Canada", "United States"]).map((country) => (
-                      <MenuItem key={country} value={country}>{country}</MenuItem>
+                      <MenuItem key={country} value={country} sx={autoFindMenuItemSx}>
+                        <Typography variant="body2">{country}</Typography>
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -2055,6 +2100,8 @@ export default function AdminCrmManagement() {
                     multiple
                     value={autoFindRegions}
                     label={autoFindCountry === "Canada" ? "Provinces" : "States"}
+                    MenuProps={autoFindSelectMenuProps}
+                    sx={autoFindSelectSx}
                     renderValue={(selected) => {
                       const values = selected as string[];
                       if (!values.length || values.length === autoFindRegionOptions.length) return "All";
@@ -2063,16 +2110,15 @@ export default function AdminCrmManagement() {
                     onChange={(e) => {
                       applyAutoFindRegionSelection(e.target.value);
                     }}
-                    MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
                   >
-                    <MenuItem value={AUTO_SELECT_ALL_VALUE}>
-                      <Checkbox size="small" checked={allAutoFindRegionsSelected || autoFindRegions.length === 0} />
-                      All
+                    <MenuItem value={AUTO_SELECT_ALL_VALUE} sx={autoFindMenuItemSx}>
+                      <Checkbox size="small" checked={allAutoFindRegionsSelected || autoFindRegions.length === 0} sx={{ flexShrink: 0 }} />
+                      <Typography variant="body2">All</Typography>
                     </MenuItem>
                     {autoFindRegionOptions.map((region) => (
-                      <MenuItem key={region} value={region}>
-                        <Checkbox size="small" checked={autoFindRegions.includes(region)} />
-                        {region}
+                      <MenuItem key={region} value={region} sx={autoFindMenuItemSx}>
+                        <Checkbox size="small" checked={autoFindRegions.includes(region)} sx={{ flexShrink: 0 }} />
+                        <Typography variant="body2">{region}</Typography>
                       </MenuItem>
                     ))}
                   </Select>
@@ -2085,6 +2131,8 @@ export default function AdminCrmManagement() {
                     multiple
                     value={autoFindCategories}
                     label="Categories"
+                    MenuProps={autoFindSelectMenuProps}
+                    sx={autoFindSelectSx}
                     renderValue={(selected) => {
                       const values = selected as string[];
                       if (values.length === (autoFindOptions?.categories || []).length) return "All";
@@ -2093,16 +2141,15 @@ export default function AdminCrmManagement() {
                     onChange={(e) => {
                       applyAutoFindCategorySelection(e.target.value);
                     }}
-                    MenuProps={{ PaperProps: { sx: { maxHeight: 420 } } }}
                   >
-                    <MenuItem value={AUTO_SELECT_ALL_VALUE}>
-                      <Checkbox size="small" checked={allAutoFindCategoriesSelected} />
-                      All
+                    <MenuItem value={AUTO_SELECT_ALL_VALUE} sx={autoFindMenuItemSx}>
+                      <Checkbox size="small" checked={allAutoFindCategoriesSelected} sx={{ flexShrink: 0 }} />
+                      <Typography variant="body2">All</Typography>
                     </MenuItem>
                     {(autoFindOptions?.categories || []).map((category) => (
-                      <MenuItem key={category} value={category}>
-                        <Checkbox size="small" checked={autoFindCategories.includes(category)} />
-                        {category}
+                      <MenuItem key={category} value={category} sx={autoFindMenuItemSx}>
+                        <Checkbox size="small" checked={autoFindCategories.includes(category)} sx={{ flexShrink: 0 }} />
+                        <Typography variant="body2">{category}</Typography>
                       </MenuItem>
                     ))}
                   </Select>
@@ -2178,14 +2225,14 @@ export default function AdminCrmManagement() {
                   <TableBody>
                     {autoFindResults.map((item) => {
                       const lead = item.lead;
-                      const selected = selectedAutoFindIds.includes(item.searchResultId);
+                      const selected = !item.duplicate && selectedAutoFindIds.includes(item.searchResultId);
                       return (
                         <TableRow key={item.searchResultId} hover>
                           <TableCell padding="checkbox">
                             <Checkbox
                               size="small"
                               checked={selected}
-                              disabled={autoFindImporting}
+                              disabled={autoFindImporting || item.duplicate}
                               onChange={(e) => toggleAutoFindSelection(item.searchResultId, e.target.checked)}
                             />
                           </TableCell>
