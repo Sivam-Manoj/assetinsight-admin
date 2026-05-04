@@ -183,6 +183,47 @@ type AssignmentByUploadSummary = {
   }>;
 };
 
+type CrmTransferStatus = "pending" | "accepted" | "rejected" | "cancelled";
+
+type CrmTransferUser = {
+  _id?: string;
+  email?: string;
+  username?: string;
+};
+
+type CrmTransferLead = {
+  _id?: string;
+  clientName?: string;
+  title?: string;
+  status?: string;
+  dueDate?: string;
+};
+
+type CrmTransferItem = {
+  _id: string;
+  leadId?: CrmTransferLead | null;
+  fromUserId?: CrmTransferUser | null;
+  toUserId?: CrmTransferUser | null;
+  requestedBy?: CrmTransferUser | null;
+  respondedBy?: CrmTransferUser | null;
+  status: CrmTransferStatus;
+  note?: string;
+  respondedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+type CrmTransferReportResponse = {
+  items: CrmTransferItem[];
+  total: number;
+  page: number;
+  limit: number;
+  statusCounts?: Array<{
+    _id: string;
+    count: number;
+  }>;
+};
+
 type ExcelRow = Record<string, unknown>;
 
 type ImportPreviewSource = "excel" | "autoFind";
@@ -580,6 +621,26 @@ function lostReasonLabel(value?: string): string {
   return value ? statusLabel(value) : "";
 }
 
+function transferStatusLabel(value?: string): string {
+  if (value === "pending") return "Pending";
+  if (value === "accepted") return "Accepted";
+  if (value === "rejected") return "Rejected";
+  if (value === "cancelled") return "Cancelled";
+  return value ? statusLabel(value) : "";
+}
+
+function transferStatusColor(value?: string): "default" | "success" | "warning" | "error" | "info" {
+  if (value === "accepted") return "success";
+  if (value === "rejected") return "error";
+  if (value === "cancelled") return "default";
+  if (value === "pending") return "warning";
+  return "info";
+}
+
+function crmTransferUserLabel(input?: CrmTransferUser | null): string {
+  return input?.username || input?.email || "-";
+}
+
 function statusWithLostReasonLabel(status?: string, lostReason?: string): string {
   const normalizedStatus = normalizeLeadStatus(status, lostReason);
   const base = statusLabel(normalizedStatus);
@@ -889,6 +950,10 @@ export default function AdminCrmManagement() {
   const [assignmentsByUpload, setAssignmentsByUpload] = useState<AssignmentByUploadItem[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
 
+  const [transferReport, setTransferReport] = useState<CrmTransferReportResponse | null>(null);
+  const [loadingTransfers, setLoadingTransfers] = useState(false);
+  const [transferStatusFilter, setTransferStatusFilter] = useState<string>("");
+
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [importPreviewSource, setImportPreviewSource] = useState<ImportPreviewSource>("excel");
   const [importing, setImporting] = useState(false);
@@ -1009,6 +1074,24 @@ export default function AdminCrmManagement() {
     }
   }
 
+  async function loadTransferReport() {
+    setLoadingTransfers(true);
+    try {
+      const qs = new URLSearchParams();
+      if (transferStatusFilter) qs.set("status", transferStatusFilter);
+      qs.set("page", "1");
+      qs.set("limit", "100");
+      const res = await fetch(`/api/admin/crm/transfers?${qs.toString()}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to load transfer report");
+      setTransferReport(json as CrmTransferReportResponse);
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to load transfer report", "error");
+    } finally {
+      setLoadingTransfers(false);
+    }
+  }
+
   async function loadAutoFindOptions() {
     try {
       const res = await fetch(`/api/admin/crm/leads/auto-find`, { cache: "no-store" });
@@ -1033,6 +1116,11 @@ export default function AdminCrmManagement() {
     loadLeads();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadQuery]);
+
+  useEffect(() => {
+    loadTransferReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transferStatusFilter]);
 
   useEffect(() => {
     loadImportFiles();
@@ -1849,6 +1937,17 @@ export default function AdminCrmManagement() {
     });
   }, [assignmentsByUpload]);
 
+  const transferStatusCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    ["pending", "accepted", "rejected", "cancelled"].forEach((status) => map.set(status, 0));
+    (transferReport?.statusCounts || []).forEach((entry) => {
+      const key = typeof entry?._id === "string" ? entry._id : "";
+      if (!map.has(key)) return;
+      map.set(key, Number(entry?.count || 0));
+    });
+    return map;
+  }, [transferReport?.statusCounts]);
+
   const compactChartOptions = useMemo<ChartOptions<"bar">>(
     () => ({
       responsive: true,
@@ -2591,6 +2690,113 @@ export default function AdminCrmManagement() {
                             <DeleteRoundedIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+
+        {/* Transfer Report */}
+        <Card>
+          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "flex-end" }} spacing={2}>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>Transfer Report</Typography>
+                <Typography variant="body2" color="text.secondary">Audit CRM lead transfers between agents.</Typography>
+              </Box>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ width: { xs: "100%", md: "auto" }, minWidth: { md: 360 } }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Status</InputLabel>
+                  <Select value={transferStatusFilter} label="Status" onChange={(e) => setTransferStatusFilter(e.target.value)}>
+                    <MenuItem value="">All</MenuItem>
+                    {(["pending", "accepted", "rejected", "cancelled"] as const).map((status) => (
+                      <MenuItem key={status} value={status}>{transferStatusLabel(status)}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<RefreshRoundedIcon />}
+                  onClick={() => void loadTransferReport()}
+                  disabled={loadingTransfers}
+                  sx={{ minWidth: 110 }}
+                >
+                  {loadingTransfers ? "Refreshing…" : "Refresh"}
+                </Button>
+              </Stack>
+            </Stack>
+
+            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.75} sx={{ mt: 1.5 }}>
+              {(["pending", "accepted", "rejected", "cancelled"] as const).map((status) => (
+                <Chip
+                  key={status}
+                  label={`${transferStatusLabel(status)}: ${transferStatusCountMap.get(status) || 0}`}
+                  size="small"
+                  color={transferStatusColor(status)}
+                  variant="outlined"
+                />
+              ))}
+            </Stack>
+
+            {loadingTransfers && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
+
+            <TableContainer sx={{ maxHeight: 420, mt: 2 }}>
+              <Table size="small" stickyHeader sx={{ minWidth: 980 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>From</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>To</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Requested</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Responded</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 260 }}>Note</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {!loadingTransfers && (transferReport?.items || []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} sx={{ color: "text.secondary", py: 3, textAlign: "center" }}>No transfer records found</TableCell>
+                    </TableRow>
+                  )}
+                  {(transferReport?.items || []).map((item) => (
+                    <TableRow key={item._id} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600} noWrap sx={{ maxWidth: 220 }}>
+                          {item.leadId?.clientName || "Deleted lead"}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 220 }}>
+                          {item.leadId?.title || item.leadId?.status || "-"}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>{crmTransferUserLabel(item.fromUserId)}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>{crmTransferUserLabel(item.toUserId)}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={transferStatusLabel(item.status)} size="small" color={transferStatusColor(item.status)} variant="outlined" />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption">{toDateTimeValue(item.createdAt)}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption">{toDateTimeValue(item.respondedAt)}</Typography>
+                        {item.respondedBy ? (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            By: {crmTransferUserLabel(item.respondedBy)}
+                          </Typography>
+                        ) : null}
+                      </TableCell>
+                      <TableCell sx={{ width: 260 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", maxWidth: 260 }} noWrap>
+                          {item.note || "-"}
+                        </Typography>
                       </TableCell>
                     </TableRow>
                   ))}
