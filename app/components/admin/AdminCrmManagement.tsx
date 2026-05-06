@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Chart as ChartJS,
@@ -286,6 +286,23 @@ type AutoFindOptions = {
   usStates: string[];
   categories: string[];
   maxResults: number;
+};
+
+type AutoFindRunStatus = "queued" | "running" | "completed" | "failed";
+
+type AutoFindRunProgress = {
+  runId: string;
+  status: AutoFindRunStatus;
+  progress: number;
+  totalBatches: number;
+  completedBatches: number;
+  failedBatches: number;
+  message?: string;
+  items?: AutoFindResultItem[];
+  rawJson?: unknown;
+  searched?: number;
+  duplicateCount?: number;
+  error?: string;
 };
 
 const AUTO_SELECT_ALL_VALUE = "__all__";
@@ -975,6 +992,89 @@ export default function AdminCrmManagement() {
   const [selectedAutoFindIds, setSelectedAutoFindIds] = useState<string[]>([]);
   const [autoFindPreviewResultIds, setAutoFindPreviewResultIds] = useState<string[]>([]);
   const [autoFindRawJson, setAutoFindRawJson] = useState<unknown>(null);
+  const [autoFindRunId, setAutoFindRunId] = useState("");
+  const [autoFindRunStatus, setAutoFindRunStatus] = useState<AutoFindRunStatus | "">("");
+  const [autoFindProgress, setAutoFindProgress] = useState(0);
+  const [autoFindProgressMessage, setAutoFindProgressMessage] = useState("");
+  const [autoFindCompletedBatches, setAutoFindCompletedBatches] = useState(0);
+  const [autoFindTotalBatches, setAutoFindTotalBatches] = useState(10);
+  const [autoFindFailedBatches, setAutoFindFailedBatches] = useState(0);
+  const [autoFindDuplicateCount, setAutoFindDuplicateCount] = useState(0);
+  const autoFindPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoFindActiveRunRef = useRef("");
+
+  function stopAutoFindPolling() {
+    if (autoFindPollRef.current) {
+      clearInterval(autoFindPollRef.current);
+      autoFindPollRef.current = null;
+    }
+    autoFindActiveRunRef.current = "";
+  }
+
+  function clearAutoFindRunState() {
+    stopAutoFindPolling();
+    setAutoFinding(false);
+    setAutoFindRunId("");
+    setAutoFindRunStatus("");
+    setAutoFindProgress(0);
+    setAutoFindProgressMessage("");
+    setAutoFindCompletedBatches(0);
+    setAutoFindTotalBatches(10);
+    setAutoFindFailedBatches(0);
+    setAutoFindDuplicateCount(0);
+  }
+
+  function clearAutoFindResultsState() {
+    setAutoFindResults([]);
+    setSelectedAutoFindIds([]);
+    setAutoFindPreviewResultIds([]);
+    setAutoFindRawJson(null);
+  }
+
+  function applyAutoFindRunPayload(payload: AutoFindRunProgress) {
+    setAutoFindRunId(payload.runId || "");
+    setAutoFindRunStatus(payload.status || "");
+    setAutoFindProgress(Math.max(0, Math.min(100, Number(payload.progress) || 0)));
+    setAutoFindProgressMessage(payload.message || payload.error || "");
+    setAutoFindCompletedBatches(Number(payload.completedBatches) || 0);
+    setAutoFindTotalBatches(Number(payload.totalBatches) || 10);
+    setAutoFindFailedBatches(Number(payload.failedBatches) || 0);
+    setAutoFindDuplicateCount(Number(payload.duplicateCount) || 0);
+
+    if (Array.isArray(payload.items)) {
+      setAutoFindResults(payload.items);
+      setAutoFindRawJson(payload.rawJson || { items: payload.items });
+      setSelectedAutoFindIds(payload.items.filter((item) => !item.duplicate).map((item) => item.searchResultId));
+    }
+  }
+
+  async function pollAutoFindRun(runId: string) {
+    try {
+      const res = await fetch(`/api/admin/crm/leads/auto-find/runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to load auto-find progress");
+      if (autoFindActiveRunRef.current !== runId) return;
+
+      const payload = json as AutoFindRunProgress;
+      applyAutoFindRunPayload(payload);
+
+      if (payload.status === "completed") {
+        stopAutoFindPolling();
+        setAutoFinding(false);
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        pushToast(`Found ${items.length} client lead${items.length === 1 ? "" : "s"}`, "success");
+      } else if (payload.status === "failed") {
+        stopAutoFindPolling();
+        setAutoFinding(false);
+        pushToast(payload.error || payload.message || "Auto-find search failed", "error");
+      }
+    } catch (e: unknown) {
+      if (autoFindActiveRunRef.current !== runId) return;
+      stopAutoFindPolling();
+      setAutoFinding(false);
+      pushToast(e instanceof Error ? e.message : "Failed to load auto-find progress", "error");
+    }
+  }
 
   const userQuery = useMemo(() => {
     const p = new URLSearchParams();
@@ -1130,6 +1230,10 @@ export default function AdminCrmManagement() {
   }, []);
 
   useEffect(() => {
+    return () => stopAutoFindPolling();
+  }, []);
+
+  useEffect(() => {
     if (!leadAssignedTo) return;
     setSelectedUserIds((prev) => (prev.length === 1 && prev[0] === leadAssignedTo ? prev : [leadAssignedTo]));
   }, [leadAssignedTo]);
@@ -1260,7 +1364,8 @@ export default function AdminCrmManagement() {
       resetPreviewState();
       setImportPreviewSource("excel");
       if (wasAutoFindPreview) {
-        setSelectedAutoFindIds([]);
+        clearAutoFindRunState();
+        clearAutoFindResultsState();
       }
       setAutoFindPreviewResultIds([]);
       setShowImportModal(false);
@@ -1299,6 +1404,8 @@ export default function AdminCrmManagement() {
   }
 
   function resetAutoFindFilters() {
+    clearAutoFindRunState();
+    clearAutoFindResultsState();
     setAutoFindRegions([]);
     setAutoFindCategories(defaultAutoFindCategories(autoFindOptions?.categories));
   }
@@ -1331,11 +1438,11 @@ export default function AdminCrmManagement() {
     }
 
     try {
+      clearAutoFindRunState();
+      clearAutoFindResultsState();
       setAutoFinding(true);
-      setAutoFindResults([]);
-      setSelectedAutoFindIds([]);
-      setAutoFindPreviewResultIds([]);
-      setAutoFindRawJson(null);
+      setAutoFindRunStatus("queued");
+      setAutoFindProgressMessage("Queued");
       const res = await fetch(`/api/admin/crm/leads/auto-find`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1344,20 +1451,31 @@ export default function AdminCrmManagement() {
           regions: autoFindRegions,
           categories: autoFindCategories,
           keywords: autoFindKeywords,
-          maxResults: 10,
+          maxResults: autoFindOptions?.maxResults || 100,
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || "Failed to auto find clients");
-      const items = Array.isArray(json?.items) ? (json.items as AutoFindResultItem[]) : [];
-      setAutoFindResults(items);
-      setAutoFindRawJson(json?.rawJson || { items });
-      setSelectedAutoFindIds(items.filter((item) => !item.duplicate).map((item) => item.searchResultId));
-      pushToast(`Found ${items.length} client lead${items.length === 1 ? "" : "s"}`, "success");
+      const runId = String(json?.runId || "");
+      if (!runId) throw new Error("Auto-find run id was not returned");
+
+      autoFindActiveRunRef.current = runId;
+      setAutoFindRunId(runId);
+      setAutoFindRunStatus((json?.status as AutoFindRunStatus) || "queued");
+      setAutoFindProgress(Number(json?.progress) || 0);
+      setAutoFindProgressMessage(json?.message || "Queued");
+      setAutoFindCompletedBatches(Number(json?.completedBatches) || 0);
+      setAutoFindTotalBatches(Number(json?.totalBatches) || 10);
+      setAutoFindFailedBatches(Number(json?.failedBatches) || 0);
+
+      void pollAutoFindRun(runId);
+      autoFindPollRef.current = setInterval(() => {
+        void pollAutoFindRun(runId);
+      }, 1000);
     } catch (e: unknown) {
-      pushToast(e instanceof Error ? e.message : "Failed to auto find clients", "error");
-    } finally {
+      stopAutoFindPolling();
       setAutoFinding(false);
+      pushToast(e instanceof Error ? e.message : "Failed to auto find clients", "error");
     }
   }
 
@@ -2274,7 +2392,7 @@ export default function AdminCrmManagement() {
                   color="success"
                   startIcon={<CloudUploadRoundedIcon />}
                   onClick={openAutoFindImportPreview}
-                  disabled={selectedAutoFindReadyCount === 0}
+                  disabled={autoFinding || selectedAutoFindReadyCount === 0}
                 >
                   {`Import ${selectedAutoFindReadyCount}`}
                 </Button>
@@ -2402,9 +2520,8 @@ export default function AdminCrmManagement() {
                   variant="outlined"
                   startIcon={<RefreshRoundedIcon />}
                   onClick={resetAutoFindFilters}
-                  disabled={autoFinding}
                 >
-                  Reset
+                  {autoFinding ? "Cancel" : "Reset"}
                 </Button>
                 <Button
                   variant="contained"
@@ -2412,12 +2529,28 @@ export default function AdminCrmManagement() {
                   onClick={() => void onAutoFindClients()}
                   disabled={autoFinding || autoFindCategories.length === 0}
                 >
-                  {autoFinding ? "Searching…" : "Find New Leads"}
+                  {autoFinding ? `Searching ${Math.round(autoFindProgress)}%` : "Find New Leads"}
                 </Button>
               </Stack>
             </Stack>
 
-            {autoFinding && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
+            {(autoFinding || autoFindRunStatus) && (
+              <Box sx={{ mt: 2 }} data-auto-find-run-id={autoFindRunId || undefined}>
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.max(0, Math.min(100, autoFindProgress))}
+                  sx={{ borderRadius: 1 }}
+                />
+                <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={0.75} sx={{ mt: 0.75 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {autoFindProgressMessage || (autoFinding ? "Searching public web sources" : "Search complete")}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {`${autoFindCompletedBatches}/${autoFindTotalBatches} searches | ${autoFindResults.length} found | ${autoFindDuplicateCount} duplicate${autoFindDuplicateCount === 1 ? "" : "s"}${autoFindFailedBatches ? ` | ${autoFindFailedBatches} failed` : ""}`}
+                  </Typography>
+                </Stack>
+              </Box>
+            )}
 
             {autoFindResults.length > 0 && (
               <TableContainer sx={{ maxHeight: 420, mt: 2 }}>
@@ -2454,7 +2587,7 @@ export default function AdminCrmManagement() {
                             <Checkbox
                               size="small"
                               checked={selected}
-                              disabled={item.duplicate}
+                              disabled={autoFinding || item.duplicate}
                               onChange={(e) => toggleAutoFindSelection(item.searchResultId, e.target.checked)}
                             />
                           </TableCell>
@@ -2552,7 +2685,7 @@ export default function AdminCrmManagement() {
                               size="small"
                               color="error"
                               onClick={() => deleteAutoFindRow(item.searchResultId)}
-                              disabled={importing}
+                              disabled={autoFinding || importing}
                             >
                               <DeleteRoundedIcon sx={{ fontSize: 18 }} />
                             </IconButton>
