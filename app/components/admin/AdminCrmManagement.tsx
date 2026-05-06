@@ -224,6 +224,28 @@ type CrmTransferReportResponse = {
   }>;
 };
 
+type CrmNearestReassignItem = {
+  leadId: string;
+  clientName?: string;
+  companyName?: string;
+  location?: string;
+  currentAssignee?: CrmTransferUser | null;
+  proposedAssignee?: (CrmTransferUser & { crmAddress?: string }) | null;
+  changed: boolean;
+  method: string;
+  distanceKm?: number;
+  matchedRegion?: string;
+  reason?: string;
+};
+
+type CrmNearestReassignResponse = {
+  apply: boolean;
+  reviewed: number;
+  changedCount: number;
+  appliedCount: number;
+  items: CrmNearestReassignItem[];
+};
+
 type ExcelRow = Record<string, unknown>;
 
 type ImportPreviewSource = "excel" | "autoFind";
@@ -970,6 +992,8 @@ export default function AdminCrmManagement() {
   const [transferReport, setTransferReport] = useState<CrmTransferReportResponse | null>(null);
   const [loadingTransfers, setLoadingTransfers] = useState(false);
   const [transferStatusFilter, setTransferStatusFilter] = useState<string>("");
+  const [nearestReassignReport, setNearestReassignReport] = useState<CrmNearestReassignResponse | null>(null);
+  const [nearestReassignBusy, setNearestReassignBusy] = useState(false);
 
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [importPreviewSource, setImportPreviewSource] = useState<ImportPreviewSource>("excel");
@@ -1189,6 +1213,33 @@ export default function AdminCrmManagement() {
       pushToast(e instanceof Error ? e.message : "Failed to load transfer report", "error");
     } finally {
       setLoadingTransfers(false);
+    }
+  }
+
+  async function runNearestReassignment(apply: boolean) {
+    setNearestReassignBusy(true);
+    try {
+      const res = await fetch(`/api/admin/crm/leads/reassign-nearest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply, limit: 100, includeClosed: false }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to recompute nearest assignments");
+      setNearestReassignReport(json as CrmNearestReassignResponse);
+      pushToast(
+        apply
+          ? `Applied nearest assignment to ${json?.appliedCount || 0} lead${json?.appliedCount === 1 ? "" : "s"}`
+          : `Found ${json?.changedCount || 0} proposed reassignment${json?.changedCount === 1 ? "" : "s"}`,
+        "success"
+      );
+      if (apply) {
+        await Promise.all([loadLeads(), loadAssignmentsByUpload()]);
+      }
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to recompute nearest assignments", "error");
+    } finally {
+      setNearestReassignBusy(false);
     }
   }
 
@@ -2510,7 +2561,7 @@ export default function AdminCrmManagement() {
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={1.5} sx={{ mt: 1.5 }}>
               <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5}>
                 {selectedAssignees.length > 0 ? selectedAssignees.map((agent) => (
-                  <Chip key={agent._id} label={`Import to ${agent.username || agent.email}`} size="small" variant="outlined" />
+                  <Chip key={agent._id} label={`Import to ${agent.username || agent.email}${agent.crmAddress ? ` (${agent.crmAddress})` : ""}`} size="small" variant="outlined" />
                 )) : (
                   <Chip label="Imports auto-distribute to all active CRM agents" size="small" variant="outlined" />
                 )}
@@ -3066,6 +3117,66 @@ export default function AdminCrmManagement() {
           </CardContent>
         </Card>
 
+        {/* Nearest Lead Assignment Repair */}
+        <Card>
+          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={2}>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>Nearest Assignment Repair</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Preview and apply nearest-salesperson reassignment for active CRM leads using lead location and CRM service address.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                <Button variant="outlined" startIcon={<SearchRoundedIcon />} onClick={() => void runNearestReassignment(false)} disabled={nearestReassignBusy}>
+                  Preview
+                </Button>
+                <Button variant="contained" color="warning" onClick={() => void runNearestReassignment(true)} disabled={nearestReassignBusy || !nearestReassignReport?.changedCount}>
+                  Apply {nearestReassignReport?.changedCount || 0}
+                </Button>
+              </Stack>
+            </Stack>
+            {nearestReassignBusy && <LinearProgress sx={{ mt: 2 }} />}
+            {nearestReassignReport && (
+              <TableContainer sx={{ maxHeight: 360, mt: 2 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Current</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Nearest</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Match</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {nearestReassignReport.items.length === 0 ? (
+                      <TableRow><TableCell colSpan={4} sx={{ color: "text.secondary", py: 3, textAlign: "center" }}>No leads reviewed</TableCell></TableRow>
+                    ) : nearestReassignReport.items.slice(0, 50).map((item) => (
+                      <TableRow key={item.leadId} hover selected={item.changed}>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 220 }}>{item.clientName || item.companyName || "Lead"}</Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", maxWidth: 240 }}>{item.location || "-"}</Typography>
+                        </TableCell>
+                        <TableCell><Typography variant="caption">{item.currentAssignee?.username || item.currentAssignee?.email || "-"}</Typography></TableCell>
+                        <TableCell>
+                          <Typography variant="caption" display="block">{item.proposedAssignee?.username || item.proposedAssignee?.email || "-"}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ maxWidth: 220 }}>{item.proposedAssignee?.crmAddress || ""}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={item.changed ? "Change" : "Keep"} size="small" color={item.changed ? "warning" : "success"} variant="outlined" sx={{ mr: 0.5 }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {item.distanceKm ? `${item.distanceKm} km` : item.matchedRegion || item.method}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+
         {/* ── CRM Team Manager Dialog ── */}
         <Dialog open={showCrmOpsModal} onClose={() => setShowCrmOpsModal(false)} maxWidth="xl" fullWidth fullScreen={!matchesMd} scroll="paper">
           <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
@@ -3146,6 +3257,11 @@ export default function AdminCrmManagement() {
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>{u.email}</Typography>
                             <Typography variant="caption" color="text.secondary">{u.username || "-"} {u.companyName ? `· ${u.companyName}` : ""}</Typography>
+                            {u.crmAddress ? (
+                              <Typography variant="caption" display="block" color="text.secondary" noWrap sx={{ maxWidth: 260 }}>
+                                Base: {u.crmAddress}
+                              </Typography>
+                            ) : null}
                             {(u.crmQuadrant || formatCrmSpecializations(u.crmSpecializations)) ? (
                               <Typography variant="caption" display="block" color="info.main">
                                 {[formatCrmQuadrants(u.crmQuadrant) ? `Quadrant ${formatCrmQuadrants(u.crmQuadrant)}` : "", formatCrmSpecializations(u.crmSpecializations)].filter(Boolean).join(" · ")}
@@ -3306,7 +3422,7 @@ export default function AdminCrmManagement() {
                       <Typography variant="caption" color="text.secondary">Assigned CRM reps for import</Typography>
                       <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5} sx={{ mt: 1 }}>
                         {selectedAssignees.length > 0 ? selectedAssignees.map((agent) => (
-                          <Chip key={agent._id} label={`${agent.username || agent.email}${formatCrmQuadrants(agent.crmQuadrant) ? ` · Q${formatCrmQuadrants(agent.crmQuadrant)}` : ""}`} size="small" variant="outlined" />
+                          <Chip key={agent._id} label={`${agent.username || agent.email}${agent.crmAddress ? ` · ${agent.crmAddress}` : formatCrmQuadrants(agent.crmQuadrant) ? ` · Q${formatCrmQuadrants(agent.crmQuadrant)}` : ""}`} size="small" variant="outlined" />
                         )) : (
                           <Typography variant="caption" color="text.secondary">Auto-distribute among all active CRM agents</Typography>
                         )}

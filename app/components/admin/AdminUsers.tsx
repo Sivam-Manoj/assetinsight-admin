@@ -114,6 +114,7 @@ export default function AdminUsers() {
 
   // CRM profile edit
   const [crmEditUser, setCrmEditUser] = useState<UserItem | null>(null);
+  const [crmEditAddress, setCrmEditAddress] = useState("");
   const [crmEditQuadrants, setCrmEditQuadrants] = useState<string[]>([]);
   const [crmEditSpecs, setCrmEditSpecs] = useState<string[]>([]);
   const [crmEditSaving, setCrmEditSaving] = useState(false);
@@ -124,6 +125,7 @@ export default function AdminUsers() {
 
   function openCrmEdit(u: UserItem) {
     setCrmEditUser(u);
+    setCrmEditAddress(u.crmAddress || "");
     setCrmEditQuadrants(parseCrmQuadrants(u.crmQuadrant));
     setCrmEditSpecs(Array.isArray(u.crmSpecializations) ? [...u.crmSpecializations] : []);
   }
@@ -135,7 +137,7 @@ export default function AdminUsers() {
       const res = await fetch(`/api/admin/crm/users/${crmEditUser._id}/crm-profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ crmQuadrant: crmEditQuadrants, crmSpecializations: crmEditSpecs }),
+        body: JSON.stringify({ crmAddress: crmEditAddress, crmQuadrant: crmEditQuadrants, crmSpecializations: crmEditSpecs }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.message || "Failed to update CRM profile");
@@ -700,6 +702,16 @@ export default function AdminUsers() {
         }
       >
         <div className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">CRM service address</label>
+            <input
+              value={crmEditAddress}
+              onChange={(event) => setCrmEditAddress(event.target.value)}
+              placeholder="City, province/state, country or full service address"
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm outline-none transition focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
+            />
+            <p className="mt-1 text-xs text-gray-500">Used to assign imported CRM leads to the nearest salesperson.</p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">CRM Quadrants</label>
             <div className="flex flex-wrap gap-2">
