@@ -263,6 +263,7 @@ type PreviewLeadRow = {
   industry: string;
   website: string;
   notes: string;
+  dueDate: string;
   duplicateKey: string;
 };
 
@@ -418,6 +419,21 @@ function toIsoDateValue(value?: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "";
   return date.toISOString().slice(0, 10);
+}
+
+function toDateInputValue(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : "";
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+    return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+  }
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
 }
 
 function toText(value: unknown): string {
@@ -789,6 +805,7 @@ function buildPreviewRows(rows: ExcelRow[]): {
     const industry = toText(pickField(row, ["company industry", "industry", "sector"]));
     const website = toText(pickField(row, ["website", "company website domain", "site", "url", "web"]));
     const notes = composeNotes(row);
+    const dueDate = toDateInputValue(pickField(row, ["due date", "due", "task due date", "deadline", "follow up date"]));
 
     const listInfo = splitListValues(
       pickField(row, ["list", "lists", "list name", "lead list", "segment", "tags"])
@@ -841,6 +858,7 @@ function buildPreviewRows(rows: ExcelRow[]): {
       industry,
       website,
       notes,
+      dueDate,
       duplicateKey,
     });
   });
@@ -1005,6 +1023,10 @@ export default function AdminCrmManagement() {
   const [duplicateIssues, setDuplicateIssues] = useState<DuplicateIssue[]>([]);
   const [previewParseError, setPreviewParseError] = useState<string>("");
   const [previewSheetName, setPreviewSheetName] = useState("");
+  const [defaultImportDueDate, setDefaultImportDueDate] = useState("");
+  const [previewDueDateOverrides, setPreviewDueDateOverrides] = useState<Record<number, string>>({});
+  const [selectedPreviewRows, setSelectedPreviewRows] = useState<number[]>([]);
+  const [bulkPreviewDueDate, setBulkPreviewDueDate] = useState("");
 
   const [autoFindOptions, setAutoFindOptions] = useState<AutoFindOptions | null>(null);
   const [autoFindCountry, setAutoFindCountry] = useState<"Canada" | "United States">("Canada");
@@ -1324,6 +1346,10 @@ export default function AdminCrmManagement() {
     setDuplicateIssues([]);
     setPreviewParseError("");
     setPreviewSheetName("");
+    setDefaultImportDueDate("");
+    setPreviewDueDateOverrides({});
+    setSelectedPreviewRows([]);
+    setBulkPreviewDueDate("");
   }
 
   function openExcelImportModal() {
@@ -1345,6 +1371,49 @@ export default function AdminCrmManagement() {
     }
   }
 
+  function dueDateForPreviewRow(row: PreviewLeadRow): string {
+    return previewDueDateOverrides[row.rowNumber] || defaultImportDueDate || row.dueDate || "";
+  }
+
+  function setPreviewRowDueDate(rowNumber: number, dueDate: string) {
+    setPreviewDueDateOverrides((prev) => {
+      const next = { ...prev };
+      if (dueDate) next[rowNumber] = dueDate;
+      else delete next[rowNumber];
+      return next;
+    });
+  }
+
+  function togglePreviewRowSelection(rowNumber: number, checked: boolean) {
+    setSelectedPreviewRows((prev) => {
+      if (checked) {
+        if (prev.includes(rowNumber)) return prev;
+        return [...prev, rowNumber];
+      }
+      return prev.filter((value) => value !== rowNumber);
+    });
+  }
+
+  function applyBulkPreviewDueDate() {
+    if (!bulkPreviewDueDate) {
+      pushToast("Choose a due date to apply", "error");
+      return;
+    }
+    const targetRows = selectedPreviewRows.filter((rowNumber) => !duplicateIssuesByRow.has(rowNumber));
+    if (targetRows.length === 0) {
+      pushToast("Select at least one ready row", "error");
+      return;
+    }
+    setPreviewDueDateOverrides((prev) => {
+      const next = { ...prev };
+      targetRows.forEach((rowNumber) => {
+        next[rowNumber] = bulkPreviewDueDate;
+      });
+      return next;
+    });
+    pushToast(`Due date applied to ${targetRows.length} row${targetRows.length === 1 ? "" : "s"}`, "success");
+  }
+
   async function handleExcelFileChange(file: File | null) {
     setImportPreviewSource("excel");
     setAutoFindPreviewResultIds([]);
@@ -1353,6 +1422,9 @@ export default function AdminCrmManagement() {
     setDuplicateIssues([]);
     setPreviewParseError("");
     setPreviewSheetName("");
+    setPreviewDueDateOverrides({});
+    setSelectedPreviewRows([]);
+    setBulkPreviewDueDate("");
 
     if (!file) return;
 
@@ -1398,6 +1470,15 @@ export default function AdminCrmManagement() {
       const effectiveAssigneeIds = leadAssignedTo ? [leadAssignedTo] : selectedUserIds;
       if (effectiveAssigneeIds.length > 0) {
         formData.append("assignedToUserIds", JSON.stringify(effectiveAssigneeIds));
+      }
+      if (defaultImportDueDate) {
+        formData.append("defaultDueDate", defaultImportDueDate);
+      }
+      const dueDateOverrides = Object.fromEntries(
+        Object.entries(previewDueDateOverrides).filter(([, dueDate]) => Boolean(dueDate))
+      );
+      if (Object.keys(dueDateOverrides).length > 0) {
+        formData.append("dueDateOverrides", JSON.stringify(dueDateOverrides));
       }
 
       const res = await fetch(`/api/admin/crm/leads/import`, {
@@ -1559,6 +1640,9 @@ export default function AdminCrmManagement() {
     setDuplicateIssues(built.duplicateIssues);
     setPreviewParseError("");
     setPreviewSheetName("Auto Find");
+    setPreviewDueDateOverrides({});
+    setSelectedPreviewRows([]);
+    setBulkPreviewDueDate("");
     setAutoFindPreviewResultIds(readySelectedIds);
     setShowImportModal(true);
   }
@@ -1945,6 +2029,16 @@ export default function AdminCrmManagement() {
   }, [duplicateIssues]);
   const rowCountWithDuplicates = duplicateIssuesByRow.size;
   const readyPreviewRows = Math.max(0, previewRows.length - rowCountWithDuplicates);
+  const readyPreviewRowNumbers = useMemo(
+    () => previewRows.filter((row) => !duplicateIssuesByRow.has(row.rowNumber)).map((row) => row.rowNumber),
+    [duplicateIssuesByRow, previewRows]
+  );
+  const selectedReadyPreviewRows = useMemo(
+    () => selectedPreviewRows.filter((rowNumber) => readyPreviewRowNumbers.includes(rowNumber)),
+    [readyPreviewRowNumbers, selectedPreviewRows]
+  );
+  const allReadyPreviewRowsSelected =
+    readyPreviewRowNumbers.length > 0 && readyPreviewRowNumbers.every((rowNumber) => selectedPreviewRows.includes(rowNumber));
   const effectiveImportAssigneeIds = useMemo(
     () => (leadAssignedTo ? [leadAssignedTo] : selectedUserIds),
     [leadAssignedTo, selectedUserIds]
@@ -3430,6 +3524,51 @@ export default function AdminCrmManagement() {
                     </CardContent>
                   </Card>
 
+                  <Card variant="outlined" sx={{ mt: 2 }}>
+                    <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                      <Typography variant="subtitle2" fontWeight={700}>Due Date Setup</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Set one default due date, then override individual rows or selected rows.
+                      </Typography>
+                      <TextField
+                        label="Default due date"
+                        type="date"
+                        size="small"
+                        fullWidth
+                        value={defaultImportDueDate}
+                        onChange={(e) => setDefaultImportDueDate(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ mt: 1.5 }}
+                      />
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
+                        <TextField
+                          label="Selected rows due date"
+                          type="date"
+                          size="small"
+                          fullWidth
+                          value={bulkPreviewDueDate}
+                          onChange={(e) => setBulkPreviewDueDate(e.target.value)}
+                          InputLabelProps={{ shrink: true }}
+                        />
+                        <Button variant="outlined" onClick={applyBulkPreviewDueDate} disabled={selectedReadyPreviewRows.length === 0}>
+                          Apply
+                        </Button>
+                      </Stack>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                        <Checkbox
+                          size="small"
+                          checked={allReadyPreviewRowsSelected}
+                          indeterminate={selectedReadyPreviewRows.length > 0 && !allReadyPreviewRowsSelected}
+                          disabled={readyPreviewRowNumbers.length === 0}
+                          onChange={(e) => setSelectedPreviewRows(e.target.checked ? readyPreviewRowNumbers : [])}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {selectedReadyPreviewRows.length} selected for bulk due date
+                        </Typography>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+
                   {duplicateIssues.length > 0 && (
                     <Alert severity="warning" sx={{ mt: 2 }}>
                       <Typography variant="subtitle2">Duplicate entries detected</Typography>
@@ -3476,6 +3615,13 @@ export default function AdminCrmManagement() {
                           <Card variant="outlined" sx={{ borderColor: hasIssue ? "warning.main" : "divider" }}>
                             <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
                               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                <Checkbox
+                                  size="small"
+                                  checked={selectedPreviewRows.includes(row.rowNumber)}
+                                  disabled={hasIssue}
+                                  onChange={(e) => togglePreviewRowSelection(row.rowNumber, e.target.checked)}
+                                  sx={{ p: 0.25, mr: 0.75 }}
+                                />
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
                                   <Typography variant="body2" fontWeight={700} noWrap>{row.clientName || "Unnamed"}</Typography>
                                   <Typography variant="caption" color="text.secondary" noWrap>{row.title}{row.title && row.companyName ? " · " : ""}{row.companyName}</Typography>
@@ -3490,6 +3636,17 @@ export default function AdminCrmManagement() {
                                 {row.phone && <Typography variant="caption" noWrap>{row.phone}</Typography>}
                                 {row.website && <Typography variant="caption" noWrap>{row.website}</Typography>}
                               </Stack>
+                              <TextField
+                                label="Due date"
+                                type="date"
+                                size="small"
+                                fullWidth
+                                value={dueDateForPreviewRow(row)}
+                                onChange={(e) => setPreviewRowDueDate(row.rowNumber, e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                                disabled={hasIssue}
+                                sx={{ mt: 1 }}
+                              />
                               <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5} sx={{ mt: 1 }}>
                                 {row.location && <Chip label={row.location} size="small" variant="outlined" sx={{ height: 20, fontSize: "0.6rem" }} />}
                                 {row.industry && <Chip label={row.industry} size="small" variant="outlined" sx={{ height: 20, fontSize: "0.6rem" }} />}
