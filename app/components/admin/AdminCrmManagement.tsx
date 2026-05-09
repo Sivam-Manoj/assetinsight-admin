@@ -1010,6 +1010,9 @@ export default function AdminCrmManagement() {
   const [transferReport, setTransferReport] = useState<CrmTransferReportResponse | null>(null);
   const [loadingTransfers, setLoadingTransfers] = useState(false);
   const [transferStatusFilter, setTransferStatusFilter] = useState<string>("");
+  const [transferAgentSearch, setTransferAgentSearch] = useState("");
+  const [transferFromSearch, setTransferFromSearch] = useState("");
+  const [transferToSearch, setTransferToSearch] = useState("");
   const [nearestReassignReport, setNearestReassignReport] = useState<CrmNearestReassignResponse | null>(null);
   const [nearestReassignBusy, setNearestReassignBusy] = useState(false);
 
@@ -1225,6 +1228,9 @@ export default function AdminCrmManagement() {
     try {
       const qs = new URLSearchParams();
       if (transferStatusFilter) qs.set("status", transferStatusFilter);
+      if (transferAgentSearch.trim()) qs.set("agent", transferAgentSearch.trim());
+      if (transferFromSearch.trim()) qs.set("from", transferFromSearch.trim());
+      if (transferToSearch.trim()) qs.set("to", transferToSearch.trim());
       qs.set("page", "1");
       qs.set("limit", "100");
       const res = await fetch(`/api/admin/crm/transfers?${qs.toString()}`, { cache: "no-store" });
@@ -1291,9 +1297,12 @@ export default function AdminCrmManagement() {
   }, [leadQuery]);
 
   useEffect(() => {
-    loadTransferReport();
+    const handle = setTimeout(() => {
+      void loadTransferReport();
+    }, 400);
+    return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transferStatusFilter]);
+  }, [transferStatusFilter, transferAgentSearch, transferFromSearch, transferToSearch]);
 
   useEffect(() => {
     loadImportFiles();
@@ -2985,7 +2994,43 @@ export default function AdminCrmManagement() {
                 <Typography variant="subtitle1" fontWeight={700}>Transfer Report</Typography>
                 <Typography variant="body2" color="text.secondary">Audit CRM lead transfers between agents.</Typography>
               </Box>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ width: { xs: "100%", md: "auto" }, minWidth: { md: 360 } }}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ width: { xs: "100%", md: "auto" }, minWidth: { md: 720 } }}>
+                <TextField
+                  size="small"
+                  label="CRM Agent"
+                  placeholder="Search employee"
+                  value={transferAgentSearch}
+                  onChange={(e) => setTransferAgentSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void loadTransferReport();
+                  }}
+                  slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
+                  fullWidth
+                />
+                <TextField
+                  size="small"
+                  label="From"
+                  placeholder="Transferred from"
+                  value={transferFromSearch}
+                  onChange={(e) => setTransferFromSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void loadTransferReport();
+                  }}
+                  slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
+                  fullWidth
+                />
+                <TextField
+                  size="small"
+                  label="To"
+                  placeholder="Transferred to"
+                  value={transferToSearch}
+                  onChange={(e) => setTransferToSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void loadTransferReport();
+                  }}
+                  slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
+                  fullWidth
+                />
                 <FormControl size="small" fullWidth>
                   <InputLabel>Status</InputLabel>
                   <Select value={transferStatusFilter} label="Status" onChange={(e) => setTransferStatusFilter(e.target.value)}>
@@ -3019,6 +3064,32 @@ export default function AdminCrmManagement() {
                 />
               ))}
             </Stack>
+
+            {(transferAgentSearch.trim() || transferFromSearch.trim() || transferToSearch.trim()) && (
+              <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.75} sx={{ mt: 1 }}>
+                {transferAgentSearch.trim() && (
+                  <Chip
+                    label={`CRM Agent: ${transferAgentSearch.trim()}`}
+                    size="small"
+                    onDelete={() => setTransferAgentSearch("")}
+                  />
+                )}
+                {transferFromSearch.trim() && (
+                  <Chip
+                    label={`From: ${transferFromSearch.trim()}`}
+                    size="small"
+                    onDelete={() => setTransferFromSearch("")}
+                  />
+                )}
+                {transferToSearch.trim() && (
+                  <Chip
+                    label={`To: ${transferToSearch.trim()}`}
+                    size="small"
+                    onDelete={() => setTransferToSearch("")}
+                  />
+                )}
+              </Stack>
+            )}
 
             {loadingTransfers && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
 
