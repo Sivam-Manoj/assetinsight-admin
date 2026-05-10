@@ -224,26 +224,39 @@ type CrmTransferReportResponse = {
   }>;
 };
 
-type CrmNearestReassignItem = {
+type AssignmentRepairAgent = {
+  _id: string;
+  email?: string;
+  username?: string;
+  crmAddress?: string;
+};
+
+type AssignmentRepairLead = {
   leadId: string;
+  title?: string;
   clientName?: string;
   companyName?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
+  dueDate?: string;
   location?: string;
-  currentAssignee?: CrmTransferUser | null;
-  proposedAssignee?: (CrmTransferUser & { crmAddress?: string }) | null;
-  changed: boolean;
-  method: string;
+  currentAssignee?: AssignmentRepairAgent | null;
+  proposedAssignee?: AssignmentRepairAgent | null;
+  changedToNearest?: boolean;
+  method?: string;
   distanceKm?: number;
   matchedRegion?: string;
   reason?: string;
 };
 
-type CrmNearestReassignResponse = {
-  apply: boolean;
-  reviewed: number;
-  changedCount: number;
-  appliedCount: number;
-  items: CrmNearestReassignItem[];
+type AssignmentRepairResponse = {
+  sourceBatchId: string;
+  sourceFileName?: string;
+  importedAt?: string;
+  leadCount: number;
+  agents: AssignmentRepairAgent[];
+  items: AssignmentRepairLead[];
 };
 
 type ExcelRow = Record<string, unknown>;
@@ -1028,8 +1041,12 @@ export default function AdminCrmManagement() {
   const [transferAgentSearch, setTransferAgentSearch] = useState("");
   const [transferFromSearch, setTransferFromSearch] = useState("");
   const [transferToSearch, setTransferToSearch] = useState("");
-  const [nearestReassignReport, setNearestReassignReport] = useState<CrmNearestReassignResponse | null>(null);
-  const [nearestReassignBusy, setNearestReassignBusy] = useState(false);
+  const [selectedRepairBatchId, setSelectedRepairBatchId] = useState("");
+  const [showAssignmentRepairModal, setShowAssignmentRepairModal] = useState(false);
+  const [assignmentRepairData, setAssignmentRepairData] = useState<AssignmentRepairResponse | null>(null);
+  const [assignmentRepairLoading, setAssignmentRepairLoading] = useState(false);
+  const [assignmentRepairSaving, setAssignmentRepairSaving] = useState(false);
+  const [assignmentRepairSelections, setAssignmentRepairSelections] = useState<Record<string, string>>({});
 
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [importPreviewSource, setImportPreviewSource] = useState<ImportPreviewSource>("excel");
@@ -1259,30 +1276,98 @@ export default function AdminCrmManagement() {
     }
   }
 
-  async function runNearestReassignment(apply: boolean) {
-    setNearestReassignBusy(true);
+  async function openAssignmentRepair(batchId?: string) {
+    const sourceBatchId = batchId || selectedRepairBatchId;
+    if (!sourceBatchId) {
+      pushToast("Select an upload to repair", "error");
+      return;
+    }
+
+    setSelectedRepairBatchId(sourceBatchId);
+    setAssignmentRepairLoading(true);
+    setShowAssignmentRepairModal(true);
     try {
-      const res = await fetch(`/api/admin/crm/leads/reassign-nearest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apply, limit: 100, includeClosed: false }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || "Failed to recompute nearest assignments");
-      setNearestReassignReport(json as CrmNearestReassignResponse);
-      pushToast(
-        apply
-          ? `Applied nearest assignment to ${json?.appliedCount || 0} lead${json?.appliedCount === 1 ? "" : "s"}`
-          : `Found ${json?.changedCount || 0} proposed reassignment${json?.changedCount === 1 ? "" : "s"}`,
-        "success"
+      const res = await fetch(
+        `/api/admin/crm/assignments-by-upload/${encodeURIComponent(sourceBatchId)}/leads`,
+        { cache: "no-store" }
       );
-      if (apply) {
-        await Promise.all([loadLeads(), loadAssignmentsByUpload()]);
-      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to load assignment repair");
+      const data = json as AssignmentRepairResponse;
+      setAssignmentRepairData(data);
+      setAssignmentRepairSelections(
+        Object.fromEntries(
+          (data.items || []).map((item) => [item.leadId, item.currentAssignee?._id || ""])
+        )
+      );
     } catch (e: unknown) {
-      pushToast(e instanceof Error ? e.message : "Failed to recompute nearest assignments", "error");
+      pushToast(e instanceof Error ? e.message : "Failed to load assignment repair", "error");
+      setShowAssignmentRepairModal(false);
     } finally {
-      setNearestReassignBusy(false);
+      setAssignmentRepairLoading(false);
+    }
+  }
+
+  function closeAssignmentRepairModal(force = false) {
+    if (assignmentRepairSaving && !force) return;
+    setShowAssignmentRepairModal(false);
+    setAssignmentRepairData(null);
+    setAssignmentRepairSelections({});
+  }
+
+  function useNearestAssignmentSuggestions() {
+    if (!assignmentRepairData) return;
+    setAssignmentRepairSelections(
+      Object.fromEntries(
+        assignmentRepairData.items.map((item) => [item.leadId, item.proposedAssignee?._id || item.currentAssignee?._id || ""])
+      )
+    );
+  }
+
+  function resetAssignmentRepairSelections() {
+    if (!assignmentRepairData) return;
+    setAssignmentRepairSelections(
+      Object.fromEntries(
+        assignmentRepairData.items.map((item) => [item.leadId, item.currentAssignee?._id || ""])
+      )
+    );
+  }
+
+  async function saveAssignmentRepair() {
+    if (!assignmentRepairData) return;
+    const assignments = assignmentRepairData.items
+      .map((item) => ({
+        leadId: item.leadId,
+        assignedTo: assignmentRepairSelections[item.leadId] || "",
+        currentAssignedTo: item.currentAssignee?._id || "",
+      }))
+      .filter((item) => item.assignedTo && item.assignedTo !== item.currentAssignedTo)
+      .map(({ leadId, assignedTo }) => ({ leadId, assignedTo }));
+
+    if (assignments.length === 0) {
+      pushToast("No assignment changes to save", "info");
+      return;
+    }
+
+    setAssignmentRepairSaving(true);
+    try {
+      const res = await fetch(
+        `/api/admin/crm/assignments-by-upload/${encodeURIComponent(assignmentRepairData.sourceBatchId)}/reassign`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assignments, notify: true }),
+        }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to save assignment repair");
+      pushToast(`Updated ${json?.changedCount || 0} assignment${json?.changedCount === 1 ? "" : "s"}`, "success");
+      closeAssignmentRepairModal(true);
+      await Promise.all([loadLeads(), loadAssignmentsByUpload()]);
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to save assignment repair", "error");
+    } finally {
+      setAssignmentRepairSaving(false);
     }
   }
 
@@ -2223,6 +2308,57 @@ export default function AdminCrmManagement() {
       return bTime - aTime;
     });
   }, [assignmentsByUpload]);
+
+  const assignmentAgentColumns = useMemo(() => {
+    const columns = new Map<string, { agentId: string; label: string }>();
+    for (const agent of crmAgentUsers) {
+      columns.set(agent._id, {
+        agentId: agent._id,
+        label: agent.username || agent.email || "Agent",
+      });
+    }
+    for (const row of assignmentUploadRows) {
+      for (const agent of row.agents) {
+        const agentId = agent.agentId || "unassigned";
+        if (!columns.has(agentId)) {
+          columns.set(agentId, {
+            agentId,
+            label: agent.agentUsername || agent.agentEmail || "Unassigned",
+          });
+        }
+      }
+    }
+    return Array.from(columns.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [assignmentUploadRows, crmAgentUsers]);
+
+  const assignmentAgentTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const row of assignmentUploadRows) {
+      for (const agent of row.agents) {
+        const agentId = agent.agentId || "unassigned";
+        totals.set(agentId, (totals.get(agentId) || 0) + (agent.leadCount || 0));
+      }
+    }
+    return totals;
+  }, [assignmentUploadRows]);
+
+  const assignmentGrandTotal = useMemo(
+    () => assignmentUploadRows.reduce((sum, row) => sum + (row.leadCount || 0), 0),
+    [assignmentUploadRows]
+  );
+
+  const selectedRepairUpload = useMemo(
+    () => assignmentUploadRows.find((row) => row.sourceBatchId === selectedRepairBatchId) || null,
+    [assignmentUploadRows, selectedRepairBatchId]
+  );
+
+  const assignmentRepairChangedCount = useMemo(() => {
+    if (!assignmentRepairData) return 0;
+    return assignmentRepairData.items.filter((item) => {
+      const selected = assignmentRepairSelections[item.leadId] || "";
+      return Boolean(selected && selected !== (item.currentAssignee?._id || ""));
+    }).length;
+  }, [assignmentRepairData, assignmentRepairSelections]);
 
   const transferStatusCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -3250,27 +3386,34 @@ export default function AdminCrmManagement() {
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={2}>
               <Box>
                 <Typography variant="subtitle1" fontWeight={700}>Lead Assignment by Upload</Typography>
-                <Typography variant="body2" color="text.secondary">See how many leads each upload created and which agents received them.</Typography>
+                <Typography variant="body2" color="text.secondary">Spreadsheet view of each upload by CRM agent, with running totals.</Typography>
               </Box>
               <Button variant="outlined" size="small" startIcon={<RefreshRoundedIcon />} onClick={() => void loadAssignmentsByUpload()} disabled={loadingAssignments}>
                 {loadingAssignments ? "Refreshing…" : "Refresh"}
               </Button>
             </Stack>
-            <TableContainer sx={{ maxHeight: 420, mt: 2 }}>
-              <Table size="small" stickyHeader>
+            <TableContainer sx={{ maxHeight: 520, mt: 2, overflowX: "auto" }}>
+              <Table size="small" stickyHeader sx={{ minWidth: Math.max(860, 520 + assignmentAgentColumns.length * 120) }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Upload File</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Imported</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Leads</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Agents</TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>Upload File</TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 110 }}>Imported</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, minWidth: 90 }}>Leads</TableCell>
+                    {assignmentAgentColumns.map((agent) => (
+                      <TableCell key={agent.agentId} align="right" sx={{ fontWeight: 700, minWidth: 120 }}>
+                        <Typography variant="caption" fontWeight={700} noWrap display="block">
+                          {agent.label}
+                        </Typography>
+                      </TableCell>
+                    ))}
+                    <TableCell align="right" sx={{ fontWeight: 700, minWidth: 100 }}>Repair</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loadingAssignments ? (
-                    <TableRow><TableCell colSpan={4}><LinearProgress /></TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4 + assignmentAgentColumns.length}><LinearProgress /></TableCell></TableRow>
                   ) : assignmentUploadRows.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} sx={{ color: "text.secondary", py: 3, textAlign: "center" }}>No assignment data</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4 + assignmentAgentColumns.length} sx={{ color: "text.secondary", py: 3, textAlign: "center" }}>No assignment data</TableCell></TableRow>
                   ) : assignmentUploadRows.map((row) => (
                     <TableRow key={row.sourceBatchId} hover>
                       <TableCell>
@@ -3278,93 +3421,242 @@ export default function AdminCrmManagement() {
                         <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 220 }}>{row.sourceBatchId}</Typography>
                       </TableCell>
                       <TableCell><Typography variant="caption">{row.importedAt ? new Date(row.importedAt).toLocaleDateString() : "-"}</Typography></TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={0.5} alignItems="center">
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
                           <Chip label={row.leadCount} size="small" color="info" variant="outlined" />
                           {row.overdueCount > 0 && <Chip label={`${row.overdueCount} overdue`} size="small" color="error" variant="outlined" />}
                         </Stack>
                       </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                          {row.agents.map((agent) => (
-                            <Chip
-                              key={`${row.sourceBatchId}-${agent.agentId}`}
-                              label={`${agent.agentUsername || agent.agentEmail || "?"} (${agent.leadCount})`}
-                              size="small"
-                              variant="outlined"
-                            />
-                          ))}
-                        </Stack>
+                      {assignmentAgentColumns.map((agent) => {
+                        const count = row.agents.find((item) => (item.agentId || "unassigned") === agent.agentId)?.leadCount || 0;
+                        return (
+                          <TableCell key={`${row.sourceBatchId}-${agent.agentId}`} align="right">
+                            <Typography variant="body2" color={count > 0 ? "text.primary" : "text.disabled"} fontWeight={count > 0 ? 700 : 400}>
+                              {count}
+                            </Typography>
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell align="right">
+                        <Button size="small" variant="outlined" onClick={() => void openAssignmentRepair(row.sourceBatchId)}>
+                          Repair
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
+                  {!loadingAssignments && assignmentUploadRows.length > 0 && (
+                    <TableRow sx={{ "& td": { fontWeight: 800, bgcolor: "action.hover" } }}>
+                      <TableCell>Total</TableCell>
+                      <TableCell />
+                      <TableCell align="right">{assignmentGrandTotal}</TableCell>
+                      {assignmentAgentColumns.map((agent) => (
+                        <TableCell key={`total-${agent.agentId}`} align="right">
+                          {assignmentAgentTotals.get(agent.agentId) || 0}
+                        </TableCell>
+                      ))}
+                      <TableCell />
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
           </CardContent>
         </Card>
 
-        {/* Nearest Lead Assignment Repair */}
+        {/* Upload-Scoped Lead Assignment Repair */}
         <Card>
           <CardContent sx={{ p: { xs: 2, md: 3 } }}>
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={2}>
               <Box>
                 <Typography variant="subtitle1" fontWeight={700}>Nearest Assignment Repair</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Preview and apply nearest-salesperson reassignment for active CRM leads using lead location and CRM service address.
+                  Select an uploaded batch, review its lead distribution, and change agents per lead.
                 </Typography>
               </Box>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
-                <Button variant="outlined" startIcon={<SearchRoundedIcon />} onClick={() => void runNearestReassignment(false)} disabled={nearestReassignBusy}>
-                  Preview
-                </Button>
-                <Button variant="contained" color="warning" onClick={() => void runNearestReassignment(true)} disabled={nearestReassignBusy || !nearestReassignReport?.changedCount}>
-                  Apply {nearestReassignReport?.changedCount || 0}
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 420 } }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Upload</InputLabel>
+                  <Select
+                    value={selectedRepairBatchId}
+                    label="Upload"
+                    onChange={(e) => setSelectedRepairBatchId(e.target.value)}
+                    {...crmSelectOpenProps("repair-upload")}
+                  >
+                    {renderCrmMenuHeader("Upload")}
+                    {assignmentUploadRows.map((row) => (
+                      <MenuItem key={row.sourceBatchId} value={row.sourceBatchId}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" noWrap>{row.sourceFileName || "Unnamed"}</Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            {toIsoDateValue(row.importedAt) || "-"} · {row.leadCount} lead{row.leadCount === 1 ? "" : "s"}
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  color="warning"
+                  startIcon={<GroupsRoundedIcon />}
+                  onClick={() => void openAssignmentRepair()}
+                  disabled={!selectedRepairBatchId || assignmentRepairLoading}
+                  sx={{ minWidth: 130 }}
+                >
+                  Open Repair
                 </Button>
               </Stack>
             </Stack>
-            {nearestReassignBusy && <LinearProgress sx={{ mt: 2 }} />}
-            {nearestReassignReport && (
-              <TableContainer sx={{ maxHeight: 360, mt: 2 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Current</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Nearest</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Match</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {nearestReassignReport.items.length === 0 ? (
-                      <TableRow><TableCell colSpan={4} sx={{ color: "text.secondary", py: 3, textAlign: "center" }}>No leads reviewed</TableCell></TableRow>
-                    ) : nearestReassignReport.items.slice(0, 50).map((item) => (
-                      <TableRow key={item.leadId} hover selected={item.changed}>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 220 }}>{item.clientName || item.companyName || "Lead"}</Typography>
-                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", maxWidth: 240 }}>{item.location || "-"}</Typography>
-                        </TableCell>
-                        <TableCell><Typography variant="caption">{item.currentAssignee?.username || item.currentAssignee?.email || "-"}</Typography></TableCell>
-                        <TableCell>
-                          <Typography variant="caption" display="block">{item.proposedAssignee?.username || item.proposedAssignee?.email || "-"}</Typography>
-                          <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ maxWidth: 220 }}>{item.proposedAssignee?.crmAddress || ""}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip label={item.changed ? "Change" : "Keep"} size="small" color={item.changed ? "warning" : "success"} variant="outlined" sx={{ mr: 0.5 }} />
-                          <Typography variant="caption" color="text.secondary">
-                            {item.distanceKm ? `${item.distanceKm} km` : item.matchedRegion || item.method}
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+            {selectedRepairUpload && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                Selected: {selectedRepairUpload.sourceFileName || selectedRepairUpload.sourceBatchId} · {selectedRepairUpload.leadCount} lead{selectedRepairUpload.leadCount === 1 ? "" : "s"}
+              </Alert>
             )}
           </CardContent>
         </Card>
 
         {/* ── CRM Team Manager Dialog ── */}
+        {/* Assignment Distribution Repair Dialog */}
+        <Dialog open={showAssignmentRepairModal} onClose={() => closeAssignmentRepairModal()} maxWidth="xl" fullWidth fullScreen={!matchesMd} scroll="paper">
+          <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h6" fontWeight={800}>Assignment Distribution</Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {assignmentRepairData?.sourceFileName || assignmentRepairData?.sourceBatchId || "Upload assignment repair"}
+                {assignmentRepairData?.importedAt ? ` · ${toIsoDateValue(assignmentRepairData.importedAt)}` : ""}
+                {assignmentRepairData ? ` · ${assignmentRepairData.leadCount} lead${assignmentRepairData.leadCount === 1 ? "" : "s"}` : ""}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              {assignmentRepairData && (
+                <Chip label={`${assignmentRepairChangedCount} changed`} color={assignmentRepairChangedCount > 0 ? "warning" : "default"} size="small" variant="outlined" />
+              )}
+              <IconButton size="small" onClick={() => closeAssignmentRepairModal()} disabled={assignmentRepairSaving}><CloseRoundedIcon /></IconButton>
+            </Stack>
+          </DialogTitle>
+          <DialogContent dividers sx={{ p: 0 }}>
+            <Box sx={{ p: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ sm: "center" }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <Button variant="outlined" onClick={useNearestAssignmentSuggestions} disabled={!assignmentRepairData || assignmentRepairLoading || assignmentRepairSaving}>
+                    Use nearest suggestions
+                  </Button>
+                  <Button variant="outlined" onClick={resetAssignmentRepairSelections} disabled={!assignmentRepairData || assignmentRepairLoading || assignmentRepairSaving}>
+                    Reset changes
+                  </Button>
+                </Stack>
+                <Button
+                  variant="contained"
+                  color="warning"
+                  onClick={() => void saveAssignmentRepair()}
+                  disabled={!assignmentRepairData || assignmentRepairLoading || assignmentRepairSaving || assignmentRepairChangedCount === 0}
+                >
+                  {assignmentRepairSaving ? "Saving..." : "Save and close"}
+                </Button>
+              </Stack>
+            </Box>
+
+            {assignmentRepairLoading ? (
+              <Box sx={{ p: 2 }}><LinearProgress /></Box>
+            ) : !assignmentRepairData ? (
+              <Alert severity="info" sx={{ m: 2 }}>Select an upload to repair assignments.</Alert>
+            ) : assignmentRepairData.items.length === 0 ? (
+              <Alert severity="info" sx={{ m: 2 }}>No leads found for this upload.</Alert>
+            ) : (
+              <TableContainer sx={{ maxHeight: "65vh" }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 1120 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Company / Location</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Current Agent</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Nearest Suggestion</TableCell>
+                      <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>Agent</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Change</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {assignmentRepairData.items.map((item) => {
+                      const selectedAgentId = assignmentRepairSelections[item.leadId] || "";
+                      const currentAgentId = item.currentAssignee?._id || "";
+                      const changed = Boolean(selectedAgentId && selectedAgentId !== currentAgentId);
+                      const selectedAgent = assignmentRepairData.agents.find((agent) => agent._id === selectedAgentId);
+                      return (
+                        <TableRow key={item.leadId} hover selected={changed}>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 220 }}>
+                              {item.clientName || item.title || "Lead"}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", maxWidth: 220 }}>
+                              {item.email || item.phone || item.status || "-"}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" noWrap sx={{ maxWidth: 260 }}>{item.companyName || "-"}</Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", maxWidth: 260 }}>{item.location || "-"}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption">
+                              {item.currentAssignee?.username || item.currentAssignee?.email || "-"}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" display="block">
+                              {item.proposedAssignee?.username || item.proposedAssignee?.email || "-"}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {item.distanceKm ? `${item.distanceKm} km` : item.matchedRegion || item.method || ""}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <FormControl size="small" fullWidth>
+                              <Select
+                                value={selectedAgentId}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setAssignmentRepairSelections((prev) => ({ ...prev, [item.leadId]: value }));
+                                }}
+                                displayEmpty
+                                {...crmSelectOpenProps(`repair-agent-${item.leadId}`)}
+                              >
+                                {renderCrmMenuHeader("Agent")}
+                                <MenuItem value="" disabled>Select agent</MenuItem>
+                                {assignmentRepairData.agents.map((agent) => (
+                                  <MenuItem key={`${item.leadId}-${agent._id}`} value={agent._id}>
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="body2" noWrap>{agent.username || agent.email}</Typography>
+                                      {agent.crmAddress ? (
+                                        <Typography variant="caption" color="text.secondary" noWrap>{agent.crmAddress}</Typography>
+                                      ) : null}
+                                    </Box>
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                            {selectedAgent && (
+                              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", mt: 0.25, maxWidth: 220 }}>
+                                {selectedAgent.crmAddress || ""}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={changed ? "Change" : "Keep"}
+                              color={changed ? "warning" : "success"}
+                              size="small"
+                              variant="outlined"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={showCrmOpsModal} onClose={() => setShowCrmOpsModal(false)} maxWidth="xl" fullWidth fullScreen={!matchesMd} scroll="paper">
           <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
             <Box>
