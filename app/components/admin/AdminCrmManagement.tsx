@@ -928,8 +928,9 @@ export default function AdminCrmManagement() {
     whiteSpace: "normal",
     wordBreak: "break-word",
   };
+  const [openCrmDropdown, setOpenCrmDropdown] = useState<string | null>(null);
   const [openAutoFindDropdown, setOpenAutoFindDropdown] = useState<"country" | "regions" | "categories" | null>(null);
-  function renderAutoFindMenuHeader(label: string) {
+  function renderDropdownMenuHeader(label: string, onClose: () => void) {
     return (
       <ListSubheader
         disableSticky
@@ -952,7 +953,7 @@ export default function AdminCrmManagement() {
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              setOpenAutoFindDropdown(null);
+              onClose();
             }}
           >
             <CloseRoundedIcon sx={{ fontSize: 18 }} />
@@ -960,6 +961,20 @@ export default function AdminCrmManagement() {
         </Stack>
       </ListSubheader>
     );
+  }
+  function renderAutoFindMenuHeader(label: string) {
+    return renderDropdownMenuHeader(label, () => setOpenAutoFindDropdown(null));
+  }
+  function renderCrmMenuHeader(label: string) {
+    return renderDropdownMenuHeader(label, () => setOpenCrmDropdown(null));
+  }
+  function crmSelectOpenProps(key: string) {
+    return {
+      open: openCrmDropdown === key,
+      onOpen: () => setOpenCrmDropdown(key),
+      onClose: () => setOpenCrmDropdown(null),
+      MenuProps: autoFindSelectMenuProps,
+    };
   }
   const [toasts, setToasts] = useState<{ id: number; type: "success" | "error" | "info"; message: string }[]>([]);
   function pushToast(message: string, type: "success" | "error" | "info" = "info") {
@@ -2344,7 +2359,8 @@ export default function AdminCrmManagement() {
                 <Grid size={{ xs: 12, md: 4 }}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Salesperson</InputLabel>
-                    <Select value={leadAssignedTo} label="Salesperson" onChange={(e) => setLeadAssignedTo(e.target.value)}>
+                    <Select value={leadAssignedTo} label="Salesperson" onChange={(e) => setLeadAssignedTo(e.target.value)} {...crmSelectOpenProps("control-salesperson")}>
+                      {renderCrmMenuHeader("Salesperson")}
                       <MenuItem value="">All CRM Agents</MenuItem>
                       {crmAgentUsers.map((u) => (
                         <MenuItem key={u._id} value={u._id}>{u.username || u.email}</MenuItem>
@@ -2360,6 +2376,7 @@ export default function AdminCrmManagement() {
                       value={leadMonths}
                       label="Months"
                       onChange={(e) => setLeadMonths(typeof e.target.value === "string" ? e.target.value.split(",") : e.target.value)}
+                      {...crmSelectOpenProps("control-months")}
                       renderValue={(selected) => {
                         const values = Array.isArray(selected) ? selected : [];
                         if (!values.length) return "All Months";
@@ -2368,6 +2385,7 @@ export default function AdminCrmManagement() {
                           .join(", ");
                       }}
                     >
+                      {renderCrmMenuHeader("Months")}
                       {MONTH_OPTIONS.map((m) => (
                         <MenuItem key={m.value} value={m.value}>
                           <Checkbox size="small" checked={leadMonths.includes(m.value)} />
@@ -2380,7 +2398,8 @@ export default function AdminCrmManagement() {
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Year</InputLabel>
-                    <Select value={leadYear} label="Year" onChange={(e) => setLeadYear(e.target.value)}>
+                    <Select value={leadYear} label="Year" onChange={(e) => setLeadYear(e.target.value)} {...crmSelectOpenProps("control-year")}>
+                      {renderCrmMenuHeader("Year")}
                       <MenuItem value="">All</MenuItem>
                       {yearOptions.map((year) => (
                         <MenuItem key={year} value={String(year)}>{year}</MenuItem>
@@ -2873,7 +2892,8 @@ export default function AdminCrmManagement() {
                 />
                 <FormControl size="small" sx={{ minWidth: 140 }}>
                   <InputLabel>Status</InputLabel>
-                  <Select value={leadStatus} label="Status" onChange={(e) => setLeadStatus(e.target.value)}>
+                  <Select value={leadStatus} label="Status" onChange={(e) => setLeadStatus(e.target.value)} {...crmSelectOpenProps("lead-status")}>
+                    {renderCrmMenuHeader("Status")}
                     <MenuItem value="">All</MenuItem>
                     {CRM_STATUS_FILTER_OPTIONS.map((s) => (
                       <MenuItem key={s} value={s}>
@@ -2884,7 +2904,8 @@ export default function AdminCrmManagement() {
                 </FormControl>
                 <FormControl size="small" sx={{ minWidth: 140 }}>
                   <InputLabel>Agent</InputLabel>
-                  <Select value={leadAssignedTo} label="Agent" onChange={(e) => setLeadAssignedTo(e.target.value)}>
+                  <Select value={leadAssignedTo} label="Agent" onChange={(e) => setLeadAssignedTo(e.target.value)} {...crmSelectOpenProps("lead-agent")}>
+                    {renderCrmMenuHeader("Agent")}
                     <MenuItem value="">All</MenuItem>
                     {crmAgentUsers.map((u) => <MenuItem key={u._id} value={u._id}>{u.username || u.email}</MenuItem>)}
                   </Select>
@@ -3033,7 +3054,8 @@ export default function AdminCrmManagement() {
                 />
                 <FormControl size="small" fullWidth>
                   <InputLabel>Status</InputLabel>
-                  <Select value={transferStatusFilter} label="Status" onChange={(e) => setTransferStatusFilter(e.target.value)}>
+                  <Select value={transferStatusFilter} label="Status" onChange={(e) => setTransferStatusFilter(e.target.value)} {...crmSelectOpenProps("transfer-status")}>
+                    {renderCrmMenuHeader("Status")}
                     <MenuItem value="">All</MenuItem>
                     {(["pending", "accepted", "rejected", "cancelled"] as const).map((status) => (
                       <MenuItem key={status} value={status}>{transferStatusLabel(status)}</MenuItem>
@@ -3370,7 +3392,8 @@ export default function AdminCrmManagement() {
                   />
                   <FormControl size="small" sx={{ minWidth: 150 }}>
                     <InputLabel>CRM Filter</InputLabel>
-                    <Select value={crmFilter} label="CRM Filter" onChange={(e) => setCrmFilter(e.target.value as "all" | "crm" | "noncrm")}>
+                    <Select value={crmFilter} label="CRM Filter" onChange={(e) => setCrmFilter(e.target.value as "all" | "crm" | "noncrm")} {...crmSelectOpenProps("team-crm-filter")}>
+                      {renderCrmMenuHeader("CRM Filter")}
                       <MenuItem value="all">All users</MenuItem>
                       <MenuItem value="crm">CRM only</MenuItem>
                       <MenuItem value="noncrm">Non-CRM only</MenuItem>
@@ -3790,14 +3813,16 @@ export default function AdminCrmManagement() {
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mt: 1.5 }}>
                       <FormControl size="small" sx={{ minWidth: 160 }}>
                         <InputLabel>Status</InputLabel>
-                        <Select value={adminReplyStatus} label="Status" onChange={(e) => setAdminReplyStatus(e.target.value)}>
+                        <Select value={adminReplyStatus} label="Status" onChange={(e) => setAdminReplyStatus(e.target.value)} {...crmSelectOpenProps("reply-status")}>
+                          {renderCrmMenuHeader("Status")}
                           {CRM_STATUSES.map((status) => <MenuItem key={status} value={status}>{statusLabel(status)}</MenuItem>)}
                         </Select>
                       </FormControl>
                       {(adminReplyStatus || activeLeadDetails?.status) === "lost" ? (
                         <FormControl size="small" sx={{ minWidth: 180 }}>
                           <InputLabel>Lost Reason</InputLabel>
-                          <Select value={adminReplyLostReason} label="Lost Reason" onChange={(e) => setAdminReplyLostReason(e.target.value)}>
+                          <Select value={adminReplyLostReason} label="Lost Reason" onChange={(e) => setAdminReplyLostReason(e.target.value)} {...crmSelectOpenProps("reply-lost-reason")}>
+                            {renderCrmMenuHeader("Lost Reason")}
                             {CRM_LOST_REASONS.map((reason) => <MenuItem key={reason} value={reason}>{lostReasonLabel(reason)}</MenuItem>)}
                           </Select>
                         </FormControl>
@@ -3875,14 +3900,16 @@ export default function AdminCrmManagement() {
                                   <Stack spacing={1} sx={{ mt: 1 }}>
                                     <TextField size="small" multiline rows={3} value={editingComment} onChange={(e) => setEditingComment(e.target.value)} placeholder="Edit update message" fullWidth />
                                     <FormControl size="small" fullWidth>
-                                      <Select value={editingStatus} onChange={(e) => setEditingStatus(e.target.value)}>
+                                      <Select value={editingStatus} onChange={(e) => setEditingStatus(e.target.value)} {...crmSelectOpenProps(`edit-status-${updateId}`)}>
+                                        {renderCrmMenuHeader("Status")}
                                         {CRM_STATUSES.map((status) => <MenuItem key={`${updateId}-${status}`} value={status}>{statusLabel(status)}</MenuItem>)}
                                       </Select>
                                     </FormControl>
                                     {editingStatus === "lost" ? (
                                       <FormControl size="small" fullWidth>
                                         <InputLabel>Lost Reason</InputLabel>
-                                        <Select value={editingLostReason} label="Lost Reason" onChange={(e) => setEditingLostReason(e.target.value)}>
+                                        <Select value={editingLostReason} label="Lost Reason" onChange={(e) => setEditingLostReason(e.target.value)} {...crmSelectOpenProps(`edit-lost-reason-${updateId}`)}>
+                                          {renderCrmMenuHeader("Lost Reason")}
                                           {CRM_LOST_REASONS.map((reason) => <MenuItem key={`${updateId}-${reason}`} value={reason}>{lostReasonLabel(reason)}</MenuItem>)}
                                         </Select>
                                       </FormControl>
