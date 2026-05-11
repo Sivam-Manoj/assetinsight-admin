@@ -2352,6 +2352,14 @@ export default function AdminCrmManagement() {
     [assignmentUploadRows, selectedRepairBatchId]
   );
 
+  const crmAgentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    crmAgentUsers.forEach((agent) => {
+      map.set(agent._id, agent.username || agent.email || "Agent");
+    });
+    return map;
+  }, [crmAgentUsers]);
+
   const assignmentRepairChangedCount = useMemo(() => {
     if (!assignmentRepairData) return 0;
     return assignmentRepairData.items.filter((item) => {
@@ -3152,42 +3160,30 @@ export default function AdminCrmManagement() {
                 <Typography variant="body2" color="text.secondary">Audit CRM lead transfers between agents.</Typography>
               </Box>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ width: { xs: "100%", md: "auto" }, minWidth: { md: 720 } }}>
-                <TextField
-                  size="small"
-                  label="CRM Agent"
-                  placeholder="Search employee"
-                  value={transferAgentSearch}
-                  onChange={(e) => setTransferAgentSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void loadTransferReport();
-                  }}
-                  slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
-                  fullWidth
-                />
-                <TextField
-                  size="small"
-                  label="From"
-                  placeholder="Transferred from"
-                  value={transferFromSearch}
-                  onChange={(e) => setTransferFromSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void loadTransferReport();
-                  }}
-                  slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
-                  fullWidth
-                />
-                <TextField
-                  size="small"
-                  label="To"
-                  placeholder="Transferred to"
-                  value={transferToSearch}
-                  onChange={(e) => setTransferToSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void loadTransferReport();
-                  }}
-                  slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
-                  fullWidth
-                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel>CRM Agent</InputLabel>
+                  <Select value={transferAgentSearch} label="CRM Agent" onChange={(e) => setTransferAgentSearch(e.target.value)} {...crmSelectOpenProps("transfer-agent")}>
+                    {renderCrmMenuHeader("CRM Agent")}
+                    <MenuItem value="">All agents</MenuItem>
+                    {crmAgentUsers.map((u) => <MenuItem key={`transfer-agent-${u._id}`} value={u._id}>{u.username || u.email}</MenuItem>)}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>From</InputLabel>
+                  <Select value={transferFromSearch} label="From" onChange={(e) => setTransferFromSearch(e.target.value)} {...crmSelectOpenProps("transfer-from")}>
+                    {renderCrmMenuHeader("From")}
+                    <MenuItem value="">All from agents</MenuItem>
+                    {crmAgentUsers.map((u) => <MenuItem key={`transfer-from-${u._id}`} value={u._id}>{u.username || u.email}</MenuItem>)}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>To</InputLabel>
+                  <Select value={transferToSearch} label="To" onChange={(e) => setTransferToSearch(e.target.value)} {...crmSelectOpenProps("transfer-to")}>
+                    {renderCrmMenuHeader("To")}
+                    <MenuItem value="">All to agents</MenuItem>
+                    {crmAgentUsers.map((u) => <MenuItem key={`transfer-to-${u._id}`} value={u._id}>{u.username || u.email}</MenuItem>)}
+                  </Select>
+                </FormControl>
                 <FormControl size="small" fullWidth>
                   <InputLabel>Status</InputLabel>
                   <Select value={transferStatusFilter} label="Status" onChange={(e) => setTransferStatusFilter(e.target.value)} {...crmSelectOpenProps("transfer-status")}>
@@ -3227,21 +3223,21 @@ export default function AdminCrmManagement() {
               <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.75} sx={{ mt: 1 }}>
                 {transferAgentSearch.trim() && (
                   <Chip
-                    label={`CRM Agent: ${transferAgentSearch.trim()}`}
+                    label={`CRM Agent: ${crmAgentNameById.get(transferAgentSearch) || transferAgentSearch}`}
                     size="small"
                     onDelete={() => setTransferAgentSearch("")}
                   />
                 )}
                 {transferFromSearch.trim() && (
                   <Chip
-                    label={`From: ${transferFromSearch.trim()}`}
+                    label={`From: ${crmAgentNameById.get(transferFromSearch) || transferFromSearch}`}
                     size="small"
                     onDelete={() => setTransferFromSearch("")}
                   />
                 )}
                 {transferToSearch.trim() && (
                   <Chip
-                    label={`To: ${transferToSearch.trim()}`}
+                    label={`To: ${crmAgentNameById.get(transferToSearch) || transferToSearch}`}
                     size="small"
                     onDelete={() => setTransferToSearch("")}
                   />
