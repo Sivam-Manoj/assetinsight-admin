@@ -158,6 +158,33 @@ type ImportFilesResponse = {
   limit: number;
 };
 
+type CrmImportJobItem = {
+  jobId: string;
+  sourceBatchId: string;
+  sourceFileName?: string;
+  sourceFileUrl?: string;
+  sourceSheetName?: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  totalRows: number;
+  processedRows: number;
+  importedCount: number;
+  duplicateCount: number;
+  errorCount: number;
+  progress: number;
+  message?: string;
+  error?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+};
+
+type CrmImportJobsResponse = {
+  items: CrmImportJobItem[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
 type AssignmentByUploadItem = {
   sourceBatchId: string;
   sourceFileName?: string;
@@ -1031,6 +1058,8 @@ export default function AdminCrmManagement() {
   const [importFiles, setImportFiles] = useState<ImportFilesResponse | null>(null);
   const [loadingImportFiles, setLoadingImportFiles] = useState(false);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [importJobs, setImportJobs] = useState<CrmImportJobsResponse | null>(null);
+  const [loadingImportJobs, setLoadingImportJobs] = useState(false);
 
   const [assignmentsByUpload, setAssignmentsByUpload] = useState<AssignmentByUploadItem[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
@@ -1241,6 +1270,20 @@ export default function AdminCrmManagement() {
     }
   }
 
+  async function loadImportJobs() {
+    setLoadingImportJobs(true);
+    try {
+      const res = await fetch(`/api/admin/crm/leads/import-jobs?page=1&limit=50`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to load CRM import jobs");
+      setImportJobs(json as CrmImportJobsResponse);
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to load CRM import jobs", "error");
+    } finally {
+      setLoadingImportJobs(false);
+    }
+  }
+
   async function loadAssignmentsByUpload() {
     setLoadingAssignments(true);
     try {
@@ -1406,10 +1449,24 @@ export default function AdminCrmManagement() {
 
   useEffect(() => {
     loadImportFiles();
+    loadImportJobs();
     loadAssignmentsByUpload();
     loadAutoFindOptions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const hasRunningImportJob = (importJobs?.items || []).some((job) => job.status === "queued" || job.status === "processing");
+    if (!hasRunningImportJob) return;
+    const timer = setInterval(() => {
+      void loadImportJobs();
+      void loadLeads();
+      void loadImportFiles();
+      void loadAssignmentsByUpload();
+    }, 3000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [importJobs?.items]);
 
   useEffect(() => {
     return () => stopAutoFindPolling();
@@ -1596,6 +1653,20 @@ export default function AdminCrmManagement() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || "Failed to import CRM leads");
+
+      if (res.status === 202 || json?.jobId) {
+        pushToast(`CRM import queued (${json?.totalRows || previewRows.length} row${(json?.totalRows || previewRows.length) === 1 ? "" : "s"})`, "success");
+        resetPreviewState();
+        setImportPreviewSource("excel");
+        if (wasAutoFindPreview) {
+          clearAutoFindRunState();
+          clearAutoFindResultsState();
+        }
+        setAutoFindPreviewResultIds([]);
+        setShowImportModal(false);
+        await loadImportJobs();
+        return;
+      }
 
       const dupCount = json?.duplicateCount || 0;
       const msg = dupCount > 0
@@ -3303,6 +3374,80 @@ export default function AdminCrmManagement() {
                       </TableCell>
                     </TableRow>
                   ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+
+        {/* CRM Import Processing */}
+        <Card>
+          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={2}>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>CRM Import Processing</Typography>
+                <Typography variant="body2" color="text.secondary">Queued and running CRM lead imports process in the background.</Typography>
+              </Box>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<RefreshRoundedIcon />}
+                onClick={() => void loadImportJobs()}
+                disabled={loadingImportJobs}
+              >
+                {loadingImportJobs ? "Refreshing..." : "Refresh"}
+              </Button>
+            </Stack>
+            <TableContainer sx={{ maxHeight: 360, mt: 2 }}>
+              <Table size="small" stickyHeader sx={{ minWidth: 980 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Upload/File</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 220 }}>Progress</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Imported</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Duplicates</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Errors</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {loadingImportJobs ? (
+                    <TableRow><TableCell colSpan={8}><LinearProgress /></TableCell></TableRow>
+                  ) : (importJobs?.items || []).length === 0 ? (
+                    <TableRow><TableCell colSpan={8} sx={{ color: "text.secondary", py: 3, textAlign: "center" }}>No CRM import jobs</TableCell></TableRow>
+                  ) : (importJobs?.items || []).map((job) => {
+                    const progress = Math.max(0, Math.min(100, Number(job.progress) || 0));
+                    const statusColor = job.status === "completed" ? "success" : job.status === "failed" ? "error" : job.status === "processing" ? "info" : "default";
+                    return (
+                      <TableRow key={job.jobId} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600} noWrap sx={{ maxWidth: 260 }}>{job.sourceFileName || "Unnamed"}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ maxWidth: 260 }}>{job.sourceBatchId}</Typography>
+                          {job.error && <Typography variant="caption" color="error" display="block" noWrap sx={{ maxWidth: 260 }}>{job.error}</Typography>}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">{toDateTimeValue(job.createdAt)}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={job.status} size="small" color={statusColor as any} variant="outlined" />
+                        </TableCell>
+                        <TableCell>
+                          <Stack spacing={0.5}>
+                            <LinearProgress variant="determinate" value={progress} sx={{ height: 7, borderRadius: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              {progress}% · {job.message || "-"}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell align="right">{job.totalRows || 0}</TableCell>
+                        <TableCell align="right">{job.importedCount || 0}</TableCell>
+                        <TableCell align="right">{job.duplicateCount || 0}</TableCell>
+                        <TableCell align="right">{job.errorCount || 0}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
