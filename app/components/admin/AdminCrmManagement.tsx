@@ -31,6 +31,7 @@ import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import {
   Alert,
+  alpha,
   Box,
   Button,
   Card,
@@ -388,21 +389,6 @@ const CRM_LOST_REASONS = [
   "timing",
   "competitor",
   "no_assets",
-] as const;
-
-const MONTH_OPTIONS = [
-  { value: "1", label: "January" },
-  { value: "2", label: "February" },
-  { value: "3", label: "March" },
-  { value: "4", label: "April" },
-  { value: "5", label: "May" },
-  { value: "6", label: "June" },
-  { value: "7", label: "July" },
-  { value: "8", label: "August" },
-  { value: "9", label: "September" },
-  { value: "10", label: "October" },
-  { value: "11", label: "November" },
-  { value: "12", label: "December" },
 ] as const;
 
 const CRM_SPECIALIZATION_LABELS: Record<string, string> = {
@@ -968,6 +954,64 @@ export default function AdminCrmManagement() {
     whiteSpace: "normal",
     wordBreak: "break-word",
   };
+  const autoFindSearchButtonSx = {
+    minHeight: 46,
+    minWidth: { xs: "100%", sm: 190 },
+    px: 2.5,
+    borderRadius: 3,
+    overflow: "hidden",
+    position: "relative",
+    color: "#fff",
+    backgroundImage: (theme: typeof crmTheme) =>
+      theme.palette.mode === "dark"
+        ? "linear-gradient(135deg, #38bdf8 0%, #2563eb 52%, #7c3aed 100%)"
+        : "linear-gradient(135deg, #2563eb 0%, #7c3aed 58%, #db2777 100%)",
+    boxShadow: (theme: typeof crmTheme) =>
+      theme.palette.mode === "dark"
+        ? `0 18px 34px ${alpha("#2563eb", 0.34)}`
+        : `0 18px 34px ${alpha("#7c3aed", 0.24)}`,
+    transition: "transform 180ms ease, box-shadow 180ms ease, filter 180ms ease",
+    "&::before": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      background:
+        "linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.26) 46%, transparent 72%)",
+      opacity: 0,
+      transform: "translateX(-60%)",
+      transition: "opacity 180ms ease, transform 420ms ease",
+    },
+    "&:hover": {
+      transform: "translateY(-1px)",
+      filter: "saturate(1.08)",
+      boxShadow: (theme: typeof crmTheme) =>
+        theme.palette.mode === "dark"
+          ? `0 22px 42px ${alpha("#2563eb", 0.42)}`
+          : `0 22px 42px ${alpha("#7c3aed", 0.30)}`,
+      "&::before": {
+        opacity: 1,
+        transform: "translateX(70%)",
+      },
+    },
+    "&:active": {
+      transform: "translateY(0)",
+    },
+    "&.Mui-disabled": {
+      backgroundImage: (theme: typeof crmTheme) =>
+        theme.palette.mode === "dark"
+          ? "linear-gradient(135deg, rgba(71,85,105,0.70), rgba(30,41,59,0.85))"
+          : "linear-gradient(135deg, #cbd5e1, #94a3b8)",
+      color: (theme: typeof crmTheme) =>
+        theme.palette.mode === "dark" ? alpha("#e2e8f0", 0.62) : alpha("#334155", 0.58),
+      boxShadow: "none",
+      transform: "none",
+      filter: "none",
+    },
+    "& .MuiButton-startIcon, & .MuiButton-endIcon, & .MuiButton-icon, & .MuiTypography-root": {
+      position: "relative",
+      zIndex: 1,
+    },
+  };
   const [openCrmDropdown, setOpenCrmDropdown] = useState<string | null>(null);
   const [openAutoFindDropdown, setOpenAutoFindDropdown] = useState<"country" | "regions" | "categories" | null>(null);
   function renderDropdownMenuHeader(label: string, onClose: () => void) {
@@ -1035,8 +1079,6 @@ export default function AdminCrmManagement() {
   const [leadQ, setLeadQ] = useState("");
   const [leadStatus, setLeadStatus] = useState<string>("");
   const [leadAssignedTo, setLeadAssignedTo] = useState<string>("");
-  const [leadMonths, setLeadMonths] = useState<string[]>([]);
-  const [leadYear, setLeadYear] = useState<string>("");
   const [leadFromDate, setLeadFromDate] = useState("");
   const [leadToDate, setLeadToDate] = useState("");
   const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
@@ -1196,37 +1238,17 @@ export default function AdminCrmManagement() {
     return p.toString();
   }, [crmFilter, userQ]);
 
-  const leadDateRange = useMemo(() => {
-    if (leadFromDate || leadToDate) {
-      return { from: leadFromDate, to: leadToDate };
-    }
-
-    const year = Number.parseInt(leadYear, 10);
-    if (!Number.isFinite(year) || year < 1970 || year > 9999 || leadMonths.length > 0) {
-      return { from: "", to: "" };
-    }
-
-    return {
-      from: `${year}-01-01`,
-      to: `${year}-12-31`,
-    };
-  }, [leadFromDate, leadMonths.length, leadToDate, leadYear]);
-
   const leadQuery = useMemo(() => {
     const p = new URLSearchParams();
     if (leadQ.trim()) p.set("q", leadQ.trim());
     if (leadStatus) p.set("status", leadStatus);
     if (leadAssignedTo) p.set("assignedTo", leadAssignedTo);
-    if (!leadFromDate && !leadToDate && leadMonths.length > 0 && leadYear) {
-      p.set("months", leadMonths.join(","));
-      p.set("year", leadYear);
-    }
-    if (leadDateRange.from) p.set("from", leadDateRange.from);
-    if (leadDateRange.to) p.set("to", leadDateRange.to);
+    if (leadFromDate) p.set("from", leadFromDate);
+    if (leadToDate) p.set("to", leadToDate);
     p.set("page", "1");
     p.set("limit", "100");
     return p.toString();
-  }, [leadAssignedTo, leadDateRange.from, leadDateRange.to, leadFromDate, leadMonths, leadQ, leadStatus, leadToDate, leadYear]);
+  }, [leadAssignedTo, leadFromDate, leadQ, leadStatus, leadToDate]);
 
   async function loadUsers() {
     setLoadingUsers(true);
@@ -2281,16 +2303,6 @@ export default function AdminCrmManagement() {
 
   const overdueLeadsCount = Number(leads?.overdueCount || 0);
 
-  const yearOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const out = new Set<number>([currentYear, currentYear - 1, currentYear + 1]);
-    (leads?.items || []).forEach((lead) => {
-      const dt = new Date(lead.createdAt || "");
-      if (Number.isFinite(dt.getTime())) out.add(dt.getFullYear());
-    });
-    return [...out].sort((a, b) => b - a);
-  }, [leads?.items]);
-
   const crmVsNonCrmChartData = useMemo(() => {
     const nonCrmCount = Math.max(totalUsersCount - crmUsersCount, 0);
     return {
@@ -2583,46 +2595,7 @@ export default function AdminCrmManagement() {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Months</InputLabel>
-                    <Select
-                      multiple
-                      value={leadMonths}
-                      label="Months"
-                      onChange={(e) => setLeadMonths(typeof e.target.value === "string" ? e.target.value.split(",") : e.target.value)}
-                      {...crmSelectOpenProps("control-months")}
-                      renderValue={(selected) => {
-                        const values = Array.isArray(selected) ? selected : [];
-                        if (!values.length) return "All Months";
-                        return values
-                          .map((value) => MONTH_OPTIONS.find((m) => m.value === value)?.label || value)
-                          .join(", ");
-                      }}
-                    >
-                      {renderCrmMenuHeader("Months")}
-                      {MONTH_OPTIONS.map((m) => (
-                        <MenuItem key={m.value} value={m.value}>
-                          <Checkbox size="small" checked={leadMonths.includes(m.value)} />
-                          <Typography variant="body2">{m.label}</Typography>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Year</InputLabel>
-                    <Select value={leadYear} label="Year" onChange={(e) => setLeadYear(e.target.value)} {...crmSelectOpenProps("control-year")}>
-                      {renderCrmMenuHeader("Year")}
-                      <MenuItem value="">All</MenuItem>
-                      {yearOptions.map((year) => (
-                        <MenuItem key={year} value={String(year)}>{year}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6, md: 6 }}>
                   <TextField
                     fullWidth
                     size="small"
@@ -2633,7 +2606,7 @@ export default function AdminCrmManagement() {
                     slotProps={{ inputLabel: { shrink: true } }}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                   <TextField
                     fullWidth
                     size="small"
@@ -2916,8 +2889,28 @@ export default function AdminCrmManagement() {
                   startIcon={<SearchRoundedIcon />}
                   onClick={() => void onAutoFindClients()}
                   disabled={autoFinding || autoFindCategories.length === 0}
+                  sx={autoFindSearchButtonSx}
                 >
-                  {autoFinding ? `Searching ${Math.round(autoFindProgress)}%` : "Find New Leads"}
+                  <Stack spacing={0} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                    <Typography
+                      component="span"
+                      variant="button"
+                      sx={{ lineHeight: 1.1, whiteSpace: "nowrap" }}
+                    >
+                      {autoFinding
+                        ? `Searching ${Math.round(autoFindProgress)}%`
+                        : autoFindCategories.length === 0
+                          ? "Select Categories"
+                          : "Find New Leads"}
+                    </Typography>
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      sx={{ color: "inherit", lineHeight: 1.15, opacity: 0.82, display: { xs: "none", md: "block" } }}
+                    >
+                      {autoFinding ? "Scanning public sources" : "Run CRM prospect search"}
+                    </Typography>
+                  </Stack>
                 </Button>
               </Stack>
             </Stack>
