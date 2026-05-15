@@ -5,7 +5,8 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
-import SettingsEthernetRoundedIcon from "@mui/icons-material/SettingsEthernetRounded";
+import PaidRoundedIcon from "@mui/icons-material/PaidRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import WarehouseRoundedIcon from "@mui/icons-material/WarehouseRounded";
 import {
   alpha,
@@ -15,12 +16,14 @@ import {
   CardContent,
   Chip,
   Container,
+  Divider,
   Grid,
+  LinearProgress,
   Stack,
   Typography,
 } from "@mui/material";
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import MonthlyCharts from "@/app/components/dashboard/MonthlyCharts";
 
 type MeState = {
@@ -34,6 +37,28 @@ type StatsState = {
   totalAdmins: number;
   totalReports: number;
   byType: { Asset: number; RealEstate: number; Salvage: number };
+} | null;
+
+type OpenAICreditsStatus = "ok" | "low" | "depleted" | "unavailable";
+
+type OpenAICreditsState = {
+  budgetUsd: number | null;
+  spentUsd: number | null;
+  remainingUsd: number | null;
+  creditMultiplier: number;
+  budgetCredits: number | null;
+  spentCredits: number | null;
+  remainingCredits: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  requestCount: number;
+  status: OpenAICreditsStatus;
+  asOf: string;
+  periodStart: string;
+  periodEnd: string;
+  source: string;
+  message: string;
 } | null;
 
 const statCards: Array<{ key: "totalUsers" | "totalAdmins" | "totalReports"; label: string; icon: ReactNode; color: string }> = [
@@ -55,11 +80,46 @@ type QuickAction = {
   icon: ReactNode;
 };
 
+const creditStatusMeta: Record<OpenAICreditsStatus, { label: string; color: string }> = {
+  ok: { label: "Healthy", color: "#10b981" },
+  low: { label: "Low", color: "#f59e0b" },
+  depleted: { label: "Depleted", color: "#ef4444" },
+  unavailable: { label: "Unavailable", color: "#64748b" },
+};
+
+const numberFormatter = new Intl.NumberFormat("en-US");
+const creditFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+});
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+
+function formatCredits(value: number | null | undefined, fallback = "--") {
+  return typeof value === "number" ? creditFormatter.format(value) : fallback;
+}
+
+function formatUsd(value: number | null | undefined) {
+  return typeof value === "number" ? usdFormatter.format(value) : "--";
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function DashboardShellV2() {
   const [now, setNow] = useState<Date>(() => new Date());
   const [me, setMe] = useState<MeState>(null);
   const [stats, setStats] = useState<StatsState>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [credits, setCredits] = useState<OpenAICreditsState>(null);
+  const [creditsLoading, setCreditsLoading] = useState(true);
+  const [creditsError, setCreditsError] = useState<string | null>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
@@ -89,6 +149,33 @@ export default function DashboardShellV2() {
       }
     })();
   }, []);
+
+  const loadOpenAICredits = useCallback(async (refresh = false) => {
+    try {
+      setCreditsLoading(true);
+      setCreditsError(null);
+      const res = await fetch(`/api/admin/openai-credits${refresh ? "?refresh=1" : ""}`, {
+        cache: "no-store",
+      });
+      const data = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load OpenAI credits");
+      }
+      setCredits(data as NonNullable<OpenAICreditsState>);
+    } catch (e) {
+      setCreditsError(e instanceof Error ? e.message : "Failed to load OpenAI credits");
+    } finally {
+      setCreditsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOpenAICredits();
+    const id = window.setInterval(() => {
+      loadOpenAICredits();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [loadOpenAICredits]);
 
   const greeting = useMemo(() => {
     const hours = now.getHours();
@@ -123,6 +210,12 @@ export default function DashboardShellV2() {
     return actions;
   }, [me?.role]);
 
+  const creditMeta = creditStatusMeta[credits?.status || "unavailable"];
+  const creditSpentPercent = useMemo(() => {
+    if (!credits || !credits.budgetCredits || credits.spentCredits === null) return 0;
+    return Math.min(100, Math.max(0, (credits.spentCredits / credits.budgetCredits) * 100));
+  }, [credits]);
+
   return (
     <Box sx={{ pb: 6 }}>
       <Container maxWidth="xl" sx={{ px: { xs: 2, md: 3 }, py: { xs: 3, md: 4 } }}>
@@ -152,7 +245,7 @@ export default function DashboardShellV2() {
                 <Stack spacing={1.25} alignItems={{ xs: "flex-start", md: "flex-end" }}>
                   {me?.role ? <Chip label={me.role} color="primary" variant="outlined" /> : null}
                   <Typography variant="body2" color="text.secondary" suppressHydrationWarning>
-                    {now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} - {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </Typography>
                 </Stack>
               </Stack>
@@ -166,7 +259,7 @@ export default function DashboardShellV2() {
                           <Box>
                             <Typography variant="body2" color="text.secondary">{card.label}</Typography>
                             <Typography variant="h4" suppressHydrationWarning sx={{ mt: 0.75 }}>
-                              {statsLoading ? "…" : stats?.[card.key] ?? 0}
+                              {statsLoading ? "..." : stats?.[card.key] ?? 0}
                             </Typography>
                           </Box>
                           <Box
@@ -197,7 +290,7 @@ export default function DashboardShellV2() {
                           <Box>
                             <Typography variant="body2" color="text.secondary">{card.label}</Typography>
                             <Typography variant="h4" suppressHydrationWarning sx={{ mt: 0.75 }}>
-                              {statsLoading ? "…" : stats?.byType?.[card.key] ?? 0}
+                              {statsLoading ? "..." : stats?.byType?.[card.key] ?? 0}
                             </Typography>
                           </Box>
                           <Box
@@ -251,30 +344,141 @@ export default function DashboardShellV2() {
             </Card>
           </Grid>
           <Grid size={{ xs: 12, lg: 4 }}>
-            <Card sx={{ height: "100%" }}>
+            <Card
+              sx={{
+                height: "100%",
+                border: "1px solid",
+                borderColor: alpha(creditMeta.color, credits?.status === "unavailable" ? 0.2 : 0.45),
+                boxShadow: `0 18px 50px ${alpha(creditMeta.color, 0.08)}`,
+              }}
+            >
               <CardContent>
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <Box
-                    sx={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 3.5,
-                      display: "grid",
-                      placeItems: "center",
-                      bgcolor: "action.selected",
-                      color: "success.main",
-                    }}
-                  >
-                    <SettingsEthernetRoundedIcon />
-                  </Box>
+                <Stack spacing={2}>
+                  <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <Box
+                        sx={{
+                          width: 46,
+                          height: 46,
+                          borderRadius: 3,
+                          display: "grid",
+                          placeItems: "center",
+                          bgcolor: alpha(creditMeta.color, 0.12),
+                          color: creditMeta.color,
+                        }}
+                      >
+                        <PaidRoundedIcon />
+                      </Box>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          OpenAI Credits
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Updates every 60 seconds
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Chip
+                      size="small"
+                      label={creditMeta.label}
+                      sx={{
+                        bgcolor: alpha(creditMeta.color, 0.12),
+                        color: creditMeta.color,
+                        border: `1px solid ${alpha(creditMeta.color, 0.24)}`,
+                        fontWeight: 800,
+                      }}
+                    />
+                  </Stack>
+
                   <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                      System Status
-                    </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Ready for additional health checks and metrics.
+                      Remaining
+                    </Typography>
+                    <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 900 }} suppressHydrationWarning>
+                      {creditsLoading && !credits ? "..." : formatCredits(credits?.remainingCredits, "Set budget")}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {typeof credits?.remainingUsd === "number"
+                        ? `${formatUsd(credits.remainingUsd)} available at ${credits.creditMultiplier}x credits`
+                        : creditsError || credits?.message || "Configure OpenAI budget settings on the server."}
                     </Typography>
                   </Box>
+
+                  <Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={creditSpentPercent}
+                      sx={{
+                        height: 8,
+                        borderRadius: 999,
+                        bgcolor: alpha(creditMeta.color, 0.14),
+                        "& .MuiLinearProgress-bar": {
+                          borderRadius: 999,
+                          bgcolor: creditMeta.color,
+                        },
+                      }}
+                    />
+                    <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Spent {formatCredits(credits?.spentCredits)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Budget {formatCredits(credits?.budgetCredits, "Set budget")}
+                      </Typography>
+                    </Stack>
+                  </Box>
+
+                  <Divider />
+
+                  <Grid container spacing={1.5}>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary">
+                        USD spent
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                        {formatUsd(credits?.spentUsd)}
+                      </Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary">
+                        Requests
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                        {credits ? numberFormatter.format(credits.requestCount) : "--"}
+                      </Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary">
+                        Input tokens
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                        {credits ? numberFormatter.format(credits.inputTokens) : "--"}
+                      </Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary">
+                        Output tokens
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                        {credits ? numberFormatter.format(credits.outputTokens) : "--"}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+
+                  <Stack direction="row" spacing={1.25} justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">
+                      Last updated {formatDateTime(credits?.asOf)}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<RefreshRoundedIcon />}
+                      onClick={() => loadOpenAICredits(true)}
+                      disabled={creditsLoading}
+                    >
+                      Refresh
+                    </Button>
+                  </Stack>
                 </Stack>
               </CardContent>
             </Card>
