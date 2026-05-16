@@ -110,18 +110,13 @@ const numberFormatter = new Intl.NumberFormat("en-US");
 const creditFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
-const usdFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2,
-});
-
 function formatCredits(value: number | null | undefined, fallback = "--") {
   return typeof value === "number" ? creditFormatter.format(value) : fallback;
 }
 
-function formatUsd(value: number | null | undefined) {
-  return typeof value === "number" ? usdFormatter.format(value) : "--";
+function formatCreditsFromUsd(value: number | null | undefined, multiplier: number | null | undefined) {
+  if (typeof value !== "number" || typeof multiplier !== "number") return "--";
+  return creditFormatter.format(value * multiplier);
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -417,8 +412,8 @@ export default function DashboardShellV2() {
                       {creditsLoading && !credits ? "..." : formatCredits(credits?.remainingCredits, "Set budget")}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {typeof credits?.remainingUsd === "number"
-                        ? `${formatUsd(credits.remainingUsd)} available`
+                      {typeof credits?.remainingCredits === "number"
+                        ? "Available credits"
                         : creditsError || credits?.message || "Configure OpenAI budget settings on the server."}
                     </Typography>
                   </Box>
@@ -452,18 +447,18 @@ export default function DashboardShellV2() {
                   <Grid container spacing={1.5}>
                     <Grid size={6}>
                       <Typography variant="caption" color="text.secondary">
-                        Live spend
+                        Live credits used
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {formatUsd(credits?.localLedgerSpentUsd)}
+                        {formatCreditsFromUsd(credits?.localLedgerSpentUsd, credits?.creditMultiplier)}
                       </Typography>
                     </Grid>
                     <Grid size={6}>
                       <Typography variant="caption" color="text.secondary">
-                        OpenAI bill
+                        OpenAI credits used
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {formatUsd(credits?.officialOpenAISpentUsd)}
+                        {formatCreditsFromUsd(credits?.officialOpenAISpentUsd, credits?.creditMultiplier)}
                       </Typography>
                     </Grid>
                     <Grid size={6}>
