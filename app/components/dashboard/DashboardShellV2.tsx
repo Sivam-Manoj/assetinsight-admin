@@ -44,15 +44,34 @@ type OpenAICreditsStatus = "ok" | "low" | "depleted" | "unavailable";
 type OpenAICreditsState = {
   budgetUsd: number | null;
   spentUsd: number | null;
+  localLedgerSpentUsd: number;
+  officialOpenAISpentUsd: number | null;
   remainingUsd: number | null;
   creditMultiplier: number;
   budgetCredits: number | null;
   spentCredits: number | null;
   remainingCredits: number | null;
   inputTokens: number;
+  cachedInputTokens: number;
   outputTokens: number;
   totalTokens: number;
   requestCount: number;
+  webSearchCalls: number;
+  unpricedCount: number;
+  fallbackEstimateCount: number;
+  lastOpenAICallAt: string | null;
+  modelBreakdown: Array<{
+    model: string;
+    requests: number;
+    spentUsd: number;
+    creditsDeducted: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    webSearchCalls: number;
+    unpricedCount: number;
+  }>;
+  warnings: string[];
   status: OpenAICreditsStatus;
   asOf: string;
   periodStart: string;
@@ -173,7 +192,7 @@ export default function DashboardShellV2() {
     loadOpenAICredits();
     const id = window.setInterval(() => {
       loadOpenAICredits();
-    }, 60_000);
+    }, 10_000);
     return () => window.clearInterval(id);
   }, [loadOpenAICredits]);
 
@@ -374,7 +393,7 @@ export default function DashboardShellV2() {
                           OpenAI Credits
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Updates every 60 seconds
+                          Updates every 10 seconds
                         </Typography>
                       </Box>
                     </Stack>
@@ -399,7 +418,7 @@ export default function DashboardShellV2() {
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                       {typeof credits?.remainingUsd === "number"
-                        ? `${formatUsd(credits.remainingUsd)} available at ${credits.creditMultiplier}x credits`
+                        ? `${formatUsd(credits.remainingUsd)} available`
                         : creditsError || credits?.message || "Configure OpenAI budget settings on the server."}
                     </Typography>
                   </Box>
@@ -433,10 +452,18 @@ export default function DashboardShellV2() {
                   <Grid container spacing={1.5}>
                     <Grid size={6}>
                       <Typography variant="caption" color="text.secondary">
-                        USD spent
+                        Live spend
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {formatUsd(credits?.spentUsd)}
+                        {formatUsd(credits?.localLedgerSpentUsd)}
+                      </Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary">
+                        OpenAI bill
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                        {formatUsd(credits?.officialOpenAISpentUsd)}
                       </Typography>
                     </Grid>
                     <Grid size={6}>
@@ -445,6 +472,14 @@ export default function DashboardShellV2() {
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 800 }}>
                         {credits ? numberFormatter.format(credits.requestCount) : "--"}
+                      </Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary">
+                        Web searches
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                        {credits ? numberFormatter.format(credits.webSearchCalls) : "--"}
                       </Typography>
                     </Grid>
                     <Grid size={6}>
@@ -465,9 +500,35 @@ export default function DashboardShellV2() {
                     </Grid>
                   </Grid>
 
+                  {credits?.modelBreakdown?.length ? (
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Top model spend
+                      </Typography>
+                      <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+                        {credits.modelBreakdown.slice(0, 3).map((item) => (
+                          <Stack key={item.model} direction="row" justifyContent="space-between" spacing={1.5}>
+                            <Typography variant="caption" sx={{ fontWeight: 800, minWidth: 0 }} noWrap>
+                              {item.model}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                              {formatCredits(item.creditsDeducted)} cr
+                            </Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : null}
+
+                  {credits?.warnings?.length ? (
+                    <Typography variant="caption" sx={{ color: creditMeta.color, fontWeight: 700 }}>
+                      {credits.warnings[0]}
+                    </Typography>
+                  ) : null}
+
                   <Stack direction="row" spacing={1.25} justifyContent="space-between" alignItems="center">
                     <Typography variant="caption" color="text.secondary">
-                      Last updated {formatDateTime(credits?.asOf)}
+                      Last call {formatDateTime(credits?.lastOpenAICallAt)} - updated {formatDateTime(credits?.asOf)}
                     </Typography>
                     <Button
                       size="small"
