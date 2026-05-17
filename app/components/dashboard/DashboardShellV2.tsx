@@ -110,6 +110,7 @@ const numberFormatter = new Intl.NumberFormat("en-US");
 const creditFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
+
 function formatCredits(value: number | null | undefined, fallback = "--") {
   return typeof value === "number" ? creditFormatter.format(value) : fallback;
 }
@@ -125,6 +126,32 @@ function formatDateTime(value: string | null | undefined) {
   if (Number.isNaN(date.getTime())) return "--";
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+const raisedCardSx = (color = "#2563eb") => ({
+  height: "100%",
+  overflow: "hidden",
+  borderRadius: 3,
+  border: "1px solid",
+  borderColor: alpha(color, 0.22),
+  backgroundImage: (theme: any) =>
+    theme.palette.mode === "dark"
+      ? `linear-gradient(145deg, ${alpha("#15243a", 0.96)}, ${alpha("#08111f", 0.98)})`
+      : `linear-gradient(145deg, rgba(255,255,255,0.98), ${alpha(color, 0.045)})`,
+  boxShadow: (theme: any) =>
+    theme.palette.mode === "dark"
+      ? `0 18px 36px ${alpha("#020617", 0.42)}, inset 0 1px 0 ${alpha("#fff", 0.04)}`
+      : `0 16px 32px ${alpha(color, 0.12)}, inset 0 1px 0 ${alpha("#fff", 0.95)}`,
+  transform: "translateZ(0)",
+  transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
+  "&:hover": {
+    transform: "translateY(-2px)",
+    borderColor: alpha(color, 0.36),
+    boxShadow: (theme: any) =>
+      theme.palette.mode === "dark"
+        ? `0 22px 44px ${alpha("#020617", 0.54)}, inset 0 1px 0 ${alpha("#fff", 0.05)}`
+        : `0 20px 40px ${alpha(color, 0.17)}, inset 0 1px 0 ${alpha("#fff", 1)}`,
+  },
+});
 
 export default function DashboardShellV2() {
   const [now, setNow] = useState<Date>(() => new Date());
@@ -215,7 +242,7 @@ export default function DashboardShellV2() {
     if (me?.role === "superadmin") {
       actions.push({
         href: "/admins",
-        label: "Manage Admins",
+        label: "Admins",
         color: "secondary",
         icon: <ManageAccountsRoundedIcon />,
       });
@@ -230,165 +257,104 @@ export default function DashboardShellV2() {
     return Math.min(100, Math.max(0, (credits.spentCredits / credits.budgetCredits) * 100));
   }, [credits]);
 
+  const allMetricCards = [
+    ...statCards.map((card) => ({
+      key: card.key,
+      label: card.label,
+      value: stats?.[card.key] ?? 0,
+      icon: card.icon,
+      color: card.color,
+    })),
+    ...reportCards.map((card) => ({
+      key: card.key,
+      label: card.label,
+      value: stats?.byType?.[card.key] ?? 0,
+      icon: card.icon,
+      color: card.color,
+    })),
+  ];
+
   return (
-    <Box sx={{ pb: 6 }}>
-      <Container maxWidth="xl" sx={{ px: { xs: 2, md: 3 }, py: { xs: 3, md: 4 } }}>
-        <Card sx={{ overflow: "hidden", position: "relative" }}>
-          <Box
-            sx={{
-              position: "absolute",
-              inset: 0,
-              background: "radial-gradient(circle at top left, rgba(37,99,235,0.18), transparent 28%), radial-gradient(circle at top right, rgba(124,58,237,0.16), transparent 24%)",
-              pointerEvents: "none",
-            }}
-          />
-          <CardContent sx={{ p: { xs: 3, md: 4 }, position: "relative" }}>
-            <Stack spacing={2.5}>
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "center" }}>
-                <Box>
-                  <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: "0.12em" }}>
-                    Operations Overview
-                  </Typography>
-                  <Typography variant="h3" sx={{ mt: 0.5 }}>
-                    {greeting}{me ? `, ${me.username || me.email}` : ""}
-                  </Typography>
-                  <Typography variant="body1" color="text.secondary" sx={{ mt: 1, maxWidth: 760 }}>
-                    Manage reports, users, approvals, and CRM workflows from a unified control center with live visibility into team activity.
-                  </Typography>
-                </Box>
-                <Stack spacing={1.25} alignItems={{ xs: "flex-start", md: "flex-end" }}>
-                  {me?.role ? <Chip label={me.role} color="primary" variant="outlined" /> : null}
-                  <Typography variant="body2" color="text.secondary" suppressHydrationWarning>
-                    {now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} - {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </Typography>
-                </Stack>
-              </Stack>
-
-              <Grid container spacing={2.5}>
-                {statCards.map((card) => (
-                  <Grid key={card.key} size={{ xs: 12, sm: 6, lg: 4 }}>
-                    <Card sx={{ height: "100%" }}>
-                      <CardContent>
-                        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">{card.label}</Typography>
-                            <Typography variant="h4" suppressHydrationWarning sx={{ mt: 0.75 }}>
-                              {statsLoading ? "..." : stats?.[card.key] ?? 0}
-                            </Typography>
-                          </Box>
-                          <Box
-                            sx={{
-                              width: 54,
-                              height: 54,
-                              borderRadius: 4,
-                              display: "grid",
-                              placeItems: "center",
-                              bgcolor: alpha(card.color, 0.12),
-                              color: card.color,
-                              boxShadow: `inset 0 1px 0 ${alpha("#fff", 0.3)}`,
-                            }}
-                          >
-                            {card.icon}
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-
-                {reportCards.map((card) => (
-                  <Grid key={card.key} size={{ xs: 12, sm: 6, lg: 4 }}>
-                    <Card sx={{ height: "100%" }}>
-                      <CardContent>
-                        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">{card.label}</Typography>
-                            <Typography variant="h4" suppressHydrationWarning sx={{ mt: 0.75 }}>
-                              {statsLoading ? "..." : stats?.byType?.[card.key] ?? 0}
-                            </Typography>
-                          </Box>
-                          <Box
-                            sx={{
-                              width: 54,
-                              height: 54,
-                              borderRadius: 4,
-                              display: "grid",
-                              placeItems: "center",
-                              bgcolor: alpha(card.color, 0.12),
-                              color: card.color,
-                            }}
-                          >
-                            {card.icon}
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </Stack>
-          </CardContent>
-        </Card>
-
-        <Grid container spacing={2.5} sx={{ mt: 1 }}>
+    <Box sx={{ pb: { xs: 1.5, md: 2 }, minHeight: "calc(100vh - 64px)" }}>
+      <Container
+        maxWidth={false}
+        sx={{
+          px: { xs: 1, md: 1.5 },
+          py: { xs: 1, md: 1.5 },
+          maxWidth: "1800px",
+        }}
+      >
+        <Grid container spacing={1.5} alignItems="stretch">
           <Grid size={{ xs: 12, lg: 8 }}>
-            <Card sx={{ height: "100%" }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                  Quick Actions
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, mb: 2.5 }}>
-                  Jump into the most common operational workflows.
-                </Typography>
-                <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap">
-                  {quickActions.map((action) => (
-                    <Button
-                      key={action.href}
-                      component={Link}
-                      href={action.href}
-                      variant="contained"
-                      color={action.color}
-                      startIcon={action.icon}
-                    >
-                      {action.label}
-                    </Button>
-                  ))}
+            <Card sx={raisedCardSx("#2563eb")}>
+              <CardContent sx={{ p: { xs: 2, md: 2.25 } }}>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} justifyContent="space-between">
+                  <Box sx={{ minWidth: 0 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 900, letterSpacing: "0.08em", lineHeight: 1 }}>
+                        Operations
+                      </Typography>
+                      {me?.role ? <Chip size="small" label={me.role} color="primary" variant="outlined" /> : null}
+                    </Stack>
+                    <Typography variant="h4" sx={{ mt: 0.75, fontWeight: 900 }}>
+                      {greeting}{me ? `, ${me.username || me.email}` : ""}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 760 }}>
+                      Reports, approvals, users, CRM and OpenAI credits in one dense control surface.
+                    </Typography>
+                  </Box>
+                  <Stack spacing={1} alignItems={{ xs: "flex-start", md: "flex-end" }}>
+                    <Typography variant="caption" color="text.secondary" suppressHydrationWarning>
+                      {now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} - {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </Typography>
+                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
+                      {quickActions.map((action) => (
+                        <Button
+                          key={action.href}
+                          component={Link}
+                          href={action.href}
+                          variant="contained"
+                          color={action.color}
+                          size="small"
+                          startIcon={action.icon}
+                          sx={{ minHeight: 36, px: 1.5 }}
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                    </Stack>
+                  </Stack>
                 </Stack>
               </CardContent>
             </Card>
           </Grid>
+
           <Grid size={{ xs: 12, lg: 4 }}>
-            <Card
-              sx={{
-                height: "100%",
-                border: "1px solid",
-                borderColor: alpha(creditMeta.color, credits?.status === "unavailable" ? 0.2 : 0.45),
-                boxShadow: `0 18px 50px ${alpha(creditMeta.color, 0.08)}`,
-              }}
-            >
-              <CardContent>
-                <Stack spacing={2}>
-                  <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
-                    <Stack direction="row" spacing={1.5} alignItems="center">
+            <Card sx={raisedCardSx(creditMeta.color)}>
+              <CardContent sx={{ p: { xs: 2, md: 2.25 } }}>
+                <Stack spacing={1.35}>
+                  <Stack direction="row" spacing={1.25} alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
                       <Box
                         sx={{
-                          width: 46,
-                          height: 46,
-                          borderRadius: 3,
+                          width: 42,
+                          height: 42,
+                          borderRadius: 2.25,
                           display: "grid",
                           placeItems: "center",
                           bgcolor: alpha(creditMeta.color, 0.12),
                           color: creditMeta.color,
+                          boxShadow: `inset 0 1px 0 ${alpha("#fff", 0.35)}`,
                         }}
                       >
                         <PaidRoundedIcon />
                       </Box>
-                      <Box>
-                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                      <Box minWidth={0}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
                           OpenAI Credits
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Updates every 10 seconds
+                        <Typography variant="caption" color="text.secondary">
+                          10 second refresh
                         </Typography>
                       </Box>
                     </Stack>
@@ -404,26 +370,33 @@ export default function DashboardShellV2() {
                     />
                   </Stack>
 
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Remaining
-                    </Typography>
-                    <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 900 }} suppressHydrationWarning>
-                      {creditsLoading && !credits ? "..." : formatCredits(credits?.remainingCredits, "Set budget")}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {typeof credits?.remainingCredits === "number"
-                        ? "Available credits"
-                        : creditsError || credits?.message || "Configure OpenAI budget settings on the server."}
-                    </Typography>
-                  </Box>
+                  <Stack direction="row" spacing={1.25} alignItems="flex-end" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Remaining
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 950, lineHeight: 1.05 }} suppressHydrationWarning>
+                        {creditsLoading && !credits ? "..." : formatCredits(credits?.remainingCredits, "Set budget")}
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<RefreshRoundedIcon />}
+                      onClick={() => loadOpenAICredits(true)}
+                      disabled={creditsLoading}
+                      sx={{ minHeight: 34, px: 1.25 }}
+                    >
+                      Refresh
+                    </Button>
+                  </Stack>
 
                   <Box>
                     <LinearProgress
                       variant="determinate"
                       value={creditSpentPercent}
                       sx={{
-                        height: 8,
+                        height: 7,
                         borderRadius: 999,
                         bgcolor: alpha(creditMeta.color, 0.14),
                         "& .MuiLinearProgress-bar": {
@@ -432,118 +405,98 @@ export default function DashboardShellV2() {
                         },
                       }}
                     />
-                    <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Spent {formatCredits(credits?.spentCredits)}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Budget {formatCredits(credits?.budgetCredits, "Set budget")}
-                      </Typography>
+                    <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">Spent {formatCredits(credits?.spentCredits)}</Typography>
+                      <Typography variant="caption" color="text.secondary">Budget {formatCredits(credits?.budgetCredits, "Set budget")}</Typography>
                     </Stack>
                   </Box>
 
                   <Divider />
 
-                  <Grid container spacing={1.5}>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        Live credits used
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {formatCreditsFromUsd(credits?.localLedgerSpentUsd, credits?.creditMultiplier)}
-                      </Typography>
-                    </Grid>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        OpenAI credits used
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {formatCreditsFromUsd(credits?.officialOpenAISpentUsd, credits?.creditMultiplier)}
-                      </Typography>
-                    </Grid>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        Requests
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {credits ? numberFormatter.format(credits.requestCount) : "--"}
-                      </Typography>
-                    </Grid>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        Web searches
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {credits ? numberFormatter.format(credits.webSearchCalls) : "--"}
-                      </Typography>
-                    </Grid>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        Input tokens
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {credits ? numberFormatter.format(credits.inputTokens) : "--"}
-                      </Typography>
-                    </Grid>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        Output tokens
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                        {credits ? numberFormatter.format(credits.outputTokens) : "--"}
-                      </Typography>
-                    </Grid>
+                  <Grid container spacing={1}>
+                    {[
+                      ["Live used", formatCreditsFromUsd(credits?.localLedgerSpentUsd, credits?.creditMultiplier)],
+                      ["OpenAI used", formatCreditsFromUsd(credits?.officialOpenAISpentUsd, credits?.creditMultiplier)],
+                      ["Requests", credits ? numberFormatter.format(credits.requestCount) : "--"],
+                      ["Web searches", credits ? numberFormatter.format(credits.webSearchCalls) : "--"],
+                    ].map(([label, value]) => (
+                      <Grid key={label} size={6}>
+                        <Typography variant="caption" color="text.secondary">{label}</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 850 }}>{value}</Typography>
+                      </Grid>
+                    ))}
                   </Grid>
 
                   {credits?.modelBreakdown?.length ? (
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Top model spend
-                      </Typography>
-                      <Stack spacing={0.75} sx={{ mt: 0.75 }}>
-                        {credits.modelBreakdown.slice(0, 3).map((item) => (
-                          <Stack key={item.model} direction="row" justifyContent="space-between" spacing={1.5}>
-                            <Typography variant="caption" sx={{ fontWeight: 800, minWidth: 0 }} noWrap>
-                              {item.model}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-                              {formatCredits(item.creditsDeducted)} cr
-                            </Typography>
-                          </Stack>
-                        ))}
-                      </Stack>
-                    </Box>
+                    <Stack spacing={0.5}>
+                      {credits.modelBreakdown.slice(0, 2).map((item) => (
+                        <Stack key={item.model} direction="row" justifyContent="space-between" spacing={1.25}>
+                          <Typography variant="caption" sx={{ fontWeight: 800, minWidth: 0 }} noWrap>
+                            {item.model}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                            {formatCredits(item.creditsDeducted)} cr
+                          </Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
                   ) : null}
 
-                  {credits?.warnings?.length ? (
-                    <Typography variant="caption" sx={{ color: creditMeta.color, fontWeight: 700 }}>
-                      {credits.warnings[0]}
+                  <Typography variant="caption" color="text.secondary">
+                    Last call {formatDateTime(credits?.lastOpenAICallAt)} - updated {formatDateTime(credits?.asOf)}
+                  </Typography>
+                  {creditsError || credits?.warnings?.length ? (
+                    <Typography variant="caption" sx={{ color: creditMeta.color, fontWeight: 800 }}>
+                      {creditsError || credits?.warnings?.[0]}
                     </Typography>
                   ) : null}
-
-                  <Stack direction="row" spacing={1.25} justifyContent="space-between" alignItems="center">
-                    <Typography variant="caption" color="text.secondary">
-                      Last call {formatDateTime(credits?.lastOpenAICallAt)} - updated {formatDateTime(credits?.asOf)}
-                    </Typography>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<RefreshRoundedIcon />}
-                      onClick={() => loadOpenAICredits(true)}
-                      disabled={creditsLoading}
-                    >
-                      Refresh
-                    </Button>
-                  </Stack>
                 </Stack>
               </CardContent>
             </Card>
           </Grid>
-        </Grid>
 
-        <Box sx={{ mt: 3 }}>
-          <MonthlyCharts />
-        </Box>
+          <Grid size={12}>
+            <Grid container spacing={1.5}>
+              {allMetricCards.map((card) => (
+                <Grid key={card.key} size={{ xs: 6, md: 4, xl: 2 }}>
+                  <Card sx={raisedCardSx(card.color)}>
+                    <CardContent sx={{ p: { xs: 1.5, md: 1.75 } }}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1.25}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            {card.label}
+                          </Typography>
+                          <Typography variant="h5" suppressHydrationWarning sx={{ mt: 0.25, fontWeight: 950, lineHeight: 1.08 }}>
+                            {statsLoading ? "..." : card.value}
+                          </Typography>
+                        </Box>
+                        <Box
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 2.25,
+                            display: "grid",
+                            placeItems: "center",
+                            bgcolor: alpha(card.color, 0.12),
+                            color: card.color,
+                            flexShrink: 0,
+                            boxShadow: `inset 0 1px 0 ${alpha("#fff", 0.35)}`,
+                          }}
+                        >
+                          {card.icon}
+                        </Box>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Grid>
+
+          <Grid size={12}>
+            <MonthlyCharts />
+          </Grid>
+        </Grid>
       </Container>
     </Box>
   );

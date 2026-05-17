@@ -345,10 +345,10 @@ export default function AdminManagement() {
 
   return (
     <div className="admin-page-shell">
-      <header className="sticky top-0 z-10 admin-glass-surface rounded-3xl">
-        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
+      <header className="sticky top-0 z-10 admin-glass-surface rounded-2xl shadow-[0_18px_42px_rgba(15,23,42,0.14)]">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-rose-500 shadow-md shadow-rose-200 ring-1 ring-rose-300 flex items-center justify-center text-white font-bold">
+            <div className="h-9 w-9 rounded-xl bg-rose-500 shadow-[0_12px_24px_rgba(244,63,94,0.28)] ring-1 ring-rose-300 flex items-center justify-center text-white font-bold">
               CV
             </div>
             <div>
@@ -368,48 +368,73 @@ export default function AdminManagement() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto pt-6 space-y-8">
-        {/* Hero Summary */}
-        <section className="admin-glass-surface rounded-3xl p-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
-                Admin Management
-              </h1>
-              <p className="text-gray-600">
-                Create, block, or remove admins. Only superadmins can perform
-                these actions.
+      <main className="max-w-7xl mx-auto pt-3 space-y-3">
+        <section className="admin-glass-surface rounded-2xl p-3 md:p-4 shadow-[0_22px_54px_rgba(15,23,42,0.14)]">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(260px,1fr)_auto] gap-3 xl:items-center">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl md:text-2xl font-semibold text-gray-900 leading-tight">
+                  Admin Management
+                </h1>
+                <Chip size="small" color="secondary" variant="outlined" label={`${rows.length} filtered`} />
+              </div>
+              <p className="mt-1 text-sm text-gray-600">
+                Create accounts, manage access, and review admin status from one compact console.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-xl border border-rose-200 bg-white/70 px-3 sm:px-4 py-2 shadow-sm">
-                <div className="text-xs text-gray-600">Total</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  {admins.length}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                ["Total", admins.length],
+                ["Superadmins", admins.filter((a) => a.role === "superadmin").length],
+                ["Blocked", admins.filter((a) => a.isBlocked).length],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="min-w-[92px] rounded-xl border border-rose-200 bg-white/75 px-3 py-2 shadow-[0_14px_26px_rgba(190,18,60,0.10)]"
+                >
+                  <div className="text-[11px] font-medium text-gray-600 leading-none">{label}</div>
+                  <div className="mt-1 text-lg font-semibold text-gray-900 tabular-nums leading-none">
+                    {value}
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-xl border border-rose-200 bg-white/70 px-3 sm:px-4 py-2 shadow-sm">
-                <div className="text-xs text-gray-600">Superadmins</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  {admins.filter((a) => a.role === "superadmin").length}
-                </div>
-              </div>
-              <div className="rounded-xl border border-rose-200 bg-white/70 px-3 sm:px-4 py-2 shadow-sm">
-                <div className="text-xs text-gray-600">Blocked</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  {admins.filter((a) => a.isBlocked).length}
-                </div>
-              </div>
+              ))}
             </div>
           </div>
-        </section>
-        {/* Create Admin modal trigger */}
-        <section className="admin-glass-surface rounded-3xl p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Add Admin</h2>
+
+          <div className="mt-3 grid grid-cols-1 lg:grid-cols-[minmax(280px,1fr)_160px_160px_auto] gap-2 items-center">
+            <div>
+              <TextField
+                fullWidth
+                size="small"
+                label="Search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="email, username, or company"
+              />
+            </div>
+            <div>
+              <FormControl fullWidth size="small">
+                <InputLabel>Role</InputLabel>
+                <Select value={roleFilter} label="Role" onChange={(e) => setRoleFilter(e.target.value)}>
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="superadmin">Superadmin</MenuItem>
+                  <MenuItem value="admin">Admin</MenuItem>
+                </Select>
+              </FormControl>
+            </div>
+            <div>
+              <FormControl fullWidth size="small">
+                <InputLabel>Status</InputLabel>
+                <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="blocked">Blocked</MenuItem>
+                </Select>
+              </FormControl>
+            </div>
             <button
               onClick={() => setCreateOpen(true)}
-              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 active:bg-rose-700 text-white font-medium shadow-md hover:shadow-lg active:shadow-sm transition-all"
+              className="cursor-pointer inline-flex min-h-10 items-center justify-center gap-2 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 active:bg-rose-700 text-white font-medium shadow-[0_14px_28px_rgba(244,63,94,0.26)] hover:shadow-[0_18px_34px_rgba(244,63,94,0.32)] active:shadow-sm transition-all"
             >
               <svg
                 width="16"
@@ -427,55 +452,21 @@ export default function AdminManagement() {
               New Admin
             </button>
           </div>
-          {error && (
-            <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">
-              {error}
-            </p>
-          )}
-        </section>
-
-        {/* Filters for list */}
-        <section className="admin-glass-surface rounded-3xl p-4 md:p-6">
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="email, username, or company"
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Role</InputLabel>
-                <Select value={roleFilter} label="Role" onChange={(e) => setRoleFilter(e.target.value)}>
-                  <MenuItem value="">All</MenuItem>
-                  <MenuItem value="superadmin">Superadmin</MenuItem>
-                  <MenuItem value="admin">Admin</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Status</InputLabel>
-                <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
-                  <MenuItem value="">All</MenuItem>
-                  <MenuItem value="active">Active</MenuItem>
-                  <MenuItem value="blocked">Blocked</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
-            Sort by clicking any desktop table header.
-          </Typography>
+          <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <Typography variant="caption" color="text.secondary">
+              Sort by clicking any desktop table header.
+            </Typography>
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
+                {error}
+              </p>
+            )}
+          </div>
         </section>
 
         {/* List Admins */}
-        <section className="admin-glass-surface rounded-3xl p-4 md:p-6">
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" sx={{ mb: 2 }}>
+        <section className="admin-glass-surface rounded-2xl p-3 md:p-4 shadow-[0_22px_54px_rgba(15,23,42,0.14)]">
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" sx={{ mb: 1.5 }}>
             <Typography variant="h6" fontWeight={700}>Admins</Typography>
             <Chip size="small" color="secondary" variant="outlined" label={`${rows.length} filtered`} />
           </Stack>
@@ -485,7 +476,15 @@ export default function AdminManagement() {
             <Alert severity="error">{error}</Alert>
           ) : (
             <>
-              <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
+              <TableContainer
+                sx={{
+                  display: { xs: "none", md: "block" },
+                  maxHeight: "calc(100vh - 318px)",
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
                 <Table size="small" sx={{ minWidth: 760 }}>
                   <TableHead>
                     {table.getHeaderGroups().map((headerGroup) => (
@@ -494,7 +493,7 @@ export default function AdminManagement() {
                           <TableCell
                             key={header.id}
                             align={header.column.id === "actions" ? "right" : "left"}
-                            sx={{ fontWeight: 700 }}
+                            sx={{ fontWeight: 800, py: 1, bgcolor: "background.paper", position: "sticky", top: 0, zIndex: 1 }}
                           >
                             {header.isPlaceholder ? null : header.column.getCanSort() ? (
                               <TableSortLabel
@@ -517,7 +516,7 @@ export default function AdminManagement() {
                       rows.map((row) => (
                         <TableRow key={row.id} hover>
                           {row.getVisibleCells().map((cell) => (
-                            <TableCell key={cell.id} align={cell.column.id === "actions" ? "right" : "left"}>
+                            <TableCell key={cell.id} align={cell.column.id === "actions" ? "right" : "left"} sx={{ py: 0.9 }}>
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </TableCell>
                           ))}
@@ -534,14 +533,21 @@ export default function AdminManagement() {
                 </Table>
               </TableContainer>
 
-              <Stack spacing={2} sx={{ display: { xs: "flex", md: "none" } }}>
+              <Stack spacing={1.25} sx={{ display: { xs: "flex", md: "none" } }}>
                 {rows.length ? (
                   rows.map((row) => {
                     const u = row.original;
                     return (
-                      <Card key={u._id} variant="outlined" sx={{ borderRadius: 3 }}>
-                        <CardContent>
-                          <Stack spacing={1.5}>
+                      <Card
+                        key={u._id}
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 2,
+                          boxShadow: "0 14px 30px rgba(15, 23, 42, 0.10)",
+                        }}
+                      >
+                        <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                          <Stack spacing={1.25}>
                             <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
                               <Stack spacing={0.5} minWidth={0}>
                                 <Typography variant="subtitle2" sx={{ wordBreak: "break-word" }}>
@@ -558,7 +564,7 @@ export default function AdminManagement() {
                                 variant="outlined"
                               />
                             </Stack>
-                            <Grid container spacing={1.5}>
+                            <Grid container spacing={1}>
                               <Grid size={{ xs: 12, sm: 6 }}>
                                 <Typography variant="caption" color="text.secondary">Company</Typography>
                                 <Typography variant="body2">{u.companyName || "-"}</Typography>

@@ -176,14 +176,16 @@ export default function MonthlyCharts() {
   }), []);
 
   return (
-    <section className="mt-8 grid grid-cols-1 gap-6">
-      {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <section className="grid grid-cols-1 xl:grid-cols-12 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-1 gap-3 xl:col-span-3">
         {kpis.map((k) => (
-          <div key={k.label} className="rounded-2xl border border-rose-200 bg-white/80 backdrop-blur p-4 shadow-lg shadow-rose-100">
-            <div className="text-sm text-gray-600">{k.label}</div>
-            <div className="mt-1 flex items-end justify-between">
-              <div className="text-2xl font-semibold text-gray-900 tabular-nums">{loading ? "…" : k.total}</div>
+          <div
+            key={k.label}
+            className="rounded-xl border border-rose-200 bg-white/85 backdrop-blur p-3 shadow-[0_18px_38px_rgba(190,18,60,0.12)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(190,18,60,0.16)]"
+          >
+            <div className="text-xs font-medium text-gray-600">{k.label}</div>
+            <div className="mt-1.5 flex items-end justify-between gap-2">
+              <div className="text-xl md:text-2xl font-semibold text-gray-900 tabular-nums leading-none">{loading ? "..." : k.total}</div>
               {!loading && (
                 <div className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${
                   k.up ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"
@@ -205,10 +207,9 @@ export default function MonthlyCharts() {
         ))}
       </div>
 
-      {/* Line chart */}
-      <div className="rounded-2xl border border-rose-200 bg-white/80 backdrop-blur shadow-xl shadow-rose-100 p-4">
-        <h3 className="font-semibold text-gray-900 mb-2">Reports & Users (last 12 months)</h3>
-        <div className="h-64 md:h-80">
+      <div className="rounded-xl border border-rose-200 bg-white/85 backdrop-blur shadow-[0_18px_42px_rgba(190,18,60,0.12)] p-3 xl:col-span-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">Reports & Users</h3>
+        <div className="h-56 sm:h-64 xl:h-72">
           {error ? (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">{error}</div>
           ) : (
@@ -217,10 +218,9 @@ export default function MonthlyCharts() {
         </div>
       </div>
 
-      {/* Stacked bar chart */}
-      <div className="rounded-2xl border border-rose-200 bg-white/80 backdrop-blur shadow-xl shadow-rose-100 p-4">
-        <h3 className="font-semibold text-gray-900 mb-2">Reports by Type (last 12 months)</h3>
-        <div className="h-64 md:h-80">
+      <div className="rounded-xl border border-rose-200 bg-white/85 backdrop-blur shadow-[0_18px_42px_rgba(190,18,60,0.12)] p-3 xl:col-span-4">
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">Reports by Type</h3>
+        <div className="h-56 sm:h-64 xl:h-72">
           {error ? (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">{error}</div>
           ) : (
