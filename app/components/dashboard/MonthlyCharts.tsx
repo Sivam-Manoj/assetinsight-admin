@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import AssessmentRoundedIcon from "@mui/icons-material/AssessmentRounded";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -12,7 +13,9 @@ import {
   Legend,
   Filler,
 } from "chart.js";
-import { Line, Bar } from "react-chartjs-2";
+import { Bar, Line } from "react-chartjs-2";
+import { alpha, Box, Card, CardContent, Chip, Stack, Typography, useTheme } from "@mui/material";
+import { useEffect, useMemo, useState } from "react";
 
 ChartJS.register(
   CategoryScale,
@@ -25,7 +28,6 @@ ChartJS.register(
   Filler
 );
 
-// Types matching the server payload
 type MonthlyResponse = {
   months: string[];
   reports: { totals: number[]; byType: { Asset: number[]; RealEstate: number[]; Salvage: number[] } };
@@ -36,7 +38,32 @@ type MonthlyResponse = {
   };
 };
 
+const surfaceSx = {
+  height: "100%",
+  borderRadius: "12px",
+  border: "1px solid",
+  borderColor: (theme: any) =>
+    theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
+  background: (theme: any) =>
+    theme.palette.mode === "dark"
+      ? `linear-gradient(180deg, ${alpha("#132238", 0.96)}, ${alpha("#0b1728", 0.98)})`
+      : "rgba(255,255,255,0.94)",
+  boxShadow: (theme: any) =>
+    theme.palette.mode === "dark"
+      ? `0 18px 46px ${alpha("#020617", 0.46)}, inset 0 1px 0 ${alpha("#fff", 0.04)}`
+      : `0 16px 38px ${alpha("#0f172a", 0.10)}, inset 0 1px 0 ${alpha("#fff", 0.95)}`,
+  transition: "transform 170ms ease, box-shadow 170ms ease",
+  "&:hover": {
+    transform: "translateY(-2px)",
+    boxShadow: (theme: any) =>
+      theme.palette.mode === "dark"
+        ? `0 22px 52px ${alpha("#020617", 0.58)}, inset 0 1px 0 ${alpha("#fff", 0.05)}`
+        : `0 20px 46px ${alpha("#0f172a", 0.13)}, inset 0 1px 0 ${alpha("#fff", 1)}`,
+  },
+};
+
 export default function MonthlyCharts() {
+  const theme = useTheme();
   const [data, setData] = useState<MonthlyResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,29 +89,12 @@ export default function MonthlyCharts() {
   const reportTotals = useMemo(() => data?.reports?.totals || [], [data]);
   const userTotals = useMemo(() => data?.users?.totals || [], [data]);
   const byType = useMemo(() => data?.reports?.byType, [data]);
+  const reportKpi = data?.deltas?.reports || { total: 0, delta: 0, percent: 0 };
+  const reportTrendUp = reportKpi.delta >= 0;
 
-  const kpis = useMemo(() => {
-    const rp = data?.deltas?.reports || { total: 0, delta: 0, percent: 0 };
-    const us = data?.deltas?.users || { total: 0, delta: 0, percent: 0 };
-    return [
-      {
-        label: "Reports (this month)",
-        total: rp.total,
-        delta: rp.delta,
-        percent: rp.percent,
-        up: rp.delta >= 0,
-        color: "rose",
-      },
-      {
-        label: "New Users (this month)",
-        total: us.total,
-        delta: us.delta,
-        percent: us.percent,
-        up: us.delta >= 0,
-        color: "sky",
-      },
-    ];
-  }, [data]);
+  const chartText = theme.palette.mode === "dark" ? "#dbeafe" : "#1f2a44";
+  const mutedText = theme.palette.mode === "dark" ? "#93a9c8" : "#52637a";
+  const gridColor = theme.palette.mode === "dark" ? "rgba(147,169,200,0.15)" : "rgba(31,42,68,0.10)";
 
   const lineData = useMemo(() => {
     return {
@@ -93,45 +103,69 @@ export default function MonthlyCharts() {
         {
           label: "Reports",
           data: reportTotals,
-          borderColor: "rgba(244,63,94,0.9)", // rose-600
-          backgroundColor: "rgba(244,63,94,0.15)",
+          borderColor: "#f43f5e",
+          backgroundColor: "rgba(244,63,94,0.16)",
+          pointBackgroundColor: "#f43f5e",
+          pointBorderColor: "#f43f5e",
           fill: true,
-          tension: 0.35,
-          pointRadius: 2,
+          tension: 0.36,
+          pointRadius: 3,
+          pointHoverRadius: 5,
           borderWidth: 2,
         },
         {
           label: "New Users",
           data: userTotals,
-          borderColor: "rgba(2,132,199,0.9)", // sky-600
-          backgroundColor: "rgba(2,132,199,0.12)",
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37,99,235,0.10)",
+          pointBackgroundColor: "#2563eb",
+          pointBorderColor: "#2563eb",
           fill: true,
-          tension: 0.35,
-          pointRadius: 2,
+          tension: 0.36,
+          pointRadius: 3,
+          pointHoverRadius: 5,
           borderWidth: 2,
         },
       ],
     };
   }, [months, reportTotals, userTotals]);
 
-  const lineOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { labels: { color: "#111827", boxWidth: 12 } },
-      tooltip: { mode: "index" as const, intersect: false },
-    },
-    scales: {
-      x: {
-        ticks: { color: "#374151" },
-        grid: { color: "rgba(0,0,0,0.05)" },
+  const lineOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index" as const, intersect: false },
+      plugins: {
+        legend: {
+          position: "top" as const,
+          align: "end" as const,
+          labels: {
+            color: chartText,
+            boxWidth: 8,
+            boxHeight: 8,
+            usePointStyle: true,
+            pointStyle: "circle",
+            padding: 18,
+            font: { size: 12, weight: 600 },
+          },
+        },
+        tooltip: { mode: "index" as const, intersect: false },
       },
-      y: {
-        ticks: { color: "#374151" },
-        grid: { color: "rgba(0,0,0,0.06)" },
+      scales: {
+        x: {
+          ticks: { color: mutedText, maxRotation: 0 },
+          grid: { display: false },
+          border: { color: gridColor },
+        },
+        y: {
+          ticks: { color: mutedText, precision: 0 },
+          grid: { color: gridColor },
+          border: { color: gridColor },
+        },
       },
-    },
-  }), []);
+    }),
+    [chartText, gridColor, mutedText]
+  );
 
   const barData = useMemo(() => {
     return {
@@ -140,94 +174,169 @@ export default function MonthlyCharts() {
         {
           label: "Asset",
           data: byType?.Asset || [],
-          backgroundColor: "rgba(2,132,199,0.7)",
-          borderColor: "rgba(2,132,199,1)",
+          backgroundColor: "#2f80ed",
+          borderColor: "#2f80ed",
           borderWidth: 1,
+          borderRadius: 2,
         },
         {
           label: "RealEstate",
           data: byType?.RealEstate || [],
-          backgroundColor: "rgba(5,150,105,0.7)",
-          borderColor: "rgba(5,150,105,1)",
+          backgroundColor: "#16a34a",
+          borderColor: "#16a34a",
           borderWidth: 1,
+          borderRadius: 2,
         },
         {
           label: "Salvage",
           data: byType?.Salvage || [],
-          backgroundColor: "rgba(217,119,6,0.8)",
-          borderColor: "rgba(217,119,6,1)",
+          backgroundColor: "#f59e0b",
+          borderColor: "#f59e0b",
           borderWidth: 1,
+          borderRadius: 2,
         },
       ],
     };
   }, [months, byType]);
 
-  const barOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { labels: { color: "#111827", boxWidth: 12 } },
-      tooltip: { mode: "index" as const, intersect: false },
-    },
-    scales: {
-      x: { stacked: true, ticks: { color: "#374151" }, grid: { display: false } },
-      y: { stacked: true, ticks: { color: "#374151" }, grid: { color: "rgba(0,0,0,0.06)" } },
-    },
-  }), []);
+  const barOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "top" as const,
+          align: "end" as const,
+          labels: {
+            color: chartText,
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 18,
+            font: { size: 12, weight: 600 },
+          },
+        },
+        tooltip: { mode: "index" as const, intersect: false },
+      },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { color: mutedText, maxRotation: 0 },
+          grid: { display: false },
+          border: { color: gridColor },
+        },
+        y: {
+          stacked: true,
+          ticks: { color: mutedText, precision: 0 },
+          grid: { color: gridColor },
+          border: { color: gridColor },
+        },
+      },
+    }),
+    [chartText, gridColor, mutedText]
+  );
 
   return (
-    <section className="grid grid-cols-1 xl:grid-cols-12 gap-3">
-      <div className="grid grid-cols-2 xl:grid-cols-1 gap-3 xl:col-span-3">
-        {kpis.map((k) => (
-          <div
-            key={k.label}
-            className="rounded-xl border border-rose-200 bg-white/85 backdrop-blur p-3 shadow-[0_18px_38px_rgba(190,18,60,0.12)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(190,18,60,0.16)]"
-          >
-            <div className="text-xs font-medium text-gray-600">{k.label}</div>
-            <div className="mt-1.5 flex items-end justify-between gap-2">
-              <div className="text-xl md:text-2xl font-semibold text-gray-900 tabular-nums leading-none">{loading ? "..." : k.total}</div>
-              {!loading && (
-                <div className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${
-                  k.up ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"
-                }`}>
-                  {k.up ? (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="18 15 12 9 6 15" />
-                    </svg>
-                  ) : (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  )}
-                  {Math.abs(k.percent).toFixed(1)}%
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+    <Box
+      component="section"
+      sx={{
+        display: "grid",
+        gridTemplateColumns: {
+          xs: "1fr",
+          lg: "minmax(220px, 0.75fr) minmax(0, 1.45fr) minmax(0, 1.35fr)",
+        },
+        gap: 1.5,
+      }}
+    >
+      <Card sx={surfaceSx}>
+        <CardContent sx={{ p: { xs: 2, md: 2.75 }, height: "100%", "&:last-child": { pb: { xs: 2, md: 2.75 } } }}>
+          <Stack spacing={2.4} sx={{ height: "100%" }}>
+            <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1.5}>
+              <Box minWidth={0}>
+                <Typography component="h3" sx={{ fontSize: 20, fontWeight: 950, lineHeight: 1.1 }}>
+                  Reports <Typography component="span" color="text.secondary" sx={{ fontSize: 17, fontWeight: 650 }}>(this month)</Typography>
+                </Typography>
+                <Typography variant="h3" sx={{ mt: 2.25, fontWeight: 950, lineHeight: 1 }} suppressHydrationWarning>
+                  {loading ? "..." : reportKpi.total}
+                </Typography>
+              </Box>
+              {!loading ? (
+                <Chip
+                  size="small"
+                  icon={<TrendingUpRoundedIcon />}
+                  label={`${Math.abs(reportKpi.percent).toFixed(1)}%`}
+                  sx={{
+                    height: 40,
+                    borderRadius: "10px",
+                    px: 0.8,
+                    bgcolor: reportTrendUp ? alpha("#16a34a", 0.13) : alpha("#dc2626", 0.13),
+                    color: reportTrendUp ? "#16a34a" : "#dc2626",
+                    fontWeight: 850,
+                    "& .MuiChip-icon": {
+                      color: "inherit",
+                      transform: reportTrendUp ? "none" : "rotate(180deg)",
+                    },
+                  }}
+                />
+              ) : null}
+            </Stack>
 
-      <div className="rounded-xl border border-rose-200 bg-white/85 backdrop-blur shadow-[0_18px_42px_rgba(190,18,60,0.12)] p-3 xl:col-span-5">
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Reports & Users</h3>
-        <div className="h-56 sm:h-64 xl:h-72">
-          {error ? (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">{error}</div>
-          ) : (
-            <Line data={lineData} options={lineOptions} />
-          )}
-        </div>
-      </div>
+            <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
+              <Box
+                sx={{
+                  width: 76,
+                  height: 76,
+                  borderRadius: "999px",
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: (muiTheme) => (muiTheme.palette.mode === "dark" ? alpha("#2563eb", 0.18) : "#eff6ff"),
+                  color: "#2563eb",
+                  "& svg": { fontSize: 40 },
+                }}
+              >
+                <AssessmentRoundedIcon />
+              </Box>
+            </Box>
 
-      <div className="rounded-xl border border-rose-200 bg-white/85 backdrop-blur shadow-[0_18px_42px_rgba(190,18,60,0.12)] p-3 xl:col-span-4">
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Reports by Type</h3>
-        <div className="h-56 sm:h-64 xl:h-72">
-          {error ? (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-2">{error}</div>
-          ) : (
-            <Bar data={barData} options={barOptions} />
-          )}
-        </div>
-      </div>
-    </section>
+            <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 520, lineHeight: 1.55 }}>
+              {reportTrendUp ? "Monthly report generation is trending upward." : "Monthly report generation remains steady."}
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card sx={surfaceSx}>
+        <CardContent sx={{ p: { xs: 2, md: 2.6 }, "&:last-child": { pb: { xs: 2, md: 2.6 } } }}>
+          <Typography component="h3" sx={{ fontSize: 20, fontWeight: 950, mb: 1 }}>
+            Reports & Users
+          </Typography>
+          <Box sx={{ height: { xs: 280, md: 320, xl: 340 } }}>
+            {error ? (
+              <Box sx={{ color: "error.main", bgcolor: alpha(theme.palette.error.main, 0.08), borderRadius: "8px", p: 1.5 }}>
+                {error}
+              </Box>
+            ) : (
+              <Line data={lineData} options={lineOptions} />
+            )}
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={surfaceSx}>
+        <CardContent sx={{ p: { xs: 2, md: 2.6 }, "&:last-child": { pb: { xs: 2, md: 2.6 } } }}>
+          <Typography component="h3" sx={{ fontSize: 20, fontWeight: 950, mb: 1 }}>
+            Reports by Type
+          </Typography>
+          <Box sx={{ height: { xs: 280, md: 320, xl: 340 } }}>
+            {error ? (
+              <Box sx={{ color: "error.main", bgcolor: alpha(theme.palette.error.main, 0.08), borderRadius: "8px", p: 1.5 }}>
+                {error}
+              </Box>
+            ) : (
+              <Bar data={barData} options={barOptions} />
+            )}
+          </Box>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }
