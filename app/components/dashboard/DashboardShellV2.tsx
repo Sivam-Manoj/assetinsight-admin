@@ -23,7 +23,6 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import MonthlyCharts from "@/app/components/dashboard/MonthlyCharts";
 
@@ -89,14 +88,6 @@ type MetricCard = {
   color: string;
   iconBg: string;
   progress: number;
-};
-
-type QuickAction = {
-  href: string;
-  label: string;
-  color: string;
-  shadowColor: string;
-  icon: ReactNode;
 };
 
 const statCards: Array<{
@@ -269,40 +260,6 @@ export default function DashboardShellV2() {
     return "Good evening";
   }, [now]);
 
-  const quickActions = useMemo<QuickAction[]>(() => {
-    const actions: QuickAction[] = [
-      {
-        href: "/reports",
-        label: "Reports",
-        color: "#1458f5",
-        shadowColor: "#2563eb",
-        icon: <AssessmentRoundedIcon />,
-      },
-    ];
-
-    if (me?.role === "admin" || me?.role === "superadmin") {
-      actions.push({
-        href: "/approvals",
-        label: "Approvals",
-        color: "#08a33d",
-        shadowColor: "#16a34a",
-        icon: <CheckCircleRoundedIcon />,
-      });
-    }
-
-    if (me?.role === "superadmin") {
-      actions.push({
-        href: "/admins",
-        label: "Admins",
-        color: "#5b2fe6",
-        shadowColor: "#6d28d9",
-        icon: <GroupRoundedIcon />,
-      });
-    }
-
-    return actions;
-  }, [me?.role]);
-
   const creditMeta = creditStatusMeta[credits?.status || "unavailable"];
   const creditSpentPercent = useMemo(() => {
     if (!credits || !credits.budgetCredits || credits.spentCredits === null) return 0;
@@ -410,33 +367,75 @@ export default function DashboardShellV2() {
                     </Typography>
                   </Box>
 
-                  <Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap">
-                    {quickActions.map((action) => (
-                      <Button
-                        key={action.href}
-                        component={Link}
-                        href={action.href}
-                        variant="contained"
-                        startIcon={action.icon}
-                        sx={{
-                          minHeight: 50,
-                          px: { xs: 2, sm: 2.5 },
-                          borderRadius: "10px",
-                          bgcolor: action.color,
-                          fontSize: 16,
-                          fontWeight: 850,
-                          boxShadow: `0 14px 28px ${alpha(action.shadowColor, 0.25)}`,
-                          "&:hover": {
-                            bgcolor: action.color,
-                            boxShadow: `0 18px 34px ${alpha(action.shadowColor, 0.32)}`,
-                            transform: "translateY(-1px)",
-                          },
-                        }}
-                      >
-                        {action.label}
-                      </Button>
+                  <Grid container spacing={1.25}>
+                    {allMetricCards.map((card) => (
+                      <Grid key={card.key} size={{ xs: 6, sm: 4 }}>
+                        <Card
+                          sx={{
+                            height: "100%",
+                            borderRadius: "10px",
+                            border: "1px solid",
+                            borderColor: (theme) =>
+                              theme.palette.mode === "dark" ? alpha("#93a9c8", 0.14) : alpha("#94a3b8", 0.28),
+                            bgcolor: (theme) =>
+                              theme.palette.mode === "dark" ? alpha("#0f1b2d", 0.72) : alpha("#ffffff", 0.82),
+                            boxShadow: (theme) =>
+                              theme.palette.mode === "dark"
+                                ? `0 12px 26px ${alpha("#020617", 0.32)}, inset 0 1px 0 ${alpha("#fff", 0.04)}`
+                                : `0 10px 22px ${alpha("#0f172a", 0.08)}, inset 0 1px 0 ${alpha("#fff", 0.9)}`,
+                          }}
+                        >
+                          <CardContent sx={{ p: { xs: 1.15, sm: 1.35 }, "&:last-child": { pb: { xs: 1.15, sm: 1.35 } } }}>
+                            <Stack spacing={1}>
+                              <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={0.75}>
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }} noWrap>
+                                    {card.label}
+                                  </Typography>
+                                  <Typography
+                                    variant="h5"
+                                    suppressHydrationWarning
+                                    sx={{ mt: 0.25, fontWeight: 950, lineHeight: 1, fontSize: { xs: 22, sm: 25 } }}
+                                  >
+                                    {statsLoading ? "..." : numberFormatter.format(card.value)}
+                                  </Typography>
+                                </Box>
+                                <Box
+                                  sx={{
+                                    width: { xs: 36, sm: 40 },
+                                    height: { xs: 36, sm: 40 },
+                                    borderRadius: "11px",
+                                    display: "grid",
+                                    placeItems: "center",
+                                    bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(card.color, 0.18) : card.iconBg),
+                                    color: card.color,
+                                    flexShrink: 0,
+                                    boxShadow: `inset 0 1px 0 ${alpha("#fff", 0.55)}`,
+                                    "& svg": { fontSize: { xs: 24, sm: 26 } },
+                                  }}
+                                >
+                                  {card.icon}
+                                </Box>
+                              </Stack>
+                              <LinearProgress
+                                variant="determinate"
+                                value={card.progress}
+                                sx={{
+                                  height: 4,
+                                  borderRadius: 999,
+                                  bgcolor: alpha(card.color, 0.13),
+                                  "& .MuiLinearProgress-bar": {
+                                    borderRadius: 999,
+                                    bgcolor: card.color,
+                                  },
+                                }}
+                              />
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
                     ))}
-                  </Stack>
+                  </Grid>
                 </Stack>
               </CardContent>
             </Card>
@@ -650,64 +649,6 @@ export default function DashboardShellV2() {
                 </Stack>
               </CardContent>
             </Card>
-          </Grid>
-
-          <Grid size={12}>
-            <Grid container spacing={1.5}>
-              {allMetricCards.map((card) => (
-                <Grid key={card.key} size={{ xs: 6, md: 4, xl: 2 }}>
-                  <Card sx={{ ...surfaceSx, ...compactHoverSx }}>
-                    <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
-                      <Stack spacing={1.5}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-                          <Box sx={{ minWidth: 0 }}>
-                            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 650 }} noWrap>
-                              {card.label}
-                            </Typography>
-                            <Typography
-                              variant="h4"
-                              suppressHydrationWarning
-                              sx={{ mt: 0.35, fontWeight: 950, lineHeight: 1, fontSize: { xs: 28, md: 32 } }}
-                            >
-                              {statsLoading ? "..." : numberFormatter.format(card.value)}
-                            </Typography>
-                          </Box>
-                          <Box
-                            sx={{
-                              width: { xs: 46, md: 50 },
-                              height: { xs: 46, md: 50 },
-                              borderRadius: "14px",
-                              display: "grid",
-                              placeItems: "center",
-                              bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(card.color, 0.18) : card.iconBg),
-                              color: card.color,
-                              flexShrink: 0,
-                              boxShadow: `inset 0 1px 0 ${alpha("#fff", 0.55)}`,
-                              "& svg": { fontSize: 30 },
-                            }}
-                          >
-                            {card.icon}
-                          </Box>
-                        </Stack>
-                        <LinearProgress
-                          variant="determinate"
-                          value={card.progress}
-                          sx={{
-                            height: 4,
-                            borderRadius: 999,
-                            bgcolor: alpha(card.color, 0.13),
-                            "& .MuiLinearProgress-bar": {
-                              borderRadius: 999,
-                              bgcolor: card.color,
-                            },
-                          }}
-                        />
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
           </Grid>
 
           <Grid size={12}>
