@@ -1,15 +1,20 @@
 "use client";
 
 import AssessmentRoundedIcon from "@mui/icons-material/AssessmentRounded";
+import BusinessCenterRoundedIcon from "@mui/icons-material/BusinessCenterRounded";
 import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
+import MapRoundedIcon from "@mui/icons-material/MapRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import RocketLaunchRoundedIcon from "@mui/icons-material/RocketLaunchRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import SourceRoundedIcon from "@mui/icons-material/SourceRounded";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import {
   Alert,
   alpha,
@@ -190,12 +195,34 @@ function formatDate(value: string | null | undefined) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--";
+  return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
 function statusLabel(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function scoreColor(score: number) {
+  if (score >= 70) return "#16a34a";
+  if (score >= 40) return "#f59e0b";
+  return "#64748b";
+}
+
+function fitScore(value: number | null | undefined) {
+  const raw = Number(value || 0);
+  return raw > 1 ? Math.round(raw) : Math.round(raw * 100);
+}
+
 export default function RevenueRadarDashboard() {
   const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
   const [data, setData] = useState<RadarData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -212,17 +239,23 @@ export default function RevenueRadarDashboard() {
   const [toast, setToast] = useState<string | null>(null);
 
   const surfaceSx = {
-    borderRadius: "14px",
+    borderRadius: "12px",
     border: "1px solid",
-    borderColor: theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
-    background:
-      theme.palette.mode === "dark"
-        ? `linear-gradient(180deg, ${alpha("#132238", 0.96)}, ${alpha("#0b1728", 0.98)})`
-        : "rgba(255,255,255,0.94)",
-    boxShadow:
-      theme.palette.mode === "dark"
-        ? `0 18px 46px ${alpha("#020617", 0.46)}, inset 0 1px 0 ${alpha("#fff", 0.04)}`
-        : `0 16px 38px ${alpha("#0f172a", 0.10)}, inset 0 1px 0 ${alpha("#fff", 0.95)}`,
+    borderColor: isDark ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
+    background: isDark
+      ? `linear-gradient(180deg, ${alpha("#132238", 0.96)}, ${alpha("#0b1728", 0.98)})`
+      : "rgba(255,255,255,0.96)",
+    boxShadow: isDark
+      ? `0 18px 46px ${alpha("#020617", 0.46)}, inset 0 1px 0 ${alpha("#fff", 0.04)}`
+      : `0 16px 38px ${alpha("#0f172a", 0.10)}, inset 0 1px 0 ${alpha("#fff", 0.95)}`,
+    overflow: "hidden",
+  };
+
+  const insetSx = {
+    border: "1px solid",
+    borderColor: isDark ? alpha("#93a9c8", 0.16) : alpha("#94a3b8", 0.25),
+    bgcolor: isDark ? alpha("#07111f", 0.35) : alpha("#f8fafc", 0.82),
+    boxShadow: isDark ? `inset 0 1px 0 ${alpha("#fff", 0.03)}` : `inset 0 1px 0 ${alpha("#fff", 0.9)}`,
   };
 
   const loadRadar = useCallback(async () => {
@@ -277,6 +310,63 @@ export default function RevenueRadarDashboard() {
     const options = data?.options.categories || [];
     return categories.map((id) => options.find((entry) => entry.id === id)?.label || id).join(", ");
   }, [categories, data?.options.categories]);
+
+  const runImportableIds = (run?.items || [])
+    .filter((item) => item.searchResultId && !item.duplicate)
+    .map((item) => item.searchResultId);
+
+  const kpiCards: Array<{ label: string; value: string; rawValue: number; icon: ReactNode; color: string; note: string }> = [
+    {
+      label: "Total leads",
+      value: formatNumber(data?.kpis.totalLeads),
+      rawValue: data?.kpis.totalLeads || 0,
+      icon: <AssessmentRoundedIcon />,
+      color: "#2563eb",
+      note: `${timeframeDays} day CRM view`,
+    },
+    {
+      label: "Active pipeline",
+      value: formatNumber(data?.kpis.activePipeline),
+      rawValue: data?.kpis.activePipeline || 0,
+      icon: <TrendingUpRoundedIcon />,
+      color: "#16a34a",
+      note: "Open opportunities",
+    },
+    {
+      label: "Won / lost",
+      value: `${formatNumber(data?.kpis.won)} / ${formatNumber(data?.kpis.lost)}`,
+      rawValue: (data?.kpis.won || 0) + (data?.kpis.lost || 0),
+      icon: <CheckCircleRoundedIcon />,
+      color: "#7c3aed",
+      note: "Closed outcomes",
+    },
+    {
+      label: "Proposal stage",
+      value: formatNumber(data?.kpis.proposalStage),
+      rawValue: data?.kpis.proposalStage || 0,
+      icon: <CampaignRoundedIcon />,
+      color: "#f59e0b",
+      note: "Decision-ready leads",
+    },
+    {
+      label: "Overdue / stale",
+      value: `${formatNumber(data?.kpis.overdue)} / ${formatNumber(data?.kpis.stale)}`,
+      rawValue: (data?.kpis.overdue || 0) + (data?.kpis.stale || 0),
+      icon: <WarningAmberRoundedIcon />,
+      color: "#ef4444",
+      note: "Follow-up risk",
+    },
+    {
+      label: "Conversion",
+      value: formatPercent(data?.kpis.conversionRate),
+      rawValue: data?.kpis.conversionRate || 0,
+      icon: <RocketLaunchRoundedIcon />,
+      color: "#0ea5e9",
+      note: "Won from closed",
+    },
+  ];
+
+  const maxKpi = Math.max(...kpiCards.map((card) => card.rawValue), 1);
 
   function toggleValue(value: string, current: string[], setNext: (next: string[]) => void) {
     setNext(current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value]);
@@ -351,48 +441,90 @@ export default function RevenueRadarDashboard() {
     }
   }
 
-  const kpiCards: Array<{ label: string; value: string; icon: ReactNode; color: string }> = [
-    { label: "Total leads", value: formatNumber(data?.kpis.totalLeads), icon: <AssessmentRoundedIcon />, color: "#2563eb" },
-    { label: "Active pipeline", value: formatNumber(data?.kpis.activePipeline), icon: <TrendingUpRoundedIcon />, color: "#16a34a" },
-    { label: "Won / Lost", value: `${formatNumber(data?.kpis.won)} / ${formatNumber(data?.kpis.lost)}`, icon: <CheckCircleRoundedIcon />, color: "#7c3aed" },
-    { label: "Proposal stage", value: formatNumber(data?.kpis.proposalStage), icon: <CampaignRoundedIcon />, color: "#f59e0b" },
-    { label: "Overdue / stale", value: `${formatNumber(data?.kpis.overdue)} / ${formatNumber(data?.kpis.stale)}`, icon: <ErrorOutlineRoundedIcon />, color: "#ef4444" },
-    { label: "Conversion", value: formatPercent(data?.kpis.conversionRate), icon: <RocketLaunchRoundedIcon />, color: "#0ea5e9" },
-  ];
-
-  const runImportableIds = (run?.items || [])
-    .filter((item) => item.searchResultId && !item.duplicate)
-    .map((item) => item.searchResultId);
-
   return (
     <Box
       sx={{
         minHeight: "calc(100vh - 64px)",
-        bgcolor: theme.palette.mode === "dark" ? "#07111f" : "#f3f6fb",
-        p: { xs: 1.25, md: 1.75 },
+        bgcolor: isDark ? "#07111f" : "#f3f6fb",
+        p: { xs: 1, sm: 1.25, lg: 1.75 },
       }}
     >
-      <Stack spacing={1.5}>
+      <Stack spacing={1.25} sx={{ maxWidth: 1900, mx: "auto" }}>
         <Card sx={surfaceSx}>
-          <CardContent sx={{ p: { xs: 2, md: 2.5 }, "&:last-child": { pb: { xs: 2, md: 2.5 } } }}>
-            <Stack direction={{ xs: "column", lg: "row" }} spacing={2} alignItems={{ xs: "stretch", lg: "center" }} justifyContent="space-between">
-              <Box>
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                  <Chip icon={<PublicRoundedIcon />} label="Canada / US" color="primary" variant="outlined" sx={{ fontWeight: 800 }} />
-                  <Chip label={`Updated ${formatDate(data?.asOf)}`} variant="outlined" />
-                </Stack>
-                <Typography variant="h4" sx={{ mt: 1, fontWeight: 950 }}>
-                  Revenue Radar
-                </Typography>
-                <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 920 }}>
-                  Prioritize regions, find public-source prospects, and move qualified auction, appraisal, salvage, and equipment opportunities into CRM.
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xs: "flex-start", lg: "flex-end" }}>
-                <Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={loadRadar} disabled={loading}>
+          <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
+            <Stack
+              direction={{ xs: "column", lg: "row" }}
+              spacing={1.5}
+              alignItems={{ xs: "stretch", lg: "center" }}
+              justifyContent="space-between"
+            >
+              <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
+                <Box
+                  sx={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: "14px",
+                    display: "grid",
+                    placeItems: "center",
+                    color: "#fff",
+                    bgcolor: "#1458f5",
+                    boxShadow: `0 14px 28px ${alpha("#1458f5", 0.28)}`,
+                    flexShrink: 0,
+                  }}
+                >
+                  <PublicRoundedIcon sx={{ fontSize: 30 }} />
+                </Box>
+                <Box minWidth={0}>
+                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Typography
+                      component="h1"
+                      sx={{ fontSize: { xs: 26, md: 32 }, fontWeight: 950, lineHeight: 1.05 }}
+                    >
+                      Revenue Radar
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label="Canada / US"
+                      sx={{
+                        height: 26,
+                        fontWeight: 850,
+                        color: "#1458f5",
+                        borderColor: alpha("#1458f5", 0.32),
+                        bgcolor: isDark ? alpha("#1458f5", 0.14) : "#eff6ff",
+                      }}
+                      variant="outlined"
+                    />
+                    <Chip size="small" label={`Updated ${formatDateTime(data?.asOf)}`} variant="outlined" />
+                  </Stack>
+                  <Typography color="text.secondary" sx={{ mt: 0.55, maxWidth: 920, fontSize: { xs: 13.5, md: 15 } }}>
+                    Prioritize sales regions, launch public-source prospect discovery, and import qualified auction, appraisal,
+                    salvage, and equipment opportunities into CRM.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                alignItems={{ xs: "stretch", sm: "center" }}
+                justifyContent="flex-end"
+                sx={{ flexShrink: 0 }}
+              >
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshRoundedIcon />}
+                  onClick={loadRadar}
+                  disabled={loading}
+                  sx={{ minHeight: 40, borderRadius: "10px", fontWeight: 850 }}
+                >
                   Refresh
                 </Button>
-                <Button variant="contained" startIcon={<RocketLaunchRoundedIcon />} onClick={applyRecommendation} disabled={!data}>
+                <Button
+                  variant="contained"
+                  startIcon={<RocketLaunchRoundedIcon />}
+                  onClick={applyRecommendation}
+                  disabled={!data}
+                  sx={{ minHeight: 40, borderRadius: "10px", fontWeight: 850 }}
+                >
                   Apply recommendation
                 </Button>
               </Stack>
@@ -401,56 +533,117 @@ export default function RevenueRadarDashboard() {
         </Card>
 
         {error ? <Alert severity="error">{error}</Alert> : null}
-        {toast ? <Alert severity="success" onClose={() => setToast(null)}>{toast}</Alert> : null}
+        {toast ? (
+          <Alert severity="success" onClose={() => setToast(null)}>
+            {toast}
+          </Alert>
+        ) : null}
 
-        <Grid container spacing={1.5}>
-          {kpiCards.map((card) => (
-            <Grid key={card.label} size={{ xs: 6, md: 4, xl: 2 }}>
-              <Card sx={{ ...surfaceSx, height: "100%" }}>
-                <CardContent sx={{ p: 1.75, "&:last-child": { pb: 1.75 } }}>
-                  <Stack direction="row" spacing={1.25} justifyContent="space-between" alignItems="center">
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }} noWrap>
-                        {card.label}
-                      </Typography>
-                      <Typography variant="h5" sx={{ mt: 0.4, fontWeight: 950, lineHeight: 1.05 }}>
-                        {loading ? "..." : card.value}
-                      </Typography>
-                    </Box>
-                    <Box
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "repeat(2, minmax(0, 1fr))",
+              md: "repeat(3, minmax(0, 1fr))",
+              xl: "repeat(6, minmax(0, 1fr))",
+            },
+            gap: 1.25,
+          }}
+        >
+          {kpiCards.map((card) => {
+            const progress = Math.min(100, Math.max(12, (card.rawValue / maxKpi) * 100));
+            return (
+              <Card key={card.label} sx={{ ...surfaceSx, minHeight: 128 }}>
+                <CardContent sx={{ p: { xs: 1.2, sm: 1.45 }, "&:last-child": { pb: { xs: 1.2, sm: 1.45 } } }}>
+                  <Stack spacing={1.15}>
+                    <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+                      <Box minWidth={0}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }} noWrap>
+                          {card.label}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            mt: 0.35,
+                            fontSize: { xs: 23, sm: 27 },
+                            lineHeight: 1,
+                            fontWeight: 950,
+                            color: "text.primary",
+                          }}
+                        >
+                          {loading ? "..." : card.value}
+                        </Typography>
+                      </Box>
+                      <Box
+                        sx={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: "11px",
+                          display: "grid",
+                          placeItems: "center",
+                          bgcolor: alpha(card.color, isDark ? 0.18 : 0.12),
+                          color: card.color,
+                          flexShrink: 0,
+                          "& svg": { fontSize: 23 },
+                        }}
+                      >
+                        {card.icon}
+                      </Box>
+                    </Stack>
+                    <LinearProgress
+                      value={loading ? 0 : progress}
+                      variant="determinate"
                       sx={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: "12px",
-                        display: "grid",
-                        placeItems: "center",
-                        color: card.color,
-                        bgcolor: alpha(card.color, theme.palette.mode === "dark" ? 0.18 : 0.11),
-                        flexShrink: 0,
+                        height: 5,
+                        borderRadius: 999,
+                        bgcolor: alpha(card.color, 0.12),
+                        "& .MuiLinearProgress-bar": {
+                          bgcolor: card.color,
+                          borderRadius: 999,
+                        },
                       }}
-                    >
-                      {card.icon}
-                    </Box>
+                    />
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      {card.note}
+                    </Typography>
                   </Stack>
                 </CardContent>
               </Card>
-            </Grid>
-          ))}
-        </Grid>
+            );
+          })}
+        </Box>
 
-        <Grid container spacing={1.5} alignItems="stretch">
-          <Grid size={{ xs: 12, xl: 4 }}>
-            <Card sx={{ ...surfaceSx, height: "100%" }}>
-              <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                  Target controls
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Filters affect analytics and provide defaults for Prospect Scout.
-                </Typography>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              lg: "320px minmax(0, 1fr)",
+              xl: "320px minmax(0, 1fr) 360px",
+            },
+            gridTemplateAreas: {
+              xs: `"filters" "main" "side"`,
+              lg: `"filters main" "side main"`,
+              xl: `"filters main side"`,
+            },
+            gap: 1.25,
+            alignItems: "start",
+          }}
+        >
+          <Stack spacing={1.25} sx={{ gridArea: "filters", minWidth: 0 }}>
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                  <Stack direction="row" spacing={1} alignItems="center" minWidth={0}>
+                    <TuneRoundedIcon sx={{ color: "#1458f5" }} />
+                    <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
+                      Targeting
+                    </Typography>
+                  </Stack>
+                  <Chip size="small" label={`${timeframeDays}d`} color="primary" variant="outlined" />
+                </Stack>
 
-                <Stack spacing={1.5} sx={{ mt: 2 }}>
-                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Stack spacing={1.25} sx={{ mt: 1.5 }}>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75 }}>
                     {(["Canada", "United States"] as RadarCountry[]).map((item) => (
                       <Button
                         key={item}
@@ -460,30 +653,51 @@ export default function RevenueRadarDashboard() {
                           setRegions([]);
                         }}
                         size="small"
+                        sx={{ minHeight: 36, borderRadius: "9px", fontWeight: 850 }}
                       >
                         {item}
                       </Button>
                     ))}
-                  </Stack>
+                  </Box>
 
-                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                    {(data?.options.timeframeDays || [30, 60, 90, 180, 365]).map((days) => (
-                      <Chip
-                        key={days}
-                        clickable
-                        label={`${days}d`}
-                        color={timeframeDays === days ? "primary" : "default"}
-                        variant={timeframeDays === days ? "filled" : "outlined"}
-                        onClick={() => setTimeframeDays(days)}
-                      />
-                    ))}
-                  </Stack>
-
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
-                      Regions
+                  <Box sx={{ ...insetSx, borderRadius: "10px", p: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 850 }}>
+                      Timeframe
                     </Typography>
-                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 0.75, maxHeight: 132, overflow: "auto", pr: 0.5 }}>
+                    <Stack direction="row" spacing={0.65} useFlexGap flexWrap="wrap" sx={{ mt: 0.75 }}>
+                      {(data?.options.timeframeDays || [30, 60, 90, 180, 365]).map((days) => (
+                        <Chip
+                          key={days}
+                          clickable
+                          size="small"
+                          label={`${days}d`}
+                          color={timeframeDays === days ? "primary" : "default"}
+                          variant={timeframeDays === days ? "filled" : "outlined"}
+                          onClick={() => setTimeframeDays(days)}
+                          sx={{ fontWeight: 800 }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+
+                  <Box sx={{ ...insetSx, borderRadius: "10px", p: 1 }}>
+                    <Stack direction="row" justifyContent="space-between" spacing={1}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 850 }}>
+                        Regions
+                      </Typography>
+                      {regions.length ? (
+                        <Button size="small" onClick={() => setRegions([])} sx={{ minHeight: 20, py: 0, fontSize: 12 }}>
+                          Clear
+                        </Button>
+                      ) : null}
+                    </Stack>
+                    <Stack
+                      direction="row"
+                      spacing={0.65}
+                      useFlexGap
+                      flexWrap="wrap"
+                      sx={{ mt: 0.75, maxHeight: { xs: 110, lg: 145 }, overflow: "auto", pr: 0.25 }}
+                    >
                       {regionOptions.map((region) => (
                         <Chip
                           key={region}
@@ -493,16 +707,24 @@ export default function RevenueRadarDashboard() {
                           color={regions.includes(region) ? "primary" : "default"}
                           variant={regions.includes(region) ? "filled" : "outlined"}
                           onClick={() => toggleValue(region, regions, setRegions)}
+                          sx={{ maxWidth: "100%", fontWeight: 750 }}
                         />
                       ))}
                     </Stack>
                   </Box>
 
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
-                      Revenue categories
-                    </Typography>
-                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 0.75 }}>
+                  <Box sx={{ ...insetSx, borderRadius: "10px", p: 1 }}>
+                    <Stack direction="row" justifyContent="space-between" spacing={1}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 850 }}>
+                        Revenue categories
+                      </Typography>
+                      {categories.length ? (
+                        <Button size="small" onClick={() => setCategories([])} sx={{ minHeight: 20, py: 0, fontSize: 12 }}>
+                          Clear
+                        </Button>
+                      ) : null}
+                    </Stack>
+                    <Stack direction="row" spacing={0.65} useFlexGap flexWrap="wrap" sx={{ mt: 0.75 }}>
                       {(data?.options.categories || []).map((category) => (
                         <Chip
                           key={category.id}
@@ -512,6 +734,7 @@ export default function RevenueRadarDashboard() {
                           color={categories.includes(category.id) ? "secondary" : "default"}
                           variant={categories.includes(category.id) ? "filled" : "outlined"}
                           onClick={() => toggleValue(category.id, categories, setCategories)}
+                          sx={{ fontWeight: 750 }}
                         />
                       ))}
                     </Stack>
@@ -519,53 +742,195 @@ export default function RevenueRadarDashboard() {
                 </Stack>
               </CardContent>
             </Card>
-          </Grid>
 
-          <Grid size={{ xs: 12, xl: 8 }}>
-            <Card sx={{ ...surfaceSx, height: "100%" }}>
-              <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} justifyContent="space-between">
-                  <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                      Opportunity map
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Score blends CRM volume, proposals, wins, public prospects, overdue work, and stale follow-ups.
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Stack spacing={1.25}>
+                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <SearchRoundedIcon sx={{ color: "#16a34a" }} />
+                      <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
+                        Prospect Scout
+                      </Typography>
+                    </Stack>
+                    <Chip size="small" label={`${maxResults} max`} variant="outlined" />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    Start a public indexed-source lead search using the selected region and category signals.
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Keywords"
+                    multiline
+                    minRows={3}
+                    value={keywords}
+                    onChange={(e) => setKeywords(e.target.value)}
+                    placeholder="auction, asset recovery, fleet disposal..."
+                  />
+                  <Grid container spacing={1}>
+                    <Grid size={{ xs: 5, lg: 12, xl: 5 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Max"
+                        type="number"
+                        value={maxResults}
+                        onChange={(e) =>
+                          setMaxResults(Math.min(Number(data?.options.maxResults || 100), Math.max(1, Number(e.target.value || 1))))
+                        }
+                        inputProps={{ min: 1, max: data?.options.maxResults || 100 }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 7, lg: 12, xl: 7 }}>
+                      <Box sx={{ ...insetSx, borderRadius: "10px", p: 0.9, minHeight: 40 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          Search target
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 850 }} noWrap>
+                          {country} {regions.length ? `- ${regions.join(", ")}` : "- all regions"}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {selectedCategoryLabels || "Recommended categories"}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<SearchRoundedIcon />}
+                    onClick={startSearch}
+                    disabled={searching}
+                    fullWidth
+                    sx={{ minHeight: 42, borderRadius: "10px", fontWeight: 900 }}
+                  >
+                    {searching ? "Starting search..." : "Start search"}
+                  </Button>
+                  {run ? (
+                    <Box sx={{ ...insetSx, borderRadius: "10px", p: 1 }}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1}>
+                        <Typography variant="body2" sx={{ fontWeight: 850 }} noWrap>
+                          {statusLabel(run.status)}
+                        </Typography>
+                        <Chip size="small" label={`${Math.round(run.progress || 0)}%`} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                        {run.message}
+                      </Typography>
+                      <LinearProgress value={run.progress || 0} variant="determinate" sx={{ mt: 1, height: 6, borderRadius: 999 }} />
+                      <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
+                        <Chip size="small" label={`${formatNumber(run.items?.length || 0)} found`} />
+                        <Chip size="small" label={`${formatNumber(run.duplicateCount || 0)} duplicates`} />
+                      </Stack>
+                      {run.error ? (
+                        <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 0.75 }}>
+                          {run.error}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  ) : null}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Stack>
+
+          <Stack spacing={1.25} sx={{ gridArea: "main", minWidth: 0 }}>
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: { xs: 1.4, md: 1.7 }, "&:last-child": { pb: { xs: 1.4, md: 1.7 } } }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  justifyContent="space-between"
+                  spacing={1}
+                  alignItems={{ xs: "stretch", sm: "flex-start" }}
+                >
+                  <Box minWidth={0}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <MapRoundedIcon sx={{ color: "#1458f5" }} />
+                      <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                        Opportunity map
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {data?.recommendations?.rationale ||
+                        "Ranked region view from CRM pipeline, proposal activity, public prospects, and follow-up risk."}
                     </Typography>
                   </Box>
-                  <Chip label={data?.recommendations.rationale || "Loading recommendation"} color="primary" variant="outlined" sx={{ maxWidth: { md: 480 } }} />
+                  <Chip
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    label={`${formatNumber(data?.kpis.publicProspects)} public prospects`}
+                    sx={{ alignSelf: { xs: "flex-start", sm: "center" }, fontWeight: 850 }}
+                  />
                 </Stack>
 
-                <Grid container spacing={1.25} sx={{ mt: 1.5 }}>
-                  {(data?.regionBreakdown || []).slice(0, 6).map((row) => (
-                    <Grid key={`${row.country}-${row.region}`} size={{ xs: 12, md: 6, xl: 4 }}>
+                <Box
+                  sx={{
+                    mt: 1.35,
+                    display: "grid",
+                    gridTemplateColumns: {
+                      xs: "1fr",
+                      sm: "repeat(2, minmax(0, 1fr))",
+                      xxl: "repeat(3, minmax(0, 1fr))",
+                    },
+                    gap: 1,
+                  }}
+                >
+                  {(data?.regionBreakdown || []).slice(0, 9).map((row) => {
+                    const color = scoreColor(row.score);
+                    return (
                       <Box
+                        key={`${row.country}-${row.region}`}
                         sx={{
-                          border: "1px solid",
-                          borderColor: "divider",
-                          borderRadius: "12px",
-                          p: 1.5,
-                          height: "100%",
-                          bgcolor: alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.34 : 0.64),
+                          ...insetSx,
+                          borderRadius: "11px",
+                          p: 1.2,
+                          minHeight: 164,
+                          transition: "transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
+                          "&:hover": {
+                            transform: "translateY(-2px)",
+                            borderColor: alpha(color, 0.38),
+                            boxShadow: `0 12px 28px ${alpha(color, isDark ? 0.12 : 0.16)}`,
+                          },
                         }}
                       >
                         <Stack direction="row" justifyContent="space-between" spacing={1}>
                           <Box minWidth={0}>
-                            <Typography sx={{ fontWeight: 900 }} noWrap>
+                            <Typography sx={{ fontWeight: 950, lineHeight: 1.1 }} noWrap>
                               {row.region}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {row.country || "Mixed"}
+                              {row.country || "Mixed market"}
                             </Typography>
                           </Box>
-                          <Chip label={`${row.score}`} color={row.score >= 70 ? "success" : row.score >= 40 ? "warning" : "default"} size="small" />
+                          <Box
+                            sx={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: "12px",
+                              display: "grid",
+                              placeItems: "center",
+                              bgcolor: alpha(color, isDark ? 0.18 : 0.12),
+                              color,
+                              fontWeight: 950,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {row.score}
+                          </Box>
                         </Stack>
                         <LinearProgress
                           value={row.score}
                           variant="determinate"
-                          sx={{ mt: 1.25, height: 6, borderRadius: 999 }}
+                          sx={{
+                            mt: 1.1,
+                            height: 6,
+                            borderRadius: 999,
+                            bgcolor: alpha(color, 0.12),
+                            "& .MuiLinearProgress-bar": { bgcolor: color, borderRadius: 999 },
+                          }}
                         />
-                        <Grid container spacing={1} sx={{ mt: 1 }}>
+                        <Grid container spacing={0.75} sx={{ mt: 1 }}>
                           {[
                             ["Leads", row.totalLeads],
                             ["Pipeline", row.activePipeline],
@@ -573,130 +938,47 @@ export default function RevenueRadarDashboard() {
                             ["Overdue", row.overdue],
                           ].map(([label, value]) => (
                             <Grid key={label} size={6}>
-                              <Typography variant="caption" color="text.secondary">{label}</Typography>
-                              <Typography sx={{ fontWeight: 850 }}>{formatNumber(Number(value))}</Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                                {label}
+                              </Typography>
+                              <Typography sx={{ fontWeight: 900, lineHeight: 1.15 }}>{formatNumber(Number(value))}</Typography>
                             </Grid>
                           ))}
                         </Grid>
-                        <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
-                          {row.topCategories.map((category) => (
-                            <Chip key={category.id} label={category.label} size="small" variant="outlined" />
+                        <Stack direction="row" spacing={0.45} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
+                          {row.topCategories.slice(0, 2).map((category) => (
+                            <Chip key={category.id} label={category.label} size="small" variant="outlined" sx={{ maxWidth: "100%" }} />
                           ))}
                         </Stack>
                       </Box>
-                    </Grid>
-                  ))}
+                    );
+                  })}
                   {!loading && (data?.regionBreakdown || []).length === 0 ? (
-                    <Grid size={12}>
-                      <Alert severity="info">No CRM activity matched these filters yet. Start Prospect Scout to build a public-source pipeline.</Alert>
-                    </Grid>
+                    <Alert severity="info" sx={{ gridColumn: "1 / -1" }}>
+                      No CRM activity matched these filters yet. Start Prospect Scout to build a public-source pipeline.
+                    </Alert>
                   ) : null}
-                </Grid>
+                </Box>
               </CardContent>
             </Card>
-          </Grid>
-        </Grid>
 
-        <Grid container spacing={1.5}>
-          <Grid size={{ xs: 12, xl: 5 }}>
-            <Card sx={{ ...surfaceSx, height: "100%" }}>
-              <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.5}>
-                  <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                      Prospect Scout
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Finds public indexed companies and keeps source evidence for CRM review.
-                    </Typography>
-                  </Box>
-                  <Button variant="contained" startIcon={<SearchRoundedIcon />} onClick={startSearch} disabled={searching}>
-                    {searching ? "Starting..." : "Start search"}
-                  </Button>
-                </Stack>
-
-                <Grid container spacing={1.25} sx={{ mt: 1.5 }}>
-                  <Grid size={{ xs: 12 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Keywords"
-                      value={keywords}
-                      onChange={(e) => setKeywords(e.target.value)}
-                      placeholder="auction, asset recovery, fleet disposal..."
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 5 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Max results"
-                      type="number"
-                      value={maxResults}
-                      onChange={(e) => setMaxResults(Math.min(Number(data?.options.maxResults || 100), Math.max(1, Number(e.target.value || 1))))}
-                      inputProps={{ min: 1, max: data?.options.maxResults || 100 }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 7 }}>
-                    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "10px", p: 1 }}>
-                      <Typography variant="caption" color="text.secondary">Search target</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap>
-                        {country} {regions.length ? `- ${regions.join(", ")}` : "- all regions"}
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: { xs: 1.35, md: 1.7 }, "&:last-child": { pb: { xs: 1.35, md: 1.7 } } }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: "stretch", sm: "center" }}
+                  spacing={1}
+                >
+                  <Box minWidth={0}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <BusinessCenterRoundedIcon sx={{ color: "#16a34a" }} />
+                      <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                        Prospect search results
                       </Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {selectedCategoryLabels || "Recommended categories"}
-                      </Typography>
-                    </Box>
-                  </Grid>
-                </Grid>
-
-                {run ? (
-                  <Box sx={{ mt: 2 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-                      <Typography sx={{ fontWeight: 850 }}>
-                        {statusLabel(run.status)} - {run.message}
-                      </Typography>
-                      <Chip size="small" label={`${Math.round(run.progress || 0)}%`} />
                     </Stack>
-                    <LinearProgress value={run.progress || 0} variant="determinate" sx={{ mt: 1, height: 7, borderRadius: 999 }} />
-                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
-                      <Chip size="small" label={`${formatNumber(run.items?.length || 0)} found`} />
-                      <Chip size="small" label={`${formatNumber(run.duplicateCount || 0)} duplicates`} />
-                      {run.error ? <Chip size="small" color="warning" label={run.error} /> : null}
-                    </Stack>
-                  </Box>
-                ) : null}
-
-                <Divider sx={{ my: 2 }} />
-
-                <Stack spacing={1}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
-                    Category signals
-                  </Typography>
-                  {(data?.categoryBreakdown || []).slice(0, 5).map((category) => (
-                    <Box key={category.id}>
-                      <Stack direction="row" justifyContent="space-between" spacing={1}>
-                        <Typography variant="body2" sx={{ fontWeight: 800 }}>{category.label}</Typography>
-                        <Typography variant="body2" color="text.secondary">{category.score}</Typography>
-                      </Stack>
-                      <LinearProgress value={category.score} variant="determinate" sx={{ height: 5, borderRadius: 999 }} />
-                    </Box>
-                  ))}
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, xl: 7 }}>
-            <Card sx={{ ...surfaceSx, height: "100%" }}>
-              <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1.5}>
-                  <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                      Search results
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Review public-source evidence before importing into CRM.
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.45 }}>
+                      Review source evidence before importing selected prospects into CRM.
                     </Typography>
                   </Box>
                   <Button
@@ -704,13 +986,14 @@ export default function RevenueRadarDashboard() {
                     color="success"
                     disabled={selectedResultIds.length === 0 || importing}
                     onClick={() => importResults(selectedResultIds)}
+                    sx={{ borderRadius: "10px", fontWeight: 900, minHeight: 38 }}
                   >
                     Import selected
                   </Button>
                 </Stack>
 
-                <TableContainer sx={{ mt: 1.5, maxHeight: 390 }}>
-                  <Table size="small" stickyHeader>
+                <TableContainer sx={{ mt: 1.25, maxHeight: { xs: 360, md: 430 }, overflowX: "auto" }}>
+                  <Table size="small" stickyHeader sx={{ minWidth: 760 }}>
                     <TableHead>
                       <TableRow>
                         <TableCell padding="checkbox">
@@ -724,7 +1007,7 @@ export default function RevenueRadarDashboard() {
                         <TableCell>Company</TableCell>
                         <TableCell>Location</TableCell>
                         <TableCell>Fit</TableCell>
-                        <TableCell>Source</TableCell>
+                        <TableCell align="right">Source</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -742,25 +1025,38 @@ export default function RevenueRadarDashboard() {
                                 onChange={() => toggleValue(id, selectedResultIds, setSelectedResultIds)}
                               />
                             </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 850 }}>
+                            <TableCell sx={{ maxWidth: 300 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 900 }} noWrap>
                                 {lead.companyName || item.draftPreview?.companyName || "Unknown company"}
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
                                 {lead.industry || item.draftPreview?.industry || (item.duplicate ? "Duplicate" : "Public prospect")}
                               </Typography>
                             </TableCell>
-                            <TableCell>{lead.companyLocation || lead.contactLocation || item.draftPreview?.companyLocation || "--"}</TableCell>
+                            <TableCell sx={{ maxWidth: 220 }}>
+                              <Typography variant="body2" noWrap>
+                                {lead.companyLocation || lead.contactLocation || item.draftPreview?.companyLocation || "--"}
+                              </Typography>
+                            </TableCell>
                             <TableCell>
                               <Chip
                                 size="small"
                                 color={item.duplicate ? "warning" : "success"}
-                                label={item.duplicate ? "Duplicate" : `${Math.round(Number(lead.confidence || 0) * 100)}%`}
+                                label={item.duplicate ? "Duplicate" : `${fitScore(lead.confidence)}%`}
+                                sx={{ fontWeight: 850 }}
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell align="right">
                               {lead.sourceUrl ? (
-                                <Button size="small" component="a" href={lead.sourceUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewRoundedIcon />}>
+                                <Button
+                                  size="small"
+                                  component="a"
+                                  href={lead.sourceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  endIcon={<OpenInNewRoundedIcon />}
+                                  sx={{ fontWeight: 850 }}
+                                >
                                   Source
                                 </Button>
                               ) : (
@@ -773,7 +1069,12 @@ export default function RevenueRadarDashboard() {
                       {!run?.items?.length ? (
                         <TableRow>
                           <TableCell colSpan={5}>
-                            <Typography color="text.secondary">Start a prospect search to populate this table.</Typography>
+                            <Box sx={{ py: 3, textAlign: "center" }}>
+                              <SearchRoundedIcon sx={{ color: "text.disabled", fontSize: 38 }} />
+                              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                                Start a prospect search to populate this table.
+                              </Typography>
+                            </Box>
                           </TableCell>
                         </TableRow>
                       ) : null}
@@ -782,39 +1083,61 @@ export default function RevenueRadarDashboard() {
                 </TableContainer>
               </CardContent>
             </Card>
-          </Grid>
-        </Grid>
 
-        <Grid container spacing={1.5}>
-          <Grid size={{ xs: 12, xl: 8 }}>
             <Card sx={surfaceSx}>
-              <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                  Recent public prospects
-                </Typography>
-                <TableContainer sx={{ mt: 1, maxHeight: 360 }}>
-                  <Table size="small" stickyHeader>
+              <CardContent sx={{ p: { xs: 1.35, md: 1.7 }, "&:last-child": { pb: { xs: 1.35, md: 1.7 } } }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between">
+                  <Box>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <SourceRoundedIcon sx={{ color: "#7c3aed" }} />
+                      <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                        Recent public prospects
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.45 }}>
+                      Previously found public-source prospects available for review or import.
+                    </Typography>
+                  </Box>
+                  <Chip size="small" label={`${formatNumber(data?.recentProspects?.length || 0)} visible`} variant="outlined" />
+                </Stack>
+
+                <TableContainer sx={{ mt: 1.25, maxHeight: { xs: 360, md: 410 }, overflowX: "auto" }}>
+                  <Table size="small" stickyHeader sx={{ minWidth: 920 }}>
                     <TableHead>
                       <TableRow>
                         <TableCell>Company</TableCell>
                         <TableCell>Region</TableCell>
                         <TableCell>Category</TableCell>
                         <TableCell>Confidence</TableCell>
-                        <TableCell>Suggested agent</TableCell>
+                        <TableCell>Agent</TableCell>
                         <TableCell align="right">Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {(data?.recentProspects || []).map((item) => (
                         <TableRow key={item.id} hover>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 850 }}>{item.companyName || item.clientName || "Unknown company"}</Typography>
-                            <Typography variant="caption" color="text.secondary" noWrap>{item.evidence || item.sourceTitle || item.website}</Typography>
+                          <TableCell sx={{ maxWidth: 320 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 900 }} noWrap>
+                              {item.companyName || item.clientName || "Unknown company"}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                              {item.evidence || item.sourceTitle || item.website || "Public-source prospect"}
+                            </Typography>
                           </TableCell>
-                          <TableCell>{item.location || item.regions.join(", ") || item.country || "--"}</TableCell>
+                          <TableCell sx={{ maxWidth: 190 }}>
+                            <Typography variant="body2" noWrap>
+                              {item.location || item.regions.join(", ") || item.country || "--"}
+                            </Typography>
+                          </TableCell>
                           <TableCell>{item.category.label}</TableCell>
-                          <TableCell>{item.confidence}%</TableCell>
-                          <TableCell>{item.suggestedAgent?.label || "--"}</TableCell>
+                          <TableCell>
+                            <Chip size="small" label={`${item.confidence}%`} color={item.confidence >= 70 ? "success" : "default"} />
+                          </TableCell>
+                          <TableCell sx={{ maxWidth: 160 }}>
+                            <Typography variant="body2" noWrap>
+                              {item.suggestedAgent?.label || "--"}
+                            </Typography>
+                          </TableCell>
                           <TableCell align="right">
                             <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                               {item.sourceUrl ? (
@@ -837,7 +1160,9 @@ export default function RevenueRadarDashboard() {
                       {!loading && !(data?.recentProspects || []).length ? (
                         <TableRow>
                           <TableCell colSpan={6}>
-                            <Typography color="text.secondary">No public-source prospects found for these filters yet.</Typography>
+                            <Box sx={{ py: 2.5, textAlign: "center" }}>
+                              <Typography color="text.secondary">No public-source prospects found for these filters yet.</Typography>
+                            </Box>
                           </TableCell>
                         </TableRow>
                       ) : null}
@@ -846,83 +1171,176 @@ export default function RevenueRadarDashboard() {
                 </TableContainer>
               </CardContent>
             </Card>
-          </Grid>
+          </Stack>
 
-          <Grid size={{ xs: 12, xl: 4 }}>
-            <Stack spacing={1.5}>
-              <Card sx={surfaceSx}>
-                <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                  <Typography variant="h6" sx={{ fontWeight: 900 }}>
+          <Stack spacing={1.25} sx={{ gridArea: "side", minWidth: 0 }}>
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                  Category signals
+                </Typography>
+                <Stack spacing={1.05} sx={{ mt: 1.2 }}>
+                  {(data?.categoryBreakdown || []).slice(0, 6).map((category) => (
+                    <Box key={category.id} sx={{ ...insetSx, borderRadius: "10px", p: 1 }}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1}>
+                        <Typography variant="body2" sx={{ fontWeight: 900 }} noWrap>
+                          {category.label}
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 950 }}>
+                          {category.score}
+                        </Typography>
+                      </Stack>
+                      <LinearProgress
+                        value={category.score}
+                        variant="determinate"
+                        sx={{ mt: 0.8, height: 5, borderRadius: 999 }}
+                      />
+                      <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatNumber(category.leads)} leads
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatNumber(category.autoFound)} public
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  ))}
+                  {!loading && !(data?.categoryBreakdown || []).length ? (
+                    <Typography color="text.secondary">No category signal yet.</Typography>
+                  ) : null}
+                </Stack>
+              </CardContent>
+            </Card>
+
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <ErrorOutlineRoundedIcon sx={{ color: "#ef4444" }} />
+                  <Typography variant="h6" sx={{ fontWeight: 950 }}>
                     Follow-up risk
                   </Typography>
-                  <Stack spacing={1} sx={{ mt: 1 }}>
-                    {(data?.staleLeads || []).slice(0, 5).map((lead) => (
-                      <Box key={lead.id} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "10px", p: 1 }}>
-                        <Stack direction="row" justifyContent="space-between" spacing={1}>
-                          <Typography variant="body2" sx={{ fontWeight: 850 }} noWrap>
+                </Stack>
+                <Stack spacing={0.9} sx={{ mt: 1.2 }}>
+                  {(data?.staleLeads || []).slice(0, 6).map((lead) => (
+                    <Box key={lead.id} sx={{ ...insetSx, borderRadius: "10px", p: 1 }}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
+                        <Box minWidth={0}>
+                          <Typography variant="body2" sx={{ fontWeight: 900 }} noWrap>
                             {lead.companyName || lead.clientName || "Lead"}
                           </Typography>
-                          <Chip size="small" color={lead.overdue ? "error" : "warning"} label={lead.overdue ? "Overdue" : "Stale"} />
-                        </Stack>
-                        <Typography variant="caption" color="text.secondary">
-                          {statusLabel(lead.status)} - {lead.assignedTo || "Unassigned"} - due {formatDate(lead.dueDate)}
-                        </Typography>
-                      </Box>
-                    ))}
-                    {!data?.staleLeads?.length ? <Typography color="text.secondary">No overdue or stale lead risk in this view.</Typography> : null}
-                  </Stack>
-                </CardContent>
-              </Card>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }} noWrap>
+                            {statusLabel(lead.status)} - {lead.assignedTo || "Unassigned"}
+                          </Typography>
+                        </Box>
+                        <Chip size="small" color={lead.overdue ? "error" : "warning"} label={lead.overdue ? "Overdue" : "Stale"} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        Due {formatDate(lead.dueDate)} {lead.location ? `- ${lead.location}` : ""}
+                      </Typography>
+                    </Box>
+                  ))}
+                  {!data?.staleLeads?.length ? (
+                    <Typography color="text.secondary">No overdue or stale lead risk in this view.</Typography>
+                  ) : null}
+                </Stack>
+              </CardContent>
+            </Card>
 
-              <Card sx={surfaceSx}>
-                <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                  <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                    Official context
-                  </Typography>
-                  <Stack spacing={1} sx={{ mt: 1 }}>
-                    {(data?.marketSources || []).map((source) => (
-                      <Box key={source.url} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "10px", p: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 850 }}>{source.title}</Typography>
-                        <Typography variant="caption" color="text.secondary">{source.note}</Typography>
-                        <Button size="small" component="a" href={source.url} target="_blank" rel="noreferrer" endIcon={<OpenInNewRoundedIcon />}>
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                  Lead sources
+                </Typography>
+                <Stack spacing={0.85} sx={{ mt: 1.1 }}>
+                  {(data?.sourceBreakdown || []).slice(0, 4).map((source) => (
+                    <Stack key={source.source} direction="row" justifyContent="space-between" spacing={1}>
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {source.source}
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                        {formatNumber(source.count)}
+                      </Typography>
+                    </Stack>
+                  ))}
+                  {!loading && !(data?.sourceBreakdown || []).length ? (
+                    <Typography color="text.secondary">No CRM lead source data in this view.</Typography>
+                  ) : null}
+                </Stack>
+                <Divider sx={{ my: 1.25 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 950 }}>
+                  Official context
+                </Typography>
+                <Stack spacing={0.9} sx={{ mt: 0.85 }}>
+                  {(data?.marketSources || []).map((source) => (
+                    <Box key={source.url} sx={{ ...insetSx, borderRadius: "10px", p: 1 }}>
+                      <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
+                        <Box minWidth={0}>
+                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                            {source.title}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {source.note}
+                          </Typography>
+                        </Box>
+                        <Button
+                          size="small"
+                          component="a"
+                          href={source.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          endIcon={<OpenInNewRoundedIcon />}
+                          sx={{ flexShrink: 0 }}
+                        >
                           Open
                         </Button>
-                      </Box>
-                    ))}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Stack>
-          </Grid>
-        </Grid>
-
-        <Grid container spacing={1.5}>
-          {(data?.compliance || []).map((item) => (
-            <Grid key={item.region} size={{ xs: 12, md: 6 }}>
-              <Alert
-                severity="info"
-                icon={<ErrorOutlineRoundedIcon />}
-                sx={{
-                  borderRadius: "12px",
-                  border: "1px solid",
-                  borderColor: alpha(theme.palette.info.main, 0.25),
-                }}
-              >
-                <Typography sx={{ fontWeight: 900 }}>{item.title}</Typography>
-                <Stack component="ul" sx={{ pl: 2, my: 0.5 }}>
-                  {item.bullets.map((bullet) => (
-                    <Typography key={bullet} component="li" variant="body2">
-                      {bullet}
-                    </Typography>
+                      </Stack>
+                    </Box>
                   ))}
                 </Stack>
-                <Button size="small" component="a" href={item.url} target="_blank" rel="noreferrer">
-                  Review guidance
-                </Button>
-              </Alert>
-            </Grid>
-          ))}
-        </Grid>
+              </CardContent>
+            </Card>
+
+            <Card sx={surfaceSx}>
+              <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <WarningAmberRoundedIcon sx={{ color: "#f59e0b" }} />
+                  <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                    Outreach guardrails
+                  </Typography>
+                </Stack>
+                <Stack spacing={1} sx={{ mt: 1.15 }}>
+                  {(data?.compliance || []).map((item) => (
+                    <Box
+                      key={item.region}
+                      sx={{
+                        ...insetSx,
+                        borderRadius: "10px",
+                        p: 1,
+                        borderColor: alpha(theme.palette.info.main, isDark ? 0.26 : 0.22),
+                      }}
+                    >
+                      <Stack direction="row" justifyContent="space-between" spacing={1}>
+                        <Typography variant="body2" sx={{ fontWeight: 950 }}>
+                          {item.region}
+                        </Typography>
+                        <Button size="small" component="a" href={item.url} target="_blank" rel="noreferrer">
+                          Guidance
+                        </Button>
+                      </Stack>
+                      <Stack component="ul" sx={{ pl: 2.2, my: 0.4 }}>
+                        {item.bullets.slice(0, 3).map((bullet) => (
+                          <Typography key={bullet} component="li" variant="caption" color="text.secondary">
+                            {bullet}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Stack>
+        </Box>
       </Stack>
     </Box>
   );
