@@ -11,6 +11,7 @@ import ImageRoundedIcon from "@mui/icons-material/ImageRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
 import SupportAgentRoundedIcon from "@mui/icons-material/SupportAgentRounded";
 import Image from "next/image";
 import {
@@ -112,6 +113,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         { href: "/reports", label: "Approved Reports", icon: <AssessmentRoundedIcon fontSize="small" /> },
         { href: "/users", label: "Users", icon: <GroupsRoundedIcon fontSize="small" /> },
         { href: "/crm", label: "CRM", icon: <SupportAgentRoundedIcon fontSize="small" /> },
+        { href: "/revenue-radar", label: "Revenue Radar", icon: <QueryStatsRoundedIcon fontSize="small" /> },
         { href: "/approvals", label: "Pending Approval", icon: <CheckCircleRoundedIcon fontSize="small" /> },
         ...(role === "superadmin"
           ? [{ href: "/admins", label: "Admins", icon: <ManageAccountsRoundedIcon fontSize="small" /> }]
