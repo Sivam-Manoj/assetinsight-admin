@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+const SERVER_URL =
+  process.env.NEXT_PUBLIC_SERVER_URL || "https://api.assetinsightvaluator.com";
 
 const endpoints = [
   ["GET", "/api/v1/assets", "List approved asset report summaries"],
