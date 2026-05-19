@@ -103,11 +103,11 @@ export default function ApiDocumentationPage() {
 
         <section className="mt-10 space-y-4">
           <h2 className="text-2xl font-bold">Request Format</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-4">
             {requestSamples.map((sample) => (
               <div key={sample.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 className="font-semibold">{sample.title}</h3>
-                <p className="mt-2 min-h-12 text-sm leading-6 text-slate-600">{sample.description}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{sample.description}</p>
                 <div className="mt-4">
                   <CodeBlock>{sample.request}</CodeBlock>
                 </div>
