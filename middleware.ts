@@ -6,12 +6,24 @@ function isAuthPath(pathname: string) {
   return pathname.startsWith("/login");
 }
 
+function isPublicPath(pathname: string) {
+  return pathname === "/api-documentation";
+}
+
 export async function middleware(request: NextRequest) {
   const { nextUrl, cookies } = request;
   const pathname = nextUrl.pathname;
 
   // Allow static assets
   if (pathname.endsWith(".png") || pathname.endsWith(".svg") || pathname.endsWith(".ico")) {
+    return NextResponse.next();
+  }
+
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
@@ -57,5 +69,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|assets|public|api).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|assets|public).*)"],
 };
