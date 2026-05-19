@@ -14,6 +14,27 @@ const endpoints = [
   ["GET", "/api/v1/lots?source=asset|lot-listing", "List lots across approved records"],
 ] as const;
 
+const requestSamples = [
+  {
+    title: "List assets",
+    description: "Use this for dashboards, sync jobs, or catalog pages.",
+    request: `GET ${SERVER_URL}/api/v1/assets?page=1&limit=25&q=excavator&from=2026-01-01&to=2026-12-31
+Authorization: Bearer cvak_your_key_here`,
+  },
+  {
+    title: "Get asset details",
+    description: "Returns full report metadata, files, image URLs, preview data, and lots.",
+    request: `GET ${SERVER_URL}/api/v1/assets/665f2a8c9f0d4d3b9e7b1234
+x-api-key: cvak_your_key_here`,
+  },
+  {
+    title: "List lots",
+    description: "Flatten approved asset lots or approved lot-listing lots into one paginated feed.",
+    request: `GET ${SERVER_URL}/api/v1/lots?source=lot-listing&contractNo=CV-2026-104&page=1&limit=50
+Authorization: Bearer cvak_your_key_here`,
+  },
+] as const;
+
 function CodeBlock({ children }: { children: string }) {
   return (
     <pre className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-100">
@@ -76,6 +97,21 @@ export default function ApiDocumentationPage() {
         </section>
 
         <section className="mt-10 space-y-4">
+          <h2 className="text-2xl font-bold">Request Format</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            {requestSamples.map((sample) => (
+              <div key={sample.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="font-semibold">{sample.title}</h3>
+                <p className="mt-2 min-h-12 text-sm leading-6 text-slate-600">{sample.description}</p>
+                <div className="mt-4">
+                  <CodeBlock>{sample.request}</CodeBlock>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-10 space-y-4">
           <h2 className="text-2xl font-bold">Endpoints</h2>
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full text-left text-sm">
@@ -131,6 +167,10 @@ export default function ApiDocumentationPage() {
 
         <section className="mt-10 space-y-4">
           <h2 className="text-2xl font-bold">Response Shape</h2>
+          <p className="text-slate-600">
+            List endpoints return <code className="rounded bg-slate-200 px-1">data</code> plus pagination.
+            Detail endpoints return one object in <code className="rounded bg-slate-200 px-1">data</code>.
+          </p>
           <CodeBlock>{`{
   "data": [],
   "pagination": {
@@ -140,6 +180,110 @@ export default function ApiDocumentationPage() {
     "totalPages": 0
   }
 }`}</CodeBlock>
+        </section>
+
+        <section className="mt-10 space-y-4">
+          <h2 className="text-2xl font-bold">Sample Data</h2>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold">Asset list response</h3>
+              <CodeBlock>{`{
+  "data": [
+    {
+      "_id": "665f2a8c9f0d4d3b9e7b1234",
+      "type": "asset",
+      "title": "Maple Ridge Equipment",
+      "status": "approved",
+      "grouping_mode": "mixed",
+      "contract_no": "CV-2026-104",
+      "currency": "CAD",
+      "lot_count": 2,
+      "image_count": 18,
+      "total_value": 184000,
+      "files": {
+        "docx": "https://storage.example/reports/asset.docx",
+        "excel": "https://storage.example/reports/asset.xlsx",
+        "images": "https://storage.example/reports/images.zip"
+      },
+      "createdAt": "2026-05-12T15:24:10.000Z",
+      "creator": {
+        "email": "client@example.com",
+        "companyName": "Maple Ridge Auctions"
+      }
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 25,
+    "total": 1,
+    "totalPages": 1
+  }
+}`}</CodeBlock>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold">Lot detail response</h3>
+              <CodeBlock>{`{
+  "data": {
+    "lot_id": "LOT-002",
+    "lot_number": 2,
+    "title": "2019 CAT 299D3 Compact Track Loader",
+    "description": "Cab, heat, auxiliary hydraulics, bucket included.",
+    "condition": "Good used condition",
+    "estimated_value": "CA$78,000",
+    "quantity": 1,
+    "serial_number": "CAT0299DJX900123",
+    "image_indexes": [3, 4, 5],
+    "image_urls": [
+      "https://storage.example/images/lot-002-front.jpg"
+    ]
+  },
+  "report": {
+    "_id": "665f2a8c9f0d4d3b9e7b1234",
+    "type": "asset",
+    "title": "Maple Ridge Equipment",
+    "contract_no": "CV-2026-104"
+  }
+}`}</CodeBlock>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-10 space-y-4">
+          <h2 className="text-2xl font-bold">Lot Listing Example</h2>
+          <CodeBlock>{`GET ${SERVER_URL}/api/v1/lot-listings?contractNo=CV-2026-104
+Authorization: Bearer cvak_your_key_here
+
+{
+  "data": [
+    {
+      "_id": "665f2bb59f0d4d3b9e7b5678",
+      "type": "lot-listing",
+      "title": "CV-2026-104",
+      "status": "approved",
+      "contract_no": "CV-2026-104",
+      "location": "Saskatoon, SK",
+      "sales_date": "2026-06-15T00:00:00.000Z",
+      "currency": "CAD",
+      "lot_count": 34,
+      "total_value": 412500,
+      "files": {
+        "excel": "https://storage.example/listings/CV-2026-104.xlsx",
+        "images": "https://storage.example/listings/CV-2026-104-images.zip"
+      }
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 25,
+    "total": 1,
+    "totalPages": 1
+  }
+}`}</CodeBlock>
+        </section>
+
+        <section className="mt-10 space-y-4">
+          <h2 className="text-2xl font-bold">Error Format</h2>
           <CodeBlock>{`{
   "error": {
     "code": "invalid_api_key",
