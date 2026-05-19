@@ -18,7 +18,9 @@ const requestSamples = [
   {
     title: "List assets",
     description: "Use this for dashboards, sync jobs, or catalog pages.",
-    request: `GET ${SERVER_URL}/api/v1/assets?page=1&limit=25&q=excavator&from=2026-01-01&to=2026-12-31
+    request: `GET ${SERVER_URL}/api/v1/assets
+Query: page=1&limit=25&q=excavator
+Query: from=2026-01-01&to=2026-12-31
 Authorization: Bearer cvak_your_key_here`,
   },
   {
@@ -30,14 +32,16 @@ x-api-key: cvak_your_key_here`,
   {
     title: "List lots",
     description: "Flatten approved asset lots or approved lot-listing lots into one paginated feed.",
-    request: `GET ${SERVER_URL}/api/v1/lots?source=lot-listing&contractNo=CV-2026-104&page=1&limit=50
+    request: `GET ${SERVER_URL}/api/v1/lots
+Query: source=lot-listing&contractNo=CV-2026-104
+Query: page=1&limit=50
 Authorization: Bearer cvak_your_key_here`,
   },
 ] as const;
 
 function CodeBlock({ children }: { children: string }) {
   return (
-    <pre className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-100">
+    <pre className="max-w-full whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm leading-6 text-slate-100">
       <code>{children}</code>
     </pre>
   );
