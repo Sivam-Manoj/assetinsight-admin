@@ -43,6 +43,23 @@ type ApiKeyItem = {
   revokedAt?: string;
 };
 
+type ApiTestResult = {
+  ok: boolean;
+  status: number;
+  statusText?: string;
+  url: string;
+  data: unknown;
+};
+
+const PUBLIC_API_BASE_URL =
+  process.env.NEXT_PUBLIC_SERVER_URL || "https://api.assetinsightvaluator.com";
+
+const API_TEST_PRESETS = [
+  { label: "Assets", url: "/api/v1/assets?limit=5" },
+  { label: "Lot listings", url: "/api/v1/lot-listings?limit=5" },
+  { label: "Lots", url: "/api/v1/lots?limit=5" },
+] as const;
+
 function formatDate(value?: string) {
   if (!value) return "Never";
   const date = new Date(value);
@@ -63,6 +80,10 @@ export default function AdminApiKeys() {
   const [renaming, setRenaming] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<ApiKeyItem | null>(null);
   const [revoking, setRevoking] = useState(false);
+  const [testApiKey, setTestApiKey] = useState("");
+  const [testUrl, setTestUrl] = useState("/api/v1/assets?limit=5");
+  const [testingApi, setTestingApi] = useState(false);
+  const [testResult, setTestResult] = useState<ApiTestResult | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const keyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -189,6 +210,38 @@ export default function AdminApiKeys() {
     }
   }
 
+  async function runApiTest() {
+    const apiKey = testApiKey.trim();
+    const url = testUrl.trim();
+    if (!apiKey) {
+      pushToast("Enter an API key to test.", "error");
+      return;
+    }
+    if (!url) {
+      pushToast("Enter a request URL.", "error");
+      return;
+    }
+
+    setTestingApi(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/admin/api-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, url }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || "Failed to run API request");
+      }
+      setTestResult(json as ApiTestResult);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Failed to run API request", "error");
+    } finally {
+      setTestingApi(false);
+    }
+  }
+
   return (
     <div className="admin-page-shell">
       <main className="mx-auto max-w-6xl space-y-6">
@@ -257,6 +310,80 @@ export default function AdminApiKeys() {
               600/min
             </Typography>
           </div>
+        </section>
+
+        <section className="admin-glass-surface rounded-3xl p-4 md:p-6">
+          <Stack spacing={2.5}>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={1.5}
+              justifyContent="space-between"
+              alignItems={{ xs: "flex-start", md: "center" }}
+            >
+              <Stack spacing={0.5}>
+                <Typography variant="h6" fontWeight={800}>
+                  Try the API
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Test a GET request with an API key and view the real response data.
+                </Typography>
+              </Stack>
+              <Chip
+                variant="outlined"
+                color="primary"
+                label={`Base: ${PUBLIC_API_BASE_URL}`}
+                sx={{ maxWidth: "100%", "& .MuiChip-label": { overflowWrap: "anywhere", whiteSpace: "normal" } }}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+              <TextField
+                fullWidth
+                type="password"
+                label="API key"
+                value={testApiKey}
+                onChange={(event) => setTestApiKey(event.target.value)}
+                placeholder="cvak_..."
+                autoComplete="off"
+              />
+              <TextField
+                fullWidth
+                label="Request URL"
+                value={testUrl}
+                onChange={(event) => setTestUrl(event.target.value)}
+                placeholder="/api/v1/assets?limit=5"
+                helperText="Use /api/v1/... or the full backend URL. GET requests only."
+              />
+            </Stack>
+
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {API_TEST_PRESETS.map((preset) => (
+                <Button
+                  key={preset.url}
+                  variant={testUrl === preset.url ? "contained" : "outlined"}
+                  color="secondary"
+                  onClick={() => setTestUrl(preset.url)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+              <Button variant="contained" onClick={runApiTest} disabled={testingApi}>
+                {testingApi ? "Running..." : "Run Request"}
+              </Button>
+            </Stack>
+
+            {testResult ? (
+              <Stack spacing={1.5}>
+                <Alert severity={testResult.ok ? "success" : "error"} variant="outlined">
+                  Status {testResult.status}
+                  {testResult.statusText ? ` ${testResult.statusText}` : ""} - {testResult.url}
+                </Alert>
+                <pre className="max-h-[520px] overflow-auto rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm leading-6 text-slate-100">
+                  <code>{JSON.stringify(testResult.data, null, 2)}</code>
+                </pre>
+              </Stack>
+            ) : null}
+          </Stack>
         </section>
 
         <section className="admin-glass-surface rounded-3xl p-4 md:p-6">

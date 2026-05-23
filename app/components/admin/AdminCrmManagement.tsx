@@ -100,6 +100,8 @@ type CrmLeadItem = {
   industry?: string;
   website?: string;
   listItems?: string[];
+  category?: string;
+  leadSource?: "generic" | "organic";
   status: string;
   lostReason?: string;
   priority: string;
@@ -126,6 +128,11 @@ type LeadsResponse = {
     count: number;
   }>;
   overdueCount?: number;
+  leadSourceCounts?: {
+    total: number;
+    generic: number;
+    organic: number;
+  };
 };
 
 type CrmLeadUpdateItem = {
@@ -1096,6 +1103,13 @@ export default function AdminCrmManagement() {
   const [editingComment, setEditingComment] = useState("");
   const [editingStatus, setEditingStatus] = useState<string>("new_lead");
   const [editingLostReason, setEditingLostReason] = useState<string>("");
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
+  const [quickAddName, setQuickAddName] = useState("");
+  const [quickAddPhone, setQuickAddPhone] = useState("");
+  const [quickAddCategory, setQuickAddCategory] = useState("");
+  const [quickAddNotes, setQuickAddNotes] = useState("");
+  const [quickAddAssignedTo, setQuickAddAssignedTo] = useState("");
+  const [quickAddingLead, setQuickAddingLead] = useState(false);
 
   const [importFiles, setImportFiles] = useState<ImportFilesResponse | null>(null);
   const [loadingImportFiles, setLoadingImportFiles] = useState(false);
@@ -1275,6 +1289,55 @@ export default function AdminCrmManagement() {
       pushToast(e instanceof Error ? e.message : "Failed to load CRM leads", "error");
     } finally {
       setLoadingLeads(false);
+    }
+  }
+
+  function openQuickAddModal() {
+    setQuickAddName("");
+    setQuickAddPhone("");
+    setQuickAddCategory("");
+    setQuickAddNotes("");
+    setQuickAddAssignedTo(leadAssignedTo || "");
+    setShowQuickAddModal(true);
+  }
+
+  function closeQuickAddModal() {
+    if (quickAddingLead) return;
+    setShowQuickAddModal(false);
+  }
+
+  async function submitQuickAddLead() {
+    if (!quickAddName.trim() || !quickAddPhone.trim() || !quickAddCategory.trim()) {
+      pushToast("Name, phone number, and category are required", "error");
+      return;
+    }
+    if (!quickAddAssignedTo) {
+      pushToast("Select a CRM agent for this lead", "error");
+      return;
+    }
+
+    try {
+      setQuickAddingLead(true);
+      const res = await fetch("/api/admin/crm/leads/quick-add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: quickAddName.trim(),
+          phone: quickAddPhone.trim(),
+          category: quickAddCategory.trim(),
+          notes: quickAddNotes.trim(),
+          assignedToUserId: quickAddAssignedTo,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to create quick lead");
+      pushToast("Organic quick-add lead created", "success");
+      setShowQuickAddModal(false);
+      await loadLeads();
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to create quick lead", "error");
+    } finally {
+      setQuickAddingLead(false);
     }
   }
 
@@ -2302,6 +2365,11 @@ export default function AdminCrmManagement() {
   }, [leads?.items, leads?.statusCounts]);
 
   const overdueLeadsCount = Number(leads?.overdueCount || 0);
+  const leadSourceCounts = leads?.leadSourceCounts || {
+    total: Number(leads?.total || 0),
+    generic: Number(leads?.total || 0),
+    organic: 0,
+  };
 
   const crmVsNonCrmChartData = useMemo(() => {
     const nonCrmCount = Math.max(totalUsersCount - crmUsersCount, 0);
@@ -2573,13 +2641,23 @@ export default function AdminCrmManagement() {
                     Assign CRM roles, import lead sheets, and monitor task activity.
                   </Typography>
                 </Box>
-                <Button
-                  variant="contained"
-                  startIcon={<GroupsRoundedIcon />}
-                  onClick={() => setShowCrmOpsModal(true)}
-                >
-                  Team Ops
-                </Button>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    startIcon={<CheckCircleRoundedIcon />}
+                    onClick={openQuickAddModal}
+                  >
+                    Quick Add
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<GroupsRoundedIcon />}
+                    onClick={() => setShowCrmOpsModal(true)}
+                  >
+                    Team Ops
+                  </Button>
+                </Stack>
               </Box>
 
               <Grid container spacing={1.5}>
@@ -2622,11 +2700,13 @@ export default function AdminCrmManagement() {
               <Grid container spacing={1.5}>
                 {([
                   { label: "CRM Agents", value: crmUsersCount, color: "primary.main" },
-                  { label: "Total Leads", value: leads?.total || 0, color: "info.main" },
+                  { label: "Total Leads", value: leadSourceCounts.total, color: "info.main" },
+                  { label: "Generic", value: leadSourceCounts.generic, color: "secondary.main" },
+                  { label: "Organic", value: leadSourceCounts.organic, color: "success.main" },
                   { label: "Total Users", value: totalUsersCount, color: "text.primary" },
                   { label: "Overdue", value: overdueLeadsCount, color: "error.main" },
                 ] as const).map((stat) => (
-                  <Grid key={stat.label} size={{ xs: 6, sm: 3 }}>
+                  <Grid key={stat.label} size={{ xs: 6, sm: 4, md: 2 }}>
                     <Card variant="outlined" sx={{ textAlign: "center", py: 1.5 }}>
                       <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.65rem" }}>
                         {stat.label}
@@ -3161,6 +3241,18 @@ export default function AdminCrmManagement() {
                             {[lead.companyLocation, lead.industry].filter(Boolean).join(" · ")}
                           </Typography>
                         )}
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color={lead.leadSource === "organic" ? "success" : "secondary"}
+                            label={lead.leadSource === "organic" ? "Organic" : "Generic"}
+                            sx={{ height: 22 }}
+                          />
+                          {lead.category ? (
+                            <Chip size="small" variant="outlined" label={lead.category} sx={{ height: 22 }} />
+                          ) : null}
+                        </Stack>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">{(lead.assignedTo?.username || lead.assignedTo?.email || "-") as string}</Typography>
@@ -4191,6 +4283,49 @@ export default function AdminCrmManagement() {
         </Dialog>
 
         {/* ── Lead Details Dialog ── */}
+        <Dialog open={showQuickAddModal} onClose={closeQuickAddModal} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={800}>Quick Add Lead</Typography>
+              <Typography variant="body2" color="text.secondary">Create an organic lead with only the required contact details.</Typography>
+            </Box>
+            <IconButton size="small" onClick={closeQuickAddModal} disabled={quickAddingLead}><CloseRoundedIcon /></IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={2}>
+              <TextField label="Name" value={quickAddName} onChange={(e) => setQuickAddName(e.target.value)} fullWidth required autoFocus />
+              <TextField label="Phone number" value={quickAddPhone} onChange={(e) => setQuickAddPhone(e.target.value)} fullWidth required />
+              <TextField
+                label="Category"
+                value={quickAddCategory}
+                onChange={(e) => setQuickAddCategory(e.target.value)}
+                fullWidth
+                required
+                placeholder="Farm Equipment, Heavy Trucks, Real Estate..."
+              />
+              <FormControl fullWidth>
+                <InputLabel>Assign To</InputLabel>
+                <Select value={quickAddAssignedTo} label="Assign To" onChange={(e) => setQuickAddAssignedTo(e.target.value)} {...crmSelectOpenProps("quick-add-agent")}>
+                  {renderCrmMenuHeader("Assign To")}
+                  <MenuItem value="">Select CRM agent</MenuItem>
+                  {crmAgentUsers.map((u) => (
+                    <MenuItem key={u._id} value={u._id}>{u.username || u.email}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField label="Notes" value={quickAddNotes} onChange={(e) => setQuickAddNotes(e.target.value)} fullWidth multiline rows={4} />
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="flex-end">
+                <Button variant="outlined" onClick={closeQuickAddModal} disabled={quickAddingLead}>
+                  Cancel
+                </Button>
+                <Button variant="contained" color="success" onClick={() => void submitQuickAddLead()} disabled={quickAddingLead}>
+                  {quickAddingLead ? "Creating..." : "Create Organic Lead"}
+                </Button>
+              </Stack>
+            </Stack>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={showLeadDetailsModal} onClose={closeLeadDetailsModal} maxWidth="md" fullWidth fullScreen={!matchesMd} scroll="paper">
           <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
             <Box>

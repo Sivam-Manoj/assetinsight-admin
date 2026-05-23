@@ -55,6 +55,7 @@ type ReportItem = {
   isLotListingReport?: boolean;
   property_type?: string;
   language?: string;
+  adminArchivedAt?: string | null;
 };
 
 type ApiResponse = {
@@ -77,6 +78,7 @@ type ReportGroup = {
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
   preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
+  adminArchivedAt?: string | null;
 };
 
 const ALL_PAGE_SIZE = 100000;
@@ -148,6 +150,7 @@ export default function AdminReports() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [pageSizeMode, setPageSizeMode] = useState<"20" | "50" | "100" | "all" | "custom">("20");
   const [customPageSizeInput, setCustomPageSizeInput] = useState("150");
+  const [archiveMode, setArchiveMode] = useState<"active" | "archived">("active");
 
   // Data
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -164,6 +167,7 @@ export default function AdminReports() {
   const [previewSaving, setPreviewSaving] = useState(false);
   const [previewSaveError, setPreviewSaveError] = useState<string | null>(null);
   const [previewSaveSuccess, setPreviewSaveSuccess] = useState<string | null>(null);
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -173,10 +177,11 @@ export default function AdminReports() {
     if (from) p.set("from", from);
     if (to) p.set("to", to);
     if (userEmail) p.set("userEmail", userEmail.trim());
+    if (archiveMode === "archived") p.set("archived", "true");
     p.set("page", String(pagination.pageIndex + 1));
     p.set("limit", String(pagination.pageSize));
     return p.toString();
-  }, [q, reportType, from, to, userEmail, pagination.pageIndex, pagination.pageSize]);
+  }, [q, reportType, from, to, userEmail, archiveMode, pagination.pageIndex, pagination.pageSize]);
 
   async function load() {
     setLoading(true);
@@ -280,6 +285,26 @@ export default function AdminReports() {
     }
   }
 
+  async function setReportArchived(id: string, archived: boolean) {
+    try {
+      setActionBusyId(id);
+      setError(null);
+      const res = await fetch(`/api/admin/reports/${id}/${archived ? "archive" : "restore"}`, {
+        method: "PATCH",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || (archived ? "Failed to complete report" : "Failed to restore report"));
+      }
+      await load();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : archived ? "Failed to complete report" : "Failed to restore report";
+      setError(message);
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
   function onReset() {
     setQ("");
     setReportType("");
@@ -333,6 +358,7 @@ export default function AdminReports() {
           isRealEstateReport: !!(r as any).preview_files && (r.reportType === 'RealEstate' || (r as any).isRealEstateReport),
           isLotListingReport: !!(r as any).preview_files && (r.reportType === 'LotListing' || (r as any).isLotListingReport),
           preview_files: (r as any).preview_files,
+          adminArchivedAt: r.adminArchivedAt || null,
         };
         map.set(key, g);
       }
@@ -349,8 +375,7 @@ export default function AdminReports() {
     );
   }, [data]);
 
-  const columns = useMemo<ColumnDef<ReportGroup>[]>(
-    () => [
+  const columns: ColumnDef<ReportGroup>[] = [
       {
         id: "title",
         accessorKey: "title",
@@ -417,7 +442,7 @@ export default function AdminReports() {
             direction="row"
             sx={{
               display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
               gap: 0.6,
               width: "100%",
               alignItems: "stretch",
@@ -457,6 +482,16 @@ export default function AdminReports() {
             <Button
               size="small"
               variant="outlined"
+              color={archiveMode === "archived" ? "success" : "warning"}
+              disabled={actionBusyId === row.original.key}
+              sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.45, fontSize: "0.62rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
+              onClick={() => void setReportArchived(row.original.key, archiveMode !== "archived")}
+            >
+              {archiveMode === "archived" ? "Restore" : "Completed"}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
               color="error"
               sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.45, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
               onClick={() => openDelete(row.original.key)}
@@ -466,9 +501,7 @@ export default function AdminReports() {
           </Stack>
         ),
       },
-    ],
-    []
-  );
+    ];
 
   const table = useReactTable({
     data: groups,
@@ -493,15 +526,15 @@ export default function AdminReports() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
-                Approved Reports
+                {archiveMode === "archived" ? "Archived Reports" : "Approved Reports"}
               </h1>
               <p className="text-gray-600">
-                Search and filter approved reports. View who created them and when.
+                Search, download, refresh, and complete approved reports.
               </p>
             </div>
             <div className="flex items-center gap-4">
               <div className="rounded-xl border border-rose-200 bg-white/70 px-4 py-2 shadow-sm">
-                <div className="text-xs text-gray-600">Approved</div>
+                <div className="text-xs text-gray-600">{archiveMode === "archived" ? "Archived" : "Approved"}</div>
                 <div className="text-lg font-semibold text-gray-900">
                   {data?.total ?? 0}
                 </div>
@@ -519,6 +552,30 @@ export default function AdminReports() {
         {/* Filters */}
         <section className="admin-glass-surface rounded-3xl p-4 md:p-6">
           <Grid container spacing={2}>
+            <Grid size={{ xs: 12 }}>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button
+                  variant={archiveMode === "active" ? "contained" : "outlined"}
+                  color="primary"
+                  onClick={() => {
+                    setArchiveMode("active");
+                    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+                  }}
+                >
+                  Active
+                </Button>
+                <Button
+                  variant={archiveMode === "archived" ? "contained" : "outlined"}
+                  color="secondary"
+                  onClick={() => {
+                    setArchiveMode("archived");
+                    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+                  }}
+                >
+                  Archived
+                </Button>
+              </Stack>
+            </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
               <TextField
                 fullWidth
@@ -602,6 +659,9 @@ export default function AdminReports() {
           >
             <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
               <Button variant="contained" onClick={() => load()}>Apply</Button>
+              <Button variant="outlined" onClick={() => load()} disabled={loading}>
+                {loading ? "Refreshing..." : "Refresh"}
+              </Button>
               <Button variant="outlined" color="secondary" onClick={onReset}>Reset</Button>
             </Stack>
 
@@ -676,7 +736,7 @@ export default function AdminReports() {
             <>
               {/* Table on md+ */}
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography variant="h6" fontWeight={700}>Approved Reports</Typography>
+                <Typography variant="h6" fontWeight={700}>{archiveMode === "archived" ? "Archived Reports" : "Approved Reports"}</Typography>
                 <Chip size="small" color="secondary" variant="outlined" label={`${rows.length} visible`} />
               </Stack>
               <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
@@ -711,9 +771,9 @@ export default function AdminReports() {
                                   : header.column.id === "reportType"
                                   ? "11%"
                                   : header.column.id === "createdAt"
-                                  ? "18%"
+                                  ? "17%"
                                   : header.column.id === "actions"
-                                  ? "24%"
+                                  ? "29%"
                                   : "auto",
                             }}
                           >
@@ -747,7 +807,7 @@ export default function AdminReports() {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={columns.length}>
-                          <Typography color="text.secondary">No approved reports match the current filters.</Typography>
+                          <Typography color="text.secondary">No {archiveMode === "archived" ? "archived" : "approved"} reports match the current filters.</Typography>
                         </TableCell>
                       </TableRow>
                     )}
@@ -791,7 +851,7 @@ export default function AdminReports() {
                               direction="row"
                               sx={{
                                 display: "grid",
-                                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                                gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
                                 gap: 0.9,
                                 width: "100%",
                                 alignItems: "stretch",
@@ -831,6 +891,16 @@ export default function AdminReports() {
                               <Button
                                 size="small"
                                 variant="outlined"
+                                color={archiveMode === "archived" ? "success" : "warning"}
+                                disabled={actionBusyId === g.key}
+                                sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.55, fontSize: "0.62rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
+                                onClick={() => void setReportArchived(g.key, archiveMode !== "archived")}
+                              >
+                                {archiveMode === "archived" ? "Restore" : "Completed"}
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
                                 color="error"
                                 sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.55, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
                                 onClick={() => openDelete(g.key)}
@@ -846,7 +916,7 @@ export default function AdminReports() {
                 ) : (
                   <Card variant="outlined">
                     <CardContent>
-                      <Typography color="text.secondary">No approved reports match the current filters.</Typography>
+                      <Typography color="text.secondary">No {archiveMode === "archived" ? "archived" : "approved"} reports match the current filters.</Typography>
                     </CardContent>
                   </Card>
                 )}
@@ -857,7 +927,7 @@ export default function AdminReports() {
                 <Typography variant="body2" color="text.secondary">
                   {data ? (
                     <>
-                      Showing {rows.length} of {data.total} approved reports
+                      Showing {rows.length} of {data.total} {archiveMode === "archived" ? "archived" : "approved"} reports
                     </>
                   ) : null}
                 </Typography>
