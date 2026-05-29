@@ -7,7 +7,6 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
-import ImageRoundedIcon from "@mui/icons-material/ImageRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
@@ -104,7 +103,6 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
     if (role === "user") {
       return [
         { href: "/reports", label: "Approved Reports", icon: <AssessmentRoundedIcon fontSize="small" /> },
-        { href: "/gallery", label: "Image Gallery", icon: <ImageRoundedIcon fontSize="small" /> },
       ];
     }
 
@@ -120,7 +118,6 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
           ? [{ href: "/admins", label: "Admins", icon: <ManageAccountsRoundedIcon fontSize="small" /> }]
           : []),
         { href: "/api", label: "API", icon: <KeyRoundedIcon fontSize="small" /> },
-        { href: "/gallery", label: "Gallery", icon: <ImageRoundedIcon fontSize="small" /> },
       ];
     }
 
