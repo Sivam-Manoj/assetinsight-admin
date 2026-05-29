@@ -17,12 +17,13 @@ type ReportItem = {
   updatedAt?: string;
   user?: { email?: string; username?: string } | null;
   contract_no?: string;
-  fileType?: "pdf" | "docx" | "xlsx" | "images" | "zip" | "asset-preview" | "realestate-preview";
+  fileType?: "pdf" | "docx" | "xlsx" | "images" | "zip" | "asset-preview" | "realestate-preview" | "lotlisting-preview";
   approvalStatus?: "pending" | "approved" | "rejected";
   report?: string;
   preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
   isAssetReport?: boolean;
   isRealEstateReport?: boolean;
+  isLotListing?: boolean;
   property_type?: string;
   language?: string;
   files_regenerating?: boolean;
@@ -208,6 +209,7 @@ export default function AdminApprovals() {
     preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
     isAssetReport?: boolean;
     isRealEstateReport?: boolean;
+    isLotListing?: boolean;
     files_regenerating?: boolean;
   };
 
@@ -218,7 +220,14 @@ export default function AdminApprovals() {
       const key = String((r.report as string | undefined) || r._id);
       let g = map.get(key);
       if (!g) {
-        const base = r.reportType === 'RealEstate' ? 'Real Estate' : r.reportType === 'Salvage' ? 'Salvage' : 'Asset';
+        const base =
+          r.reportType === 'RealEstate'
+            ? 'Real Estate'
+            : r.reportType === 'Salvage'
+              ? 'Salvage'
+              : r.reportType === 'LotListing'
+                ? 'Lot Listing'
+                : 'Asset';
         const title = r.contract_no ? `${base} - ${r.contract_no}` : (r.address || base);
         g = {
           key,
@@ -233,6 +242,7 @@ export default function AdminApprovals() {
           preview_files: r.preview_files,
           isAssetReport: r.isAssetReport,
           isRealEstateReport: r.isRealEstateReport,
+          isLotListing: r.isLotListing,
           files_regenerating: r.files_regenerating,
         };
         map.set(key, g);
@@ -255,6 +265,10 @@ export default function AdminApprovals() {
         // RealEstateReport with preview files - set preview_files
         g.preview_files = r.preview_files;
         g.isRealEstateReport = true;
+      } else if (ft === 'lotlisting-preview' && r.preview_files) {
+        // LotListing with preview files - set preview_files
+        g.preview_files = r.preview_files;
+        g.isLotListing = true;
       }
     }
     // Sort by most recently created or updated first
@@ -333,7 +347,7 @@ export default function AdminApprovals() {
                         </td>
                         <td className="py-2 pr-4">
                           <div className="flex items-center gap-2">
-                            {(g.isAssetReport || g.isRealEstateReport) && g.preview_files ? (
+                            {(g.isAssetReport || g.isRealEstateReport || g.isLotListing) && g.preview_files ? (
                               // AssetReport or RealEstateReport with preview files
                               <>
                                 <button
@@ -355,7 +369,7 @@ export default function AdminApprovals() {
                                 <a href={g.preview_files.excel} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.excel ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Excel</a>
                                 <a href={g.preview_files.images} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.images ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>
                               </>
-                            ) : (g.isAssetReport || g.isRealEstateReport) && g.files_regenerating ? (
+                            ) : (g.isAssetReport || g.isRealEstateReport || g.isLotListing) && g.files_regenerating ? (
                               // Files being generated for first time or after resubmit
                               <>
                                 <button
@@ -389,8 +403,8 @@ export default function AdminApprovals() {
                                 <a href={g.variants.images ? `/api/admin/reports/${g.variants.images._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.variants.images ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>
                               </>
                             )}
-                            <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setMode('approve'); setConfirmOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 active:bg-emerald-100 shadow-sm hover:shadow transition-all">Approve</button>
-                            <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setRejectOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-red-300 text-red-700 bg-white hover:bg-red-50 active:bg-red-100 shadow-sm hover:shadow transition-all">Reject</button>
+                            <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setMode('approve'); setConfirmOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 active:bg-emerald-100 shadow-sm hover:shadow transition-all">Approve</button>
+                            <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setRejectOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-red-300 text-red-700 bg-white hover:bg-red-50 active:bg-red-100 shadow-sm hover:shadow transition-all">Reject</button>
                           </div>
                         </td>
                       </tr>
@@ -417,7 +431,7 @@ export default function AdminApprovals() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
-                      {(g.isAssetReport || g.isRealEstateReport) && g.preview_files ? (
+                      {(g.isAssetReport || g.isRealEstateReport || g.isLotListing) && g.preview_files ? (
                         // AssetReport or RealEstateReport with preview files
                         <>
                           <button
@@ -450,8 +464,8 @@ export default function AdminApprovals() {
                           <a href={g.variants.images ? `/api/admin/reports/${g.variants.images._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.variants.images ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>
                         </>
                       )}
-                      <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setMode('approve'); setConfirmOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 active:bg-emerald-100 shadow-sm hover:shadow transition-all">Approve</button>
-                      <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setRejectOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-red-300 text-red-700 bg-white hover:bg-red-50 active:bg-red-100 shadow-sm hover:shadow transition-all">Reject</button>
+                      <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setMode('approve'); setConfirmOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 active:bg-emerald-100 shadow-sm hover:shadow transition-all">Approve</button>
+                      <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setRejectOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-red-300 text-red-700 bg-white hover:bg-red-50 active:bg-red-100 shadow-sm hover:shadow transition-all">Reject</button>
                     </div>
                   </div>
                 ))}
