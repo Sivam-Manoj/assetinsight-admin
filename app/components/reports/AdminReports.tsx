@@ -195,25 +195,25 @@ function getFileActionIcon(label: string) {
 }
 
 function getFileActionLabel(label: string) {
-  if (label === "Print PDF") return "Print";
+  if (label === "Print PDF") return "PDF";
   return label;
 }
 
 const actionButtonSx = {
   minWidth: "auto",
-  height: 32,
-  px: 1.2,
+  height: 26,
+  px: 0.85,
   py: 0,
   borderRadius: 999,
   textTransform: "none",
-  fontSize: "0.74rem",
+  fontSize: "0.66rem",
   fontWeight: 800,
   lineHeight: 1,
   boxShadow: "none",
   whiteSpace: "nowrap",
   "&:hover": { boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)" },
-  "& .MuiButton-startIcon": { mr: 0.45, ml: -0.2 },
-  "& .MuiSvgIcon-root": { fontSize: "1rem" },
+  "& .MuiButton-startIcon": { mr: 0.28, ml: -0.22 },
+  "& .MuiSvgIcon-root": { fontSize: "0.82rem" },
 };
 
 export default function AdminReports() {
@@ -462,13 +462,15 @@ export default function AdminReports() {
     return (
       <Stack
         direction="row"
-        flexWrap="wrap"
+        flexWrap="nowrap"
         useFlexGap
-        spacing={0.75}
+        spacing={0.42}
         sx={{
           alignItems: "center",
-          minWidth: { md: 360 },
-          maxWidth: { md: 520 },
+          minWidth: 0,
+          width: "max-content",
+          maxWidth: "100%",
+          overflow: "visible",
         }}
       >
         <Tooltip title="Open report data">
@@ -909,15 +911,15 @@ export default function AdminReports() {
                               whiteSpace: "nowrap",
                               width:
                                 header.column.id === "title"
-                                  ? "24%"
+                                  ? "22%"
                                   : header.column.id === "fairMarketValue"
-                                  ? "10%"
+                                  ? "9%"
                                   : header.column.id === "reportType"
-                                  ? "10%"
+                                  ? "9%"
                                   : header.column.id === "createdAt"
-                                  ? "16%"
+                                  ? "14%"
                                   : header.column.id === "actions"
-                                  ? "40%"
+                                  ? "46%"
                                   : "auto",
                             }}
                           >
