@@ -105,7 +105,7 @@ function getPreviewTargetId(group: ReportGroup) {
 function buildFileLinks(group: ReportGroup) {
   if (group.isLotListingReport && group.preview_files) {
     return [
-      { label: "PDF", href: group.preview_files.spec_pdf },
+      { label: "Print PDF", href: `/api/admin/reports/${group.key}/spec-pdf` },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
     ];
@@ -113,7 +113,12 @@ function buildFileLinks(group: ReportGroup) {
 
   if ((group.isAssetReport || group.isRealEstateReport) && group.preview_files) {
     return [
-      { label: "PDF", href: group.preview_files.spec_pdf || group.preview_files.pdf },
+      {
+        label: group.isAssetReport ? "Print PDF" : "PDF",
+        href: group.isAssetReport
+          ? `/api/admin/reports/${group.key}/spec-pdf`
+          : group.preview_files.spec_pdf || group.preview_files.pdf,
+      },
       { label: "DOCX", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
