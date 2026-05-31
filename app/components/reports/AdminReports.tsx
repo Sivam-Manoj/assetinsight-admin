@@ -103,11 +103,11 @@ function getPreviewTargetId(group: ReportGroup) {
 }
 
 function buildFileLinks(group: ReportGroup) {
-  if (group.isLotListingReport && group.preview_files) {
+  if (group.isLotListingReport) {
     return [
       { label: "Print PDF", href: `/api/admin/reports/${group.key}/spec-pdf` },
-      { label: "Excel", href: group.preview_files.excel },
-      { label: "Images", href: group.preview_files.images },
+      { label: "Excel", href: group.preview_files?.excel },
+      { label: "Images", href: group.preview_files?.images },
     ];
   }
 
@@ -122,6 +122,24 @@ function buildFileLinks(group: ReportGroup) {
       { label: "DOCX", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
+    ];
+  }
+
+  if (group.isAssetReport) {
+    return [
+      { label: "Print PDF", href: `/api/admin/reports/${group.key}/spec-pdf` },
+      {
+        label: "DOCX",
+        href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
+      },
+      {
+        label: "Excel",
+        href: group.variants.xlsx ? `/api/admin/reports/${group.variants.xlsx._id}/download` : undefined,
+      },
+      {
+        label: "Images",
+        href: group.variants.images ? `/api/admin/reports/${group.variants.images._id}/download` : undefined,
+      },
     ];
   }
 
@@ -370,9 +388,9 @@ export default function AdminReports() {
           fairMarketValue: r.fairMarketValue,
           userEmail: r.user?.email || undefined,
           variants: {},
-          isAssetReport: !!(r as any).preview_files && r.reportType === 'Asset',
-          isRealEstateReport: !!(r as any).preview_files && (r.reportType === 'RealEstate' || (r as any).isRealEstateReport),
-          isLotListingReport: !!(r as any).preview_files && (r.reportType === 'LotListing' || (r as any).isLotListingReport),
+          isAssetReport: r.reportType === 'Asset',
+          isRealEstateReport: r.reportType === 'RealEstate' || (r as any).isRealEstateReport,
+          isLotListingReport: r.reportType === 'LotListing' || (r as any).isLotListingReport || (r as any).isLotListing,
           preview_files: (r as any).preview_files,
           adminArchivedAt: r.adminArchivedAt || null,
         };
