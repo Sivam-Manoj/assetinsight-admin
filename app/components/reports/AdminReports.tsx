@@ -46,11 +46,11 @@ type ReportItem = {
   reportType: "RealEstate" | "Salvage" | "Asset" | "LotListing" | string;
   createdAt: string;
   reportModel?: string;
-  fileType?: "pdf" | "docx" | "xlsx" | "images";
+  fileType?: "pdf" | "spec_pdf" | "docx" | "xlsx" | "images";
   approvalStatus?: "pending" | "approved" | "rejected";
   report?: string;
   contract_no?: string;
-  preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
   property_type?: string;
@@ -73,11 +73,11 @@ type ReportGroup = {
   createdAt: string;
   fairMarketValue: string;
   userEmail?: string;
-  variants: { pdf?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
+  variants: { pdf?: ReportItem; specPdf?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
   isAssetReport?: boolean;
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
-  preview_files?: { pdf?: string; docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
   adminArchivedAt?: string | null;
 };
 
@@ -94,6 +94,7 @@ function getReportTypeLabel(reportType: string) {
 function getPreviewTargetId(group: ReportGroup) {
   return (
     group.variants.pdf?._id ||
+    group.variants.specPdf?._id ||
     group.variants.docx?._id ||
     group.variants.xlsx?._id ||
     group.variants.images?._id ||
@@ -104,6 +105,7 @@ function getPreviewTargetId(group: ReportGroup) {
 function buildFileLinks(group: ReportGroup) {
   if (group.isLotListingReport && group.preview_files) {
     return [
+      { label: "PDF", href: group.preview_files.spec_pdf },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
     ];
@@ -111,6 +113,7 @@ function buildFileLinks(group: ReportGroup) {
 
   if ((group.isAssetReport || group.isRealEstateReport) && group.preview_files) {
     return [
+      { label: "PDF", href: group.preview_files.spec_pdf || group.preview_files.pdf },
       { label: "DOCX", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
@@ -118,6 +121,14 @@ function buildFileLinks(group: ReportGroup) {
   }
 
   return [
+    {
+      label: "PDF",
+      href: group.variants.specPdf
+        ? `/api/admin/reports/${group.variants.specPdf._id}/download`
+        : group.variants.pdf
+          ? `/api/admin/reports/${group.variants.pdf._id}/download`
+          : undefined,
+    },
     {
       label: "DOCX",
       href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
@@ -365,6 +376,7 @@ export default function AdminReports() {
       if (new Date(r.createdAt).getTime() > new Date(g.createdAt).getTime()) g.createdAt = r.createdAt;
       const ft = ((r.fileType || r.filename.split(".").pop() || "") as string).toLowerCase();
       if (ft === "pdf") g.variants.pdf = r;
+      else if (ft === "spec_pdf") g.variants.specPdf = r;
       else if (ft === "docx") g.variants.docx = r;
       else if (ft === "xlsx") g.variants.xlsx = r;
       else if (ft === "images" || ft === "zip") g.variants.images = r;
@@ -442,7 +454,7 @@ export default function AdminReports() {
             direction="row"
             sx={{
               display: "grid",
-              gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
               gap: 0.6,
               width: "100%",
               alignItems: "stretch",
@@ -773,7 +785,7 @@ export default function AdminReports() {
                                   : header.column.id === "createdAt"
                                   ? "17%"
                                   : header.column.id === "actions"
-                                  ? "29%"
+                                  ? "34%"
                                   : "auto",
                             }}
                           >
@@ -851,7 +863,7 @@ export default function AdminReports() {
                               direction="row"
                               sx={{
                                 display: "grid",
-                                gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+                                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
                                 gap: 0.9,
                                 width: "100%",
                                 alignItems: "stretch",
