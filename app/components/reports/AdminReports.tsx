@@ -118,7 +118,7 @@ function getPreviewTargetId(group: ReportGroup) {
 function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if (group.isLotListingReport) {
     return [
-      { label: "Print PDF", href: `/api/admin/reports/${group.key}/spec-pdf` },
+      { label: "Conditional Report", href: `/api/admin/reports/${group.key}/spec-pdf` },
       { label: "Excel", href: group.preview_files?.excel },
       { label: "Images", href: group.preview_files?.images },
     ];
@@ -127,7 +127,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if ((group.isAssetReport || group.isRealEstateReport) && group.preview_files) {
     return [
       {
-        label: group.isAssetReport ? "Print PDF" : "PDF",
+        label: group.isAssetReport ? "Conditional Report" : "PDF",
         href: group.isAssetReport
           ? `/api/admin/reports/${group.key}/spec-pdf`
           : group.preview_files.spec_pdf || group.preview_files.pdf,
@@ -140,7 +140,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 
   if (group.isAssetReport) {
     return [
-      { label: "Print PDF", href: `/api/admin/reports/${group.key}/spec-pdf` },
+      { label: "Conditional Report", href: `/api/admin/reports/${group.key}/spec-pdf` },
       {
         label: "DOCX",
         href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
@@ -188,15 +188,10 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 
 function getFileActionIcon(label: string) {
   const key = label.toLowerCase();
-  if (key.includes("pdf")) return <PictureAsPdfRoundedIcon />;
+  if (key.includes("pdf") || key.includes("conditional report")) return <PictureAsPdfRoundedIcon />;
   if (key.includes("excel")) return <TableChartRoundedIcon />;
   if (key.includes("image")) return <CollectionsRoundedIcon />;
   return undefined;
-}
-
-function getFileActionLabel(label: string) {
-  if (label === "Print PDF") return "PDF";
-  return label;
 }
 
 const actionButtonSx = {
@@ -206,7 +201,7 @@ const actionButtonSx = {
   py: 0,
   borderRadius: 999,
   textTransform: "none",
-  fontSize: "0.66rem",
+  fontSize: "0.64rem",
   fontWeight: 800,
   lineHeight: 1,
   boxShadow: "none",
@@ -525,7 +520,7 @@ export default function AdminReports() {
                       }
                     : {})}
                 >
-                  {getFileActionLabel(link.label)}
+                  {link.label}
                 </Button>
               </span>
             </Tooltip>

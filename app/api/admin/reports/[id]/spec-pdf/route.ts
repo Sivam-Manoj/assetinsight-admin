@@ -16,7 +16,7 @@ export async function GET(
   });
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({ message: "Failed to generate PDF" }));
+    const data = await res.json().catch(() => ({ message: "Failed to generate Conditional Report" }));
     return NextResponse.json(data, { status: res.status });
   }
 
