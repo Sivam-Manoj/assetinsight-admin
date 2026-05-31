@@ -34,8 +34,16 @@ import {
   TableRow,
   TableSortLabel,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
+import CollectionsRoundedIcon from "@mui/icons-material/CollectionsRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
+import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 
 type ReportItem = {
   _id: string;
@@ -81,6 +89,11 @@ type ReportGroup = {
   adminArchivedAt?: string | null;
 };
 
+type ReportFileLink = {
+  label: string;
+  href?: string;
+};
+
 const ALL_PAGE_SIZE = 100000;
 
 function formatFMV(value: string) {
@@ -102,7 +115,7 @@ function getPreviewTargetId(group: ReportGroup) {
   );
 }
 
-function buildFileLinks(group: ReportGroup) {
+function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if (group.isLotListingReport) {
     return [
       { label: "Print PDF", href: `/api/admin/reports/${group.key}/spec-pdf` },
@@ -172,6 +185,36 @@ function buildFileLinks(group: ReportGroup) {
     },
   ];
 }
+
+function getFileActionIcon(label: string) {
+  const key = label.toLowerCase();
+  if (key.includes("pdf")) return <PictureAsPdfRoundedIcon />;
+  if (key.includes("excel")) return <TableChartRoundedIcon />;
+  if (key.includes("image")) return <CollectionsRoundedIcon />;
+  return undefined;
+}
+
+function getFileActionLabel(label: string) {
+  if (label === "Print PDF") return "Print";
+  return label;
+}
+
+const actionButtonSx = {
+  minWidth: "auto",
+  height: 32,
+  px: 1.2,
+  py: 0,
+  borderRadius: 999,
+  textTransform: "none",
+  fontSize: "0.74rem",
+  fontWeight: 800,
+  lineHeight: 1,
+  boxShadow: "none",
+  whiteSpace: "nowrap",
+  "&:hover": { boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)" },
+  "& .MuiButton-startIcon": { mr: 0.45, ml: -0.2 },
+  "& .MuiSvgIcon-root": { fontSize: "1rem" },
+};
 
 export default function AdminReports() {
   // Filters
@@ -410,6 +453,134 @@ export default function AdminReports() {
     );
   }, [data]);
 
+  function renderReportActions(group: ReportGroup) {
+    const previewId = getPreviewTargetId(group);
+    const archiveLabel = archiveMode === "archived" ? "Restore" : "Done";
+    const archiveTooltip =
+      archiveMode === "archived" ? "Restore report to active list" : "Move report to archived list";
+
+    return (
+      <Stack
+        direction="row"
+        flexWrap="wrap"
+        useFlexGap
+        spacing={0.75}
+        sx={{
+          alignItems: "center",
+          minWidth: { md: 360 },
+          maxWidth: { md: 520 },
+        }}
+      >
+        <Tooltip title="Open report data">
+          <span>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<VisibilityRoundedIcon />}
+              sx={{
+                ...actionButtonSx,
+                bgcolor: "#0284c7",
+                color: "#fff",
+                "&:hover": { bgcolor: "#0369a1", boxShadow: "0 8px 18px rgba(2, 132, 199, 0.22)" },
+              }}
+              onClick={() => {
+                if (previewId) void openPreview(previewId);
+              }}
+            >
+              Data
+            </Button>
+          </span>
+        </Tooltip>
+
+        {buildFileLinks(group).map((link) => {
+          const isPdf = link.label.toLowerCase().includes("pdf");
+          const isExcel = link.label.toLowerCase().includes("excel");
+          const color = isPdf ? "#4f46e5" : isExcel ? "#2563eb" : "#7c3aed";
+          const hover = isPdf ? "#4338ca" : isExcel ? "#1d4ed8" : "#6d28d9";
+          return (
+            <Tooltip key={`${group.key}-${link.label}`} title={link.href ? link.label : `${link.label} unavailable`}>
+              <span>
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={!link.href}
+                  startIcon={getFileActionIcon(link.label)}
+                  sx={{
+                    ...actionButtonSx,
+                    bgcolor: color,
+                    color: "#fff",
+                    "&:hover": { bgcolor: hover, boxShadow: `0 8px 18px ${color}33` },
+                    "&.Mui-disabled": {
+                      bgcolor: "#e5e7eb",
+                      color: "#94a3b8",
+                    },
+                  }}
+                  {...(link.href
+                    ? {
+                        href: link.href,
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                      }
+                    : {})}
+                >
+                  {getFileActionLabel(link.label)}
+                </Button>
+              </span>
+            </Tooltip>
+          );
+        })}
+
+        <Tooltip title={archiveTooltip}>
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={actionBusyId === group.key}
+              startIcon={archiveMode === "archived" ? <RestoreRoundedIcon /> : <ArchiveRoundedIcon />}
+              sx={{
+                ...actionButtonSx,
+                borderColor: archiveMode === "archived" ? "#16a34a" : "#f59e0b",
+                color: archiveMode === "archived" ? "#15803d" : "#b45309",
+                bgcolor: archiveMode === "archived" ? "#f0fdf4" : "#fffbeb",
+                "&:hover": {
+                  borderColor: archiveMode === "archived" ? "#15803d" : "#d97706",
+                  bgcolor: archiveMode === "archived" ? "#dcfce7" : "#fef3c7",
+                },
+              }}
+              onClick={() => void setReportArchived(group.key, archiveMode !== "archived")}
+            >
+              {archiveLabel}
+            </Button>
+          </span>
+        </Tooltip>
+
+        <Tooltip title="Delete report">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteOutlineRoundedIcon />}
+              sx={{
+                ...actionButtonSx,
+                borderColor: "#f87171",
+                color: "#dc2626",
+                bgcolor: "#fff7f7",
+                "&:hover": {
+                  borderColor: "#ef4444",
+                  bgcolor: "#fee2e2",
+                },
+              }}
+              onClick={() => openDelete(group.key)}
+            >
+              Delete
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
+    );
+  }
+
   const columns: ColumnDef<ReportGroup>[] = [
       {
         id: "title",
@@ -472,69 +643,7 @@ export default function AdminReports() {
         id: "actions",
         enableSorting: false,
         header: "Actions",
-        cell: ({ row }) => (
-          <Stack
-            direction="row"
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 0.6,
-              width: "100%",
-              alignItems: "stretch",
-            }}
-          >
-            <Button
-              size="small"
-              variant="contained"
-              color="info"
-              sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.45, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-              onClick={() => {
-                const previewId = getPreviewTargetId(row.original);
-                if (previewId) void openPreview(previewId);
-              }}
-            >
-              Data
-            </Button>
-            {buildFileLinks(row.original).map((link) => (
-              <Button
-                key={`${row.original.key}-${link.label}`}
-                size="small"
-                variant="contained"
-                color="primary"
-                disabled={!link.href}
-                sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.45, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-                {...(link.href
-                  ? {
-                      href: link.href,
-                      target: "_blank",
-                      rel: "noopener noreferrer",
-                    }
-                  : {})}
-              >
-                {link.label}
-              </Button>
-            ))}
-            <Button
-              size="small"
-              variant="outlined"
-              color={archiveMode === "archived" ? "success" : "warning"}
-              disabled={actionBusyId === row.original.key}
-              sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.45, fontSize: "0.62rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-              onClick={() => void setReportArchived(row.original.key, archiveMode !== "archived")}
-            >
-              {archiveMode === "archived" ? "Restore" : "Completed"}
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              color="error"
-              sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.45, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-              onClick={() => openDelete(row.original.key)}
-            >
-              Delete
-            </Button>
-          </Stack>
-        ),
+        cell: ({ row }) => renderReportActions(row.original),
       },
     ];
 
@@ -800,15 +909,15 @@ export default function AdminReports() {
                               whiteSpace: "nowrap",
                               width:
                                 header.column.id === "title"
-                                  ? "30%"
+                                  ? "24%"
                                   : header.column.id === "fairMarketValue"
-                                  ? "13%"
+                                  ? "10%"
                                   : header.column.id === "reportType"
-                                  ? "11%"
+                                  ? "10%"
                                   : header.column.id === "createdAt"
-                                  ? "17%"
+                                  ? "16%"
                                   : header.column.id === "actions"
-                                  ? "34%"
+                                  ? "40%"
                                   : "auto",
                             }}
                           >
@@ -833,7 +942,13 @@ export default function AdminReports() {
                       rows.map((row) => (
                         <TableRow key={row.id} hover>
                           {row.getVisibleCells().map((cell) => (
-                            <TableCell key={cell.id} align="left" sx={{ overflow: "hidden" }}>
+                            <TableCell
+                              key={cell.id}
+                              align="left"
+                              sx={{
+                                overflow: cell.column.id === "actions" ? "visible" : "hidden",
+                              }}
+                            >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </TableCell>
                           ))}
@@ -882,67 +997,7 @@ export default function AdminReports() {
                                 <Typography variant="body2">{g.userEmail || "-"}</Typography>
                               </Grid>
                             </Grid>
-                            <Stack
-                              direction="row"
-                              sx={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                                gap: 0.9,
-                                width: "100%",
-                                alignItems: "stretch",
-                              }}
-                            >
-                              <Button
-                                size="small"
-                                variant="contained"
-                                color="info"
-                                sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.55, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-                                onClick={() => {
-                                  const previewId = getPreviewTargetId(g);
-                                  if (previewId) void openPreview(previewId);
-                                }}
-                              >
-                                Data
-                              </Button>
-                              {buildFileLinks(g).map((link) => (
-                                <Button
-                                  key={`${g.key}-${link.label}`}
-                                  size="small"
-                                  variant="contained"
-                                  color="primary"
-                                  disabled={!link.href}
-                                  sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.55, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-                                  {...(link.href
-                                    ? {
-                                        href: link.href,
-                                        target: "_blank",
-                                        rel: "noopener noreferrer",
-                                      }
-                                    : {})}
-                                >
-                                  {link.label}
-                                </Button>
-                              ))}
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color={archiveMode === "archived" ? "success" : "warning"}
-                                disabled={actionBusyId === g.key}
-                                sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.55, fontSize: "0.62rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-                                onClick={() => void setReportArchived(g.key, archiveMode !== "archived")}
-                              >
-                                {archiveMode === "archived" ? "Restore" : "Completed"}
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="error"
-                                sx={{ minWidth: 0, width: "100%", px: 0.5, py: 0.55, fontSize: "0.66rem", lineHeight: 1.1, borderRadius: 1.75, whiteSpace: "nowrap" }}
-                                onClick={() => openDelete(g.key)}
-                              >
-                                Delete
-                              </Button>
-                            </Stack>
+                            {renderReportActions(g)}
                           </Stack>
                         </CardContent>
                       </Card>
