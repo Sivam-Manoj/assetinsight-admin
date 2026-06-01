@@ -118,7 +118,7 @@ function getPreviewTargetId(group: ReportGroup) {
 function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if (group.isLotListingReport) {
     return [
-      { label: "Conditional Report", href: `/api/admin/reports/${group.key}/spec-pdf` },
+      { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf` },
       { label: "Excel", href: group.preview_files?.excel },
       { label: "Images", href: group.preview_files?.images },
     ];
@@ -127,7 +127,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if ((group.isAssetReport || group.isRealEstateReport) && group.preview_files) {
     return [
       {
-        label: group.isAssetReport ? "Conditional Report" : "PDF",
+        label: group.isAssetReport ? "CR" : "PDF",
         href: group.isAssetReport
           ? `/api/admin/reports/${group.key}/spec-pdf`
           : group.preview_files.spec_pdf || group.preview_files.pdf,
@@ -140,7 +140,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 
   if (group.isAssetReport) {
     return [
-      { label: "Conditional Report", href: `/api/admin/reports/${group.key}/spec-pdf` },
+      { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf` },
       {
         label: "DOCX",
         href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
@@ -188,7 +188,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 
 function getFileActionIcon(label: string) {
   const key = label.toLowerCase();
-  if (key.includes("pdf") || key.includes("conditional report")) return <PictureAsPdfRoundedIcon />;
+  if (key === "cr" || key.includes("pdf") || key.includes("conditional report")) return <PictureAsPdfRoundedIcon />;
   if (key.includes("excel")) return <TableChartRoundedIcon />;
   if (key.includes("image")) return <CollectionsRoundedIcon />;
   return undefined;
@@ -490,12 +490,14 @@ export default function AdminReports() {
         </Tooltip>
 
         {buildFileLinks(group).map((link) => {
-          const isPdf = link.label.toLowerCase().includes("pdf");
+          const linkKey = link.label.toLowerCase();
+          const tooltipLabel = linkKey === "cr" ? "Conditional Report" : link.label;
+          const isPdf = linkKey === "cr" || linkKey.includes("pdf");
           const isExcel = link.label.toLowerCase().includes("excel");
           const color = isPdf ? "#4f46e5" : isExcel ? "#2563eb" : "#7c3aed";
           const hover = isPdf ? "#4338ca" : isExcel ? "#1d4ed8" : "#6d28d9";
           return (
-            <Tooltip key={`${group.key}-${link.label}`} title={link.href ? link.label : `${link.label} unavailable`}>
+            <Tooltip key={`${group.key}-${link.label}`} title={link.href ? tooltipLabel : `${tooltipLabel} unavailable`}>
               <span>
                 <Button
                   size="small"
