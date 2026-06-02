@@ -491,7 +491,7 @@ export default function AdminReports() {
 
         {buildFileLinks(group).map((link) => {
           const linkKey = link.label.toLowerCase();
-          const tooltipLabel = linkKey === "cr" ? "Conditional Report" : link.label;
+          const tooltipLabel = linkKey === "cr" ? "CR" : link.label;
           const isPdf = linkKey === "cr" || linkKey.includes("pdf");
           const isExcel = link.label.toLowerCase().includes("excel");
           const color = isPdf ? "#4f46e5" : isExcel ? "#2563eb" : "#7c3aed";

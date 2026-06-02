@@ -21,6 +21,7 @@ import {
   Grid,
   LinearProgress,
   Stack,
+  Switch,
   Typography,
 } from "@mui/material";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -78,6 +79,11 @@ type OpenAICreditsState = {
   periodEnd: string;
   source: string;
   message: string;
+} | null;
+
+type SpecWebSearchState = {
+  enabled: boolean;
+  message?: string;
 } | null;
 
 type MetricCard = {
@@ -196,6 +202,10 @@ export default function DashboardShellV2() {
   const [credits, setCredits] = useState<OpenAICreditsState>(null);
   const [creditsLoading, setCreditsLoading] = useState(true);
   const [creditsError, setCreditsError] = useState<string | null>(null);
+  const [specWebSearch, setSpecWebSearch] = useState<SpecWebSearchState>(null);
+  const [specWebSearchLoading, setSpecWebSearchLoading] = useState(true);
+  const [specWebSearchSaving, setSpecWebSearchSaving] = useState(false);
+  const [specWebSearchError, setSpecWebSearchError] = useState<string | null>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
@@ -252,6 +262,49 @@ export default function DashboardShellV2() {
     }, 10_000);
     return () => window.clearInterval(id);
   }, [loadOpenAICredits]);
+
+  const loadSpecWebSearch = useCallback(async () => {
+    try {
+      setSpecWebSearchLoading(true);
+      setSpecWebSearchError(null);
+      const res = await fetch("/api/admin/spec-web-search", { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as { enabled?: boolean; message?: string };
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load spec web search setting");
+      }
+      setSpecWebSearch({ enabled: data.enabled === true, message: data.message });
+    } catch (e) {
+      setSpecWebSearchError(e instanceof Error ? e.message : "Failed to load spec web search setting");
+    } finally {
+      setSpecWebSearchLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSpecWebSearch();
+  }, [loadSpecWebSearch]);
+
+  const toggleSpecWebSearch = useCallback(async () => {
+    const nextEnabled = !(specWebSearch?.enabled === true);
+    try {
+      setSpecWebSearchSaving(true);
+      setSpecWebSearchError(null);
+      const res = await fetch("/api/admin/spec-web-search", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { enabled?: boolean; message?: string };
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to update spec web search setting");
+      }
+      setSpecWebSearch({ enabled: data.enabled === true, message: data.message });
+    } catch (e) {
+      setSpecWebSearchError(e instanceof Error ? e.message : "Failed to update spec web search setting");
+    } finally {
+      setSpecWebSearchSaving(false);
+    }
+  }, [specWebSearch?.enabled]);
 
   const greeting = useMemo(() => {
     const hours = now.getHours();
@@ -550,6 +603,56 @@ export default function DashboardShellV2() {
                       <Typography variant="body2" color="text.secondary">
                         Budget {formatCredits(credits?.budgetCredits, "Set budget")}
                       </Typography>
+                    </Stack>
+                  </Box>
+
+                  <Divider />
+
+                  <Box
+                    sx={{
+                      border: "1px solid",
+                      borderColor: (theme) =>
+                        theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
+                      borderRadius: "12px",
+                      p: { xs: 1.25, sm: 1.5 },
+                      bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#0f172a", 0.28) : alpha("#f8fafc", 0.8)),
+                    }}
+                  >
+                    <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="center">
+                      <Box minWidth={0}>
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Typography variant="body1" sx={{ fontWeight: 950 }}>
+                            Spec web search
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={specWebSearch?.enabled ? "Enabled" : "Off"}
+                            sx={{
+                              height: 24,
+                              bgcolor: specWebSearch?.enabled ? alpha("#16a34a", 0.14) : alpha("#64748b", 0.12),
+                              color: specWebSearch?.enabled ? "#15803d" : "#475569",
+                              border: `1px solid ${specWebSearch?.enabled ? alpha("#16a34a", 0.24) : alpha("#64748b", 0.18)}`,
+                              fontWeight: 850,
+                            }}
+                          />
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
+                          Off uses only specs found in uploaded images and provided data. Turn on only when you want web research to fill missing Auctioneer fields.
+                        </Typography>
+                        {specWebSearchError ? (
+                          <Typography variant="caption" sx={{ mt: 0.75, display: "block", color: "#dc2626", fontWeight: 800 }}>
+                            {specWebSearchError}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Switch
+                        checked={specWebSearch?.enabled === true}
+                        onChange={toggleSpecWebSearch}
+                        disabled={specWebSearchLoading || specWebSearchSaving}
+                        color="success"
+                        inputProps={{ "aria-label": "Toggle spec web search" }}
+                        sx={{ flexShrink: 0 }}
+                      />
                     </Stack>
                   </Box>
 

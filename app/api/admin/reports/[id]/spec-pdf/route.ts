@@ -16,7 +16,7 @@ export async function GET(
   });
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({ message: "Failed to generate Conditional Report" }));
+    const data = await res.json().catch(() => ({ message: "Failed to generate CR" }));
     return NextResponse.json(data, { status: res.status });
   }
 
