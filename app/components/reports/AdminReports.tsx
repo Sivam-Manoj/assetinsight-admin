@@ -306,11 +306,11 @@ function CrDisclaimersDialog({
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle sx={{ fontWeight: 900 }}>CR Notes By Lot</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 900 }}>Disclaimers by Lot</DialogTitle>
       <DialogContent dividers sx={{ bgcolor: "#f8fafc" }}>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Select CR notes per lot. Save stores the notes. Save &amp; Resubmit Excel/CR regenerates the files and refreshes the row links when done.
+            Select disclaimers per lot. Save stores the selections. Save &amp; Resubmit regenerates the files and refreshes the row links when done.
           </Typography>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {filesBusy ? (
@@ -417,7 +417,7 @@ function CrDisclaimersDialog({
           onClick={() => void onResubmit(payload)}
           disabled={loading || saving || filesBusy}
         >
-          {saving ? "Working..." : "Save & Resubmit Excel/CR"}
+          {saving ? "Working..." : "Save & Resubmit"}
         </Button>
       </DialogActions>
     </Dialog>
