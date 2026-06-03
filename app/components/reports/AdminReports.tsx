@@ -666,8 +666,13 @@ export default function AdminReports() {
       if (!res.ok) {
         throw new Error((json as { message?: string })?.message || "Failed to save asset schedule sheet");
       }
-      setPreviewData(json as ReportPreviewPayload);
-      setPreviewSaveSuccess("Changes saved.");
+      const payload = json as ReportPreviewPayload;
+      setPreviewData(payload);
+      setPreviewSaveSuccess(
+        payload.files_regeneration_queued
+          ? "Changes saved. Files are regenerating for My Reports."
+          : "Changes saved."
+      );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed to save asset schedule sheet";
       setPreviewSaveError(message);

@@ -64,10 +64,12 @@ export type AssetAdminScheduleSheet = {
 };
 
 export type ReportPreviewPayload = {
+  reportId?: string;
   title: string;
   meta: ReportPreviewField[];
   data: Record<string, unknown>;
   variant?: "assetScheduleSheet";
   currencyCode?: string;
   assetScheduleSheet?: AssetAdminScheduleSheet;
+  files_regeneration_queued?: boolean;
 };
