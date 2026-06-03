@@ -131,6 +131,115 @@ const fallbackCrDisclaimerOptions: CrDisclaimerOption[] = [
   { key: "rollingStockOffsite", label: "Rolling Stock - Damage Disclaimer - Offsite" },
 ];
 
+type CrDisclaimersDialogProps = {
+  open: boolean;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+  filesBusy: boolean;
+  initialSettings: CrDisclaimerSettings;
+  options: CrDisclaimerOption[];
+  onClose: () => void;
+  onSave: (settings: CrDisclaimerSettings) => Promise<void>;
+  onResubmit: (settings: CrDisclaimerSettings) => Promise<void>;
+};
+
+function CrDisclaimersDialog({
+  open,
+  loading,
+  saving,
+  error,
+  filesBusy,
+  initialSettings,
+  options,
+  onClose,
+  onSave,
+  onResubmit,
+}: CrDisclaimersDialogProps) {
+  const [localSettings, setLocalSettings] = useState<CrDisclaimerSettings>(initialSettings);
+
+  useEffect(() => {
+    if (open) setLocalSettings(initialSettings);
+  }, [initialSettings, open]);
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle sx={{ fontWeight: 900 }}>CR Disclaimers</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2}>
+          <Typography variant="body2" color="text.secondary">
+            Save stores the CR notes. Save &amp; Resubmit Excel/CR regenerates the files and refreshes the row links when done.
+          </Typography>
+          {error ? <Alert severity="error">{error}</Alert> : null}
+          {filesBusy ? (
+            <Alert severity="warning">This report is already generating files. Save is available, but resubmit is disabled until it finishes.</Alert>
+          ) : null}
+          {loading ? (
+            <Typography variant="body2" color="text.secondary">
+              Loading CR disclaimer settings...
+            </Typography>
+          ) : (
+            <>
+              <Stack spacing={0.75}>
+                {options.map((option) => (
+                  <FormControlLabel
+                    key={option.key}
+                    control={
+                      <Checkbox
+                        checked={Boolean(localSettings[option.key])}
+                        onChange={(event) =>
+                          setLocalSettings((prev) => ({
+                            ...prev,
+                            [option.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                    }
+                    label={option.label}
+                  />
+                ))}
+              </Stack>
+              <TextField
+                label="Custom CR note"
+                value={localSettings.customText}
+                onChange={(event) =>
+                  setLocalSettings((prev) => ({
+                    ...prev,
+                    customText: event.target.value,
+                  }))
+                }
+                multiline
+                minRows={3}
+                fullWidth
+                helperText="Short custom note. It will be safely added as a paragraph below selected CR notes."
+              />
+            </>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ p: 2, gap: 1, flexWrap: "wrap" }}>
+        <Button onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          variant="outlined"
+          onClick={() => void onSave(localSettings)}
+          disabled={loading || saving}
+        >
+          Save
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => void onResubmit(localSettings)}
+          disabled={loading || saving || filesBusy}
+        >
+          {saving ? "Working..." : "Save & Resubmit Excel/CR"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 const ALL_PAGE_SIZE = 100000;
 
 function formatFMV(value: string) {
@@ -283,9 +392,10 @@ export default function AdminReports() {
   const [crDialogError, setCrDialogError] = useState<string | null>(null);
   const [crDialogTarget, setCrDialogTarget] = useState<ReportGroup | null>(null);
   const [crDialogFilesBusy, setCrDialogFilesBusy] = useState(false);
-  const [crSettings, setCrSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
+  const [crInitialSettings, setCrInitialSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
   const [crOptions, setCrOptions] = useState<CrDisclaimerOption[]>(fallbackCrDisclaimerOptions);
   const [crCounts, setCrCounts] = useState<Record<string, number>>({});
+  const [crSubmitSuccess, setCrSubmitSuccess] = useState<string | null>(null);
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -436,7 +546,7 @@ export default function AdminReports() {
     setCrDialogTarget(null);
     setCrDialogError(null);
     setCrDialogFilesBusy(false);
-    setCrSettings(emptyCrDisclaimers);
+    setCrInitialSettings(emptyCrDisclaimers);
     setCrOptions(fallbackCrDisclaimerOptions);
   }
 
@@ -446,6 +556,7 @@ export default function AdminReports() {
     setCrDialogOpen(true);
     setCrDialogLoading(true);
     setCrDialogError(null);
+    setCrSubmitSuccess(null);
     try {
       const res = await fetch(`/api/admin/reports/${group.key}/cr-disclaimers`, {
         cache: "no-store",
@@ -453,7 +564,7 @@ export default function AdminReports() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || "Failed to load CR disclaimers");
       const payload = json?.data || {};
-      setCrSettings({ ...emptyCrDisclaimers, ...(payload.settings || {}) });
+      setCrInitialSettings({ ...emptyCrDisclaimers, ...(payload.settings || {}) });
       setCrOptions(Array.isArray(payload.options) && payload.options.length ? payload.options : fallbackCrDisclaimerOptions);
       setCrCounts((prev) => ({ ...prev, [group.key]: Number(payload.activeCount || 0) }));
       setCrDialogFilesBusy(Boolean(payload.files_regenerating || payload.files_generating));
@@ -464,27 +575,31 @@ export default function AdminReports() {
     }
   }
 
-  async function saveCrDisclaimers(rerun: boolean) {
+  async function saveCrDisclaimers(settings: CrDisclaimerSettings, resubmit: boolean) {
     if (!crDialogTarget) return;
     try {
       setCrDialogSaving(true);
       setCrDialogError(null);
-      const endpoint = rerun
+      setCrSubmitSuccess(null);
+      const endpoint = resubmit
         ? `/api/admin/reports/${crDialogTarget.key}/rerun-excel-cr`
         : `/api/admin/reports/${crDialogTarget.key}/cr-disclaimers`;
       const res = await fetch(endpoint, {
-        method: rerun ? "POST" : "PATCH",
+        method: resubmit ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: crSettings }),
+        body: JSON.stringify({ settings }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || (rerun ? "Failed to rerun Excel/CR" : "Failed to save CR disclaimers"));
+      if (!res.ok) throw new Error(json?.message || (resubmit ? "Failed to resubmit Excel/CR" : "Failed to save CR disclaimers"));
       const activeCount = Number(json?.data?.activeCount || 0);
       setCrCounts((prev) => ({ ...prev, [crDialogTarget.key]: activeCount }));
-      if (rerun) await load();
+      if (resubmit) {
+        await load();
+        setCrSubmitSuccess("Excel/CR resubmitted successfully. The CR and Excel buttons now point to refreshed files.");
+      }
       closeCrDialog();
     } catch (e: unknown) {
-      setCrDialogError(e instanceof Error ? e.message : rerun ? "Failed to rerun Excel/CR" : "Failed to save CR disclaimers");
+      setCrDialogError(e instanceof Error ? e.message : resubmit ? "Failed to resubmit Excel/CR" : "Failed to save CR disclaimers");
     } finally {
       setCrDialogSaving(false);
     }
@@ -644,7 +759,7 @@ export default function AdminReports() {
         })}
 
         {canUseCrDisclaimers(group) ? (
-          <Tooltip title="Select CR disclaimers and rerun Excel/CR">
+          <Tooltip title="Select CR disclaimers and resubmit Excel/CR">
             <span>
               <Button
                 size="small"
@@ -1031,6 +1146,11 @@ export default function AdminReports() {
             <Alert severity="error">{error}</Alert>
           ) : (
             <>
+              {crSubmitSuccess ? (
+                <Alert severity="success" sx={{ mb: 2 }} onClose={() => setCrSubmitSuccess(null)}>
+                  {crSubmitSuccess}
+                </Alert>
+              ) : null}
               {/* Table on md+ */}
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" sx={{ mb: 2 }}>
                 <Typography variant="h6" fontWeight={700}>{archiveMode === "archived" ? "Archived Reports" : "Approved Reports"}</Typography>
@@ -1228,80 +1348,18 @@ export default function AdminReports() {
           setPreviewSaveSuccess(null);
         }}
       />
-      <Dialog open={crDialogOpen} onClose={closeCrDialog} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: 900 }}>CR Disclaimers</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
-              Selected CR notes will be added to the end of every lot&apos;s Excel Condition Report and CR PDF.
-            </Typography>
-            {crDialogError ? <Alert severity="error">{crDialogError}</Alert> : null}
-            {crDialogFilesBusy ? (
-              <Alert severity="warning">This report is already generating files. Save is available, but rerun is disabled until it finishes.</Alert>
-            ) : null}
-            {crDialogLoading ? (
-              <Typography variant="body2" color="text.secondary">
-                Loading CR disclaimer settings...
-              </Typography>
-            ) : (
-              <>
-                <Stack spacing={0.75}>
-                  {crOptions.map((option) => (
-                    <FormControlLabel
-                      key={option.key}
-                      control={
-                        <Checkbox
-                          checked={Boolean(crSettings[option.key])}
-                          onChange={(event) =>
-                            setCrSettings((prev) => ({
-                              ...prev,
-                              [option.key]: event.target.checked,
-                            }))
-                          }
-                        />
-                      }
-                      label={option.label}
-                    />
-                  ))}
-                </Stack>
-                <TextField
-                  label="Custom CR note"
-                  value={crSettings.customText}
-                  onChange={(event) =>
-                    setCrSettings((prev) => ({
-                      ...prev,
-                      customText: event.target.value,
-                    }))
-                  }
-                  multiline
-                  minRows={3}
-                  fullWidth
-                  helperText="Short custom note. It will be safely added as a paragraph below selected CR notes."
-                />
-              </>
-            )}
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ p: 2, gap: 1, flexWrap: "wrap" }}>
-          <Button onClick={closeCrDialog} disabled={crDialogSaving}>
-            Cancel
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={() => void saveCrDisclaimers(false)}
-            disabled={crDialogLoading || crDialogSaving}
-          >
-            Save
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => void saveCrDisclaimers(true)}
-            disabled={crDialogLoading || crDialogSaving || crDialogFilesBusy}
-          >
-            {crDialogSaving ? "Working..." : "Save & Rerun Excel/CR"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CrDisclaimersDialog
+        open={crDialogOpen}
+        loading={crDialogLoading}
+        saving={crDialogSaving}
+        error={crDialogError}
+        filesBusy={crDialogFilesBusy}
+        initialSettings={crInitialSettings}
+        options={crOptions}
+        onClose={closeCrDialog}
+        onSave={(settings) => saveCrDisclaimers(settings, false)}
+        onResubmit={(settings) => saveCrDisclaimers(settings, true)}
+      />
     </div>
   );
 }
