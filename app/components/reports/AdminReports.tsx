@@ -986,7 +986,7 @@ export default function AdminReports() {
                 }}
                 onClick={() => void openCrDisclaimers(group)}
               >
-                CR Notes
+                Disclaimer
                 {getCrCount(group) > 0 ? (
                   <Chip
                     size="small"
