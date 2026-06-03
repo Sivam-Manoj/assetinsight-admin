@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   type ColumnDef,
   flexRender,
@@ -116,6 +116,19 @@ type CrDisclaimerOption = {
   label: string;
 };
 
+type CrDisclaimerLot = {
+  lotKey: string;
+  lotNumber: string;
+  title: string;
+  settings: CrDisclaimerSettings;
+  activeCount?: number;
+};
+
+type CrDisclaimersPayload = {
+  settings: CrDisclaimerSettings;
+  lots: CrDisclaimerLot[];
+};
+
 const emptyCrDisclaimers: CrDisclaimerSettings = {
   smallsOnsite: false,
   smallsOffsite: false,
@@ -138,11 +151,105 @@ type CrDisclaimersDialogProps = {
   error: string | null;
   filesBusy: boolean;
   initialSettings: CrDisclaimerSettings;
+  initialLots: CrDisclaimerLot[];
   options: CrDisclaimerOption[];
   onClose: () => void;
-  onSave: (settings: CrDisclaimerSettings) => Promise<void>;
-  onResubmit: (settings: CrDisclaimerSettings) => Promise<void>;
+  onSave: (payload: CrDisclaimersPayload) => Promise<void>;
+  onResubmit: (payload: CrDisclaimersPayload) => Promise<void>;
 };
+
+function normalizeDialogLot(lot: CrDisclaimerLot, fallbackSettings: CrDisclaimerSettings): CrDisclaimerLot {
+  return {
+    ...lot,
+    settings: { ...emptyCrDisclaimers, ...fallbackSettings, ...(lot.settings || {}) },
+  };
+}
+
+function getCrSettingsActiveCount(settings: CrDisclaimerSettings) {
+  return Number(Boolean(settings.smallsOnsite)) +
+    Number(Boolean(settings.smallsOffsite)) +
+    Number(Boolean(settings.rollingStockOnsite)) +
+    Number(Boolean(settings.rollingStockOffsite)) +
+    Number(Boolean(settings.customText?.trim()));
+}
+
+const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
+  lot,
+  options,
+  disabled,
+  onChange,
+}: {
+  lot: CrDisclaimerLot;
+  options: CrDisclaimerOption[];
+  disabled: boolean;
+  onChange: (lotKey: string, settings: CrDisclaimerSettings) => void;
+}) {
+  const update = (patch: Partial<CrDisclaimerSettings>) => {
+    onChange(lot.lotKey, { ...lot.settings, ...patch });
+  };
+
+  return (
+    <Card variant="outlined" sx={{ borderRadius: 2, bgcolor: "#fff" }}>
+      <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+        <Stack spacing={1.15}>
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+            <Stack minWidth={0}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#111827" }}>
+                Lot {lot.lotNumber}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap title={lot.title}>
+                {lot.title || "Untitled lot"}
+              </Typography>
+            </Stack>
+            {getCrSettingsActiveCount(lot.settings) > 0 ? (
+              <Chip
+                size="small"
+                label={`${getCrSettingsActiveCount(lot.settings)} notes`}
+                sx={{ height: 20, fontSize: "0.65rem", fontWeight: 800, bgcolor: "#ede9fe", color: "#5b21b6" }}
+              />
+            ) : null}
+          </Stack>
+          <Grid container spacing={0.25}>
+            {options.map((option) => (
+              <Grid key={`${lot.lotKey}-${option.key}`} size={{ xs: 12, sm: 6 }}>
+                <FormControlLabel
+                  sx={{
+                    m: 0,
+                    width: "100%",
+                    "& .MuiFormControlLabel-label": {
+                      fontSize: "0.76rem",
+                      lineHeight: 1.2,
+                      fontWeight: 700,
+                    },
+                  }}
+                  control={
+                    <Checkbox
+                      size="small"
+                      disabled={disabled}
+                      checked={Boolean(lot.settings[option.key])}
+                      onChange={(event) => update({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)}
+                    />
+                  }
+                  label={option.label}
+                />
+              </Grid>
+            ))}
+          </Grid>
+          <TextField
+            size="small"
+            label="Custom note"
+            value={lot.settings.customText}
+            onChange={(event) => update({ customText: event.target.value })}
+            disabled={disabled}
+            multiline
+            minRows={2}
+            fullWidth
+          />
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+});
 
 function CrDisclaimersDialog({
   open,
@@ -151,24 +258,59 @@ function CrDisclaimersDialog({
   error,
   filesBusy,
   initialSettings,
+  initialLots,
   options,
   onClose,
   onSave,
   onResubmit,
 }: CrDisclaimersDialogProps) {
-  const [localSettings, setLocalSettings] = useState<CrDisclaimerSettings>(initialSettings);
+  const [bulkSettings, setBulkSettings] = useState<CrDisclaimerSettings>(initialSettings);
+  const [localLots, setLocalLots] = useState<CrDisclaimerLot[]>([]);
 
   useEffect(() => {
-    if (open) setLocalSettings(initialSettings);
-  }, [initialSettings, open]);
+    if (!open) return;
+    setBulkSettings(initialSettings);
+    setLocalLots(
+      initialLots.length
+        ? initialLots.map((lot) => normalizeDialogLot(lot, initialSettings))
+        : [
+            {
+              lotKey: "global",
+              lotNumber: "All",
+              title: "All visible lots",
+              settings: { ...emptyCrDisclaimers, ...initialSettings },
+            },
+          ]
+    );
+  }, [initialLots, initialSettings, open]);
+
+  const payload: CrDisclaimersPayload = {
+    settings: bulkSettings,
+    lots: localLots,
+  };
+
+  const applyBulkToAll = () => {
+    setLocalLots((prev) =>
+      prev.map((lot) => ({
+        ...lot,
+        settings: { ...emptyCrDisclaimers, ...bulkSettings },
+      }))
+    );
+  };
+
+  const updateLotSettings = useCallback((lotKey: string, settings: CrDisclaimerSettings) => {
+    setLocalLots((prev) =>
+      prev.map((lot) => (lot.lotKey === lotKey ? { ...lot, settings } : lot))
+    );
+  }, []);
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle sx={{ fontWeight: 900 }}>CR Disclaimers</DialogTitle>
-      <DialogContent dividers>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
+      <DialogTitle sx={{ fontWeight: 900 }}>CR Notes By Lot</DialogTitle>
+      <DialogContent dividers sx={{ bgcolor: "#f8fafc" }}>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Save stores the CR notes. Save &amp; Resubmit Excel/CR regenerates the files and refreshes the row links when done.
+            Select CR notes per lot. Save stores the notes. Save &amp; Resubmit Excel/CR regenerates the files and refreshes the row links when done.
           </Typography>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {filesBusy ? (
@@ -180,39 +322,81 @@ function CrDisclaimersDialog({
             </Typography>
           ) : (
             <>
-              <Stack spacing={0.75}>
-                {options.map((option) => (
-                  <FormControlLabel
-                    key={option.key}
-                    control={
-                      <Checkbox
-                        checked={Boolean(localSettings[option.key])}
-                        onChange={(event) =>
-                          setLocalSettings((prev) => ({
-                            ...prev,
-                            [option.key]: event.target.checked,
-                          }))
-                        }
-                      />
-                    }
-                    label={option.label}
+              <Card variant="outlined" sx={{ borderRadius: 2, bgcolor: "#fff" }}>
+                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                  <Stack spacing={1.25}>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1} justifyContent="space-between">
+                      <Stack>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
+                          Bulk Apply
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Choose once, then apply to every visible lot.
+                        </Typography>
+                      </Stack>
+                      <Button variant="outlined" size="small" onClick={applyBulkToAll} disabled={saving}>
+                        Apply to all lots
+                      </Button>
+                    </Stack>
+                    <Grid container spacing={0.25}>
+                      {options.map((option) => (
+                        <Grid key={`bulk-${option.key}`} size={{ xs: 12, sm: 6 }}>
+                          <FormControlLabel
+                            sx={{
+                              m: 0,
+                              "& .MuiFormControlLabel-label": {
+                                fontSize: "0.78rem",
+                                lineHeight: 1.2,
+                                fontWeight: 700,
+                              },
+                            }}
+                            control={
+                              <Checkbox
+                                size="small"
+                                disabled={saving}
+                                checked={Boolean(bulkSettings[option.key])}
+                                onChange={(event) =>
+                                  setBulkSettings((prev) => ({
+                                    ...prev,
+                                    [option.key]: event.target.checked,
+                                  }))
+                                }
+                              />
+                            }
+                            label={option.label}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                    <TextField
+                      size="small"
+                      label="Bulk custom note"
+                      value={bulkSettings.customText}
+                      onChange={(event) =>
+                        setBulkSettings((prev) => ({
+                          ...prev,
+                          customText: event.target.value,
+                        }))
+                      }
+                      disabled={saving}
+                      multiline
+                      minRows={2}
+                      fullWidth
+                    />
+                  </Stack>
+                </CardContent>
+              </Card>
+              <Stack spacing={1}>
+                {localLots.map((lot) => (
+                  <CrLotDisclaimerRow
+                    key={lot.lotKey}
+                    lot={lot}
+                    options={options}
+                    disabled={saving}
+                    onChange={updateLotSettings}
                   />
                 ))}
               </Stack>
-              <TextField
-                label="Custom CR note"
-                value={localSettings.customText}
-                onChange={(event) =>
-                  setLocalSettings((prev) => ({
-                    ...prev,
-                    customText: event.target.value,
-                  }))
-                }
-                multiline
-                minRows={3}
-                fullWidth
-                helperText="Short custom note. It will be safely added as a paragraph below selected CR notes."
-              />
             </>
           )}
         </Stack>
@@ -223,14 +407,14 @@ function CrDisclaimersDialog({
         </Button>
         <Button
           variant="outlined"
-          onClick={() => void onSave(localSettings)}
+          onClick={() => void onSave(payload)}
           disabled={loading || saving}
         >
           Save
         </Button>
         <Button
           variant="contained"
-          onClick={() => void onResubmit(localSettings)}
+          onClick={() => void onResubmit(payload)}
           disabled={loading || saving || filesBusy}
         >
           {saving ? "Working..." : "Save & Resubmit Excel/CR"}
@@ -342,19 +526,19 @@ function getFileActionIcon(label: string) {
 
 const actionButtonSx = {
   minWidth: "auto",
-  height: 26,
-  px: 0.85,
+  height: 24,
+  px: 0.72,
   py: 0,
   borderRadius: 999,
   textTransform: "none",
-  fontSize: "0.64rem",
+  fontSize: "0.6rem",
   fontWeight: 800,
   lineHeight: 1,
   boxShadow: "none",
   whiteSpace: "nowrap",
   "&:hover": { boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)" },
   "& .MuiButton-startIcon": { mr: 0.28, ml: -0.22 },
-  "& .MuiSvgIcon-root": { fontSize: "0.82rem" },
+  "& .MuiSvgIcon-root": { fontSize: "0.76rem" },
 };
 
 export default function AdminReports() {
@@ -393,6 +577,7 @@ export default function AdminReports() {
   const [crDialogTarget, setCrDialogTarget] = useState<ReportGroup | null>(null);
   const [crDialogFilesBusy, setCrDialogFilesBusy] = useState(false);
   const [crInitialSettings, setCrInitialSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
+  const [crInitialLots, setCrInitialLots] = useState<CrDisclaimerLot[]>([]);
   const [crOptions, setCrOptions] = useState<CrDisclaimerOption[]>(fallbackCrDisclaimerOptions);
   const [crCounts, setCrCounts] = useState<Record<string, number>>({});
   const [crSubmitSuccess, setCrSubmitSuccess] = useState<string | null>(null);
@@ -547,6 +732,7 @@ export default function AdminReports() {
     setCrDialogError(null);
     setCrDialogFilesBusy(false);
     setCrInitialSettings(emptyCrDisclaimers);
+    setCrInitialLots([]);
     setCrOptions(fallbackCrDisclaimerOptions);
   }
 
@@ -565,8 +751,19 @@ export default function AdminReports() {
       if (!res.ok) throw new Error(json?.message || "Failed to load CR disclaimers");
       const payload = json?.data || {};
       setCrInitialSettings({ ...emptyCrDisclaimers, ...(payload.settings || {}) });
+      setCrInitialLots(
+        Array.isArray(payload.lots)
+          ? payload.lots.map((lot: any, index: number) => ({
+              lotKey: String(lot?.lotKey || `index:${index}`),
+              lotNumber: String(lot?.lotNumber || index + 1),
+              title: String(lot?.title || `Lot ${lot?.lotNumber || index + 1}`),
+              settings: { ...emptyCrDisclaimers, ...(payload.settings || {}), ...(lot?.settings || {}) },
+              activeCount: Number(lot?.activeCount || 0),
+            }))
+          : []
+      );
       setCrOptions(Array.isArray(payload.options) && payload.options.length ? payload.options : fallbackCrDisclaimerOptions);
-      setCrCounts((prev) => ({ ...prev, [group.key]: Number(payload.activeCount || 0) }));
+      setCrCounts((prev) => ({ ...prev, [group.key]: Number(payload.activeLotCount ?? payload.activeCount ?? 0) }));
       setCrDialogFilesBusy(Boolean(payload.files_regenerating || payload.files_generating));
     } catch (e: unknown) {
       setCrDialogError(e instanceof Error ? e.message : "Failed to load CR disclaimers");
@@ -575,7 +772,7 @@ export default function AdminReports() {
     }
   }
 
-  async function saveCrDisclaimers(settings: CrDisclaimerSettings, resubmit: boolean) {
+  async function saveCrDisclaimers(payload: CrDisclaimersPayload, resubmit: boolean) {
     if (!crDialogTarget) return;
     try {
       setCrDialogSaving(true);
@@ -587,11 +784,17 @@ export default function AdminReports() {
       const res = await fetch(endpoint, {
         method: resubmit ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({
+          settings: payload.settings,
+          lots: payload.lots.map((lot) => ({
+            lotKey: lot.lotKey,
+            settings: lot.settings,
+          })),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || (resubmit ? "Failed to resubmit Excel/CR" : "Failed to save CR disclaimers"));
-      const activeCount = Number(json?.data?.activeCount || 0);
+      const activeCount = Number(json?.data?.activeLotCount ?? json?.data?.activeCount ?? 0);
       setCrCounts((prev) => ({ ...prev, [crDialogTarget.key]: activeCount }));
       if (resubmit) {
         await load();
@@ -686,15 +889,20 @@ export default function AdminReports() {
     return (
       <Stack
         direction="row"
-        flexWrap="nowrap"
+        flexWrap="wrap"
         useFlexGap
-        spacing={0.42}
+        spacing={0.32}
         sx={{
           alignItems: "center",
           minWidth: 0,
-          width: "max-content",
+          width: "100%",
           maxWidth: "100%",
-          overflow: "visible",
+          overflowX: "auto",
+          overflowY: "hidden",
+          pb: 0.25,
+          scrollbarWidth: "thin",
+          "&::-webkit-scrollbar": { height: 4 },
+          "&::-webkit-scrollbar-thumb": { bgcolor: "#cbd5e1", borderRadius: 999 },
         }}
       >
         <Tooltip title="Open report data">
@@ -778,11 +986,11 @@ export default function AdminReports() {
                 }}
                 onClick={() => void openCrDisclaimers(group)}
               >
-                Disclaimers
+                CR Notes
                 {getCrCount(group) > 0 ? (
                   <Chip
                     size="small"
-                    label={`${getCrCount(group)} CR`}
+                    label={`${getCrCount(group)} lots`}
                     sx={{
                       ml: 0.5,
                       height: 16,
@@ -1219,7 +1427,7 @@ export default function AdminReports() {
                               key={cell.id}
                               align="left"
                               sx={{
-                                overflow: cell.column.id === "actions" ? "visible" : "hidden",
+                                overflow: "hidden",
                               }}
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -1355,6 +1563,7 @@ export default function AdminReports() {
         error={crDialogError}
         filesBusy={crDialogFilesBusy}
         initialSettings={crInitialSettings}
+        initialLots={crInitialLots}
         options={crOptions}
         onClose={closeCrDialog}
         onSave={(settings) => saveCrDisclaimers(settings, false)}
