@@ -20,7 +20,13 @@ import {
   Card,
   CardContent,
   Chip,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
+  FormControlLabel,
   Grid,
   InputLabel,
   MenuItem,
@@ -40,6 +46,7 @@ import {
 import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
 import CollectionsRoundedIcon from "@mui/icons-material/CollectionsRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import NoteAddRoundedIcon from "@mui/icons-material/NoteAddRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
@@ -59,6 +66,7 @@ type ReportItem = {
   report?: string;
   contract_no?: string;
   preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
+  crDisclaimerCount?: number;
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
   property_type?: string;
@@ -86,6 +94,7 @@ type ReportGroup = {
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
   preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
+  crDisclaimerCount?: number;
   adminArchivedAt?: string | null;
 };
 
@@ -93,6 +102,34 @@ type ReportFileLink = {
   label: string;
   href?: string;
 };
+
+type CrDisclaimerSettings = {
+  smallsOnsite: boolean;
+  smallsOffsite: boolean;
+  rollingStockOnsite: boolean;
+  rollingStockOffsite: boolean;
+  customText: string;
+};
+
+type CrDisclaimerOption = {
+  key: keyof Omit<CrDisclaimerSettings, "customText">;
+  label: string;
+};
+
+const emptyCrDisclaimers: CrDisclaimerSettings = {
+  smallsOnsite: false,
+  smallsOffsite: false,
+  rollingStockOnsite: false,
+  rollingStockOffsite: false,
+  customText: "",
+};
+
+const fallbackCrDisclaimerOptions: CrDisclaimerOption[] = [
+  { key: "smallsOnsite", label: "Smalls - Notice on Every Lot - Onsite" },
+  { key: "smallsOffsite", label: "Smalls - Notice on Every Lot - Offsite" },
+  { key: "rollingStockOnsite", label: "Rolling Stock - Damage Disclaimer - Onsite" },
+  { key: "rollingStockOffsite", label: "Rolling Stock - Damage Disclaimer - Offsite" },
+];
 
 const ALL_PAGE_SIZE = 100000;
 
@@ -240,6 +277,15 @@ export default function AdminReports() {
   const [previewSaveError, setPreviewSaveError] = useState<string | null>(null);
   const [previewSaveSuccess, setPreviewSaveSuccess] = useState<string | null>(null);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+  const [crDialogOpen, setCrDialogOpen] = useState(false);
+  const [crDialogLoading, setCrDialogLoading] = useState(false);
+  const [crDialogSaving, setCrDialogSaving] = useState(false);
+  const [crDialogError, setCrDialogError] = useState<string | null>(null);
+  const [crDialogTarget, setCrDialogTarget] = useState<ReportGroup | null>(null);
+  const [crDialogFilesBusy, setCrDialogFilesBusy] = useState(false);
+  const [crSettings, setCrSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
+  const [crOptions, setCrOptions] = useState<CrDisclaimerOption[]>(fallbackCrDisclaimerOptions);
+  const [crCounts, setCrCounts] = useState<Record<string, number>>({});
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -377,6 +423,73 @@ export default function AdminReports() {
     }
   }
 
+  function canUseCrDisclaimers(group: ReportGroup) {
+    return Boolean(group.isAssetReport || group.isLotListingReport);
+  }
+
+  function getCrCount(group: ReportGroup) {
+    return crCounts[group.key] ?? Number(group.crDisclaimerCount || 0);
+  }
+
+  function closeCrDialog() {
+    setCrDialogOpen(false);
+    setCrDialogTarget(null);
+    setCrDialogError(null);
+    setCrDialogFilesBusy(false);
+    setCrSettings(emptyCrDisclaimers);
+    setCrOptions(fallbackCrDisclaimerOptions);
+  }
+
+  async function openCrDisclaimers(group: ReportGroup) {
+    if (!canUseCrDisclaimers(group)) return;
+    setCrDialogTarget(group);
+    setCrDialogOpen(true);
+    setCrDialogLoading(true);
+    setCrDialogError(null);
+    try {
+      const res = await fetch(`/api/admin/reports/${group.key}/cr-disclaimers`, {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to load CR disclaimers");
+      const payload = json?.data || {};
+      setCrSettings({ ...emptyCrDisclaimers, ...(payload.settings || {}) });
+      setCrOptions(Array.isArray(payload.options) && payload.options.length ? payload.options : fallbackCrDisclaimerOptions);
+      setCrCounts((prev) => ({ ...prev, [group.key]: Number(payload.activeCount || 0) }));
+      setCrDialogFilesBusy(Boolean(payload.files_regenerating || payload.files_generating));
+    } catch (e: unknown) {
+      setCrDialogError(e instanceof Error ? e.message : "Failed to load CR disclaimers");
+    } finally {
+      setCrDialogLoading(false);
+    }
+  }
+
+  async function saveCrDisclaimers(rerun: boolean) {
+    if (!crDialogTarget) return;
+    try {
+      setCrDialogSaving(true);
+      setCrDialogError(null);
+      const endpoint = rerun
+        ? `/api/admin/reports/${crDialogTarget.key}/rerun-excel-cr`
+        : `/api/admin/reports/${crDialogTarget.key}/cr-disclaimers`;
+      const res = await fetch(endpoint, {
+        method: rerun ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: crSettings }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || (rerun ? "Failed to rerun Excel/CR" : "Failed to save CR disclaimers"));
+      const activeCount = Number(json?.data?.activeCount || 0);
+      setCrCounts((prev) => ({ ...prev, [crDialogTarget.key]: activeCount }));
+      if (rerun) await load();
+      closeCrDialog();
+    } catch (e: unknown) {
+      setCrDialogError(e instanceof Error ? e.message : rerun ? "Failed to rerun Excel/CR" : "Failed to save CR disclaimers");
+    } finally {
+      setCrDialogSaving(false);
+    }
+  }
+
   function onReset() {
     setQ("");
     setReportType("");
@@ -430,6 +543,7 @@ export default function AdminReports() {
           isRealEstateReport: r.reportType === 'RealEstate' || (r as any).isRealEstateReport,
           isLotListingReport: r.reportType === 'LotListing' || (r as any).isLotListingReport || (r as any).isLotListing,
           preview_files: (r as any).preview_files,
+          crDisclaimerCount: Number((r as any).crDisclaimerCount || 0),
           adminArchivedAt: r.adminArchivedAt || null,
         };
         map.set(key, g);
@@ -528,6 +642,46 @@ export default function AdminReports() {
             </Tooltip>
           );
         })}
+
+        {canUseCrDisclaimers(group) ? (
+          <Tooltip title="Select CR disclaimers and rerun Excel/CR">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={actionBusyId === group.key}
+                startIcon={<NoteAddRoundedIcon />}
+                sx={{
+                  ...actionButtonSx,
+                  borderColor: "#a78bfa",
+                  color: "#6d28d9",
+                  bgcolor: "#faf5ff",
+                  "&:hover": {
+                    borderColor: "#8b5cf6",
+                    bgcolor: "#f3e8ff",
+                  },
+                }}
+                onClick={() => void openCrDisclaimers(group)}
+              >
+                Disclaimers
+                {getCrCount(group) > 0 ? (
+                  <Chip
+                    size="small"
+                    label={`${getCrCount(group)} CR`}
+                    sx={{
+                      ml: 0.5,
+                      height: 16,
+                      fontSize: "0.56rem",
+                      fontWeight: 900,
+                      bgcolor: "#ede9fe",
+                      color: "#5b21b6",
+                    }}
+                  />
+                ) : null}
+              </Button>
+            </span>
+          </Tooltip>
+        ) : null}
 
         <Tooltip title={archiveTooltip}>
           <span>
@@ -1074,6 +1228,80 @@ export default function AdminReports() {
           setPreviewSaveSuccess(null);
         }}
       />
+      <Dialog open={crDialogOpen} onClose={closeCrDialog} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontWeight: 900 }}>CR Disclaimers</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Selected CR notes will be added to the end of every lot&apos;s Excel Condition Report and CR PDF.
+            </Typography>
+            {crDialogError ? <Alert severity="error">{crDialogError}</Alert> : null}
+            {crDialogFilesBusy ? (
+              <Alert severity="warning">This report is already generating files. Save is available, but rerun is disabled until it finishes.</Alert>
+            ) : null}
+            {crDialogLoading ? (
+              <Typography variant="body2" color="text.secondary">
+                Loading CR disclaimer settings...
+              </Typography>
+            ) : (
+              <>
+                <Stack spacing={0.75}>
+                  {crOptions.map((option) => (
+                    <FormControlLabel
+                      key={option.key}
+                      control={
+                        <Checkbox
+                          checked={Boolean(crSettings[option.key])}
+                          onChange={(event) =>
+                            setCrSettings((prev) => ({
+                              ...prev,
+                              [option.key]: event.target.checked,
+                            }))
+                          }
+                        />
+                      }
+                      label={option.label}
+                    />
+                  ))}
+                </Stack>
+                <TextField
+                  label="Custom CR note"
+                  value={crSettings.customText}
+                  onChange={(event) =>
+                    setCrSettings((prev) => ({
+                      ...prev,
+                      customText: event.target.value,
+                    }))
+                  }
+                  multiline
+                  minRows={3}
+                  fullWidth
+                  helperText="Short custom note. It will be safely added as a paragraph below selected CR notes."
+                />
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, flexWrap: "wrap" }}>
+          <Button onClick={closeCrDialog} disabled={crDialogSaving}>
+            Cancel
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => void saveCrDisclaimers(false)}
+            disabled={crDialogLoading || crDialogSaving}
+          >
+            Save
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void saveCrDisclaimers(true)}
+            disabled={crDialogLoading || crDialogSaving || crDialogFilesBusy}
+          >
+            {crDialogSaving ? "Working..." : "Save & Rerun Excel/CR"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }
