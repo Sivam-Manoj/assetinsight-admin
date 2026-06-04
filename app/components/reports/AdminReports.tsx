@@ -949,6 +949,9 @@ export default function AdminReports() {
               lotKey: String(lot?.lotKey || `index:${index}`),
               lotNumber: String(lot?.lotNumber || index + 1),
               title: String(lot?.title || `Lot ${lot?.lotNumber || index + 1}`),
+              imageUrls: Array.isArray(lot?.imageUrls)
+                ? lot.imageUrls.map((url: unknown) => String(url || "").trim()).filter(Boolean)
+                : [],
               settings: { ...emptyCrDisclaimers, ...(payload.settings || {}), ...(lot?.settings || {}) },
               activeCount: Number(lot?.activeCount || 0),
             }))
