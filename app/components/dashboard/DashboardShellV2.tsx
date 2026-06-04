@@ -245,11 +245,11 @@ export default function DashboardShellV2() {
       });
       const data = (await res.json().catch(() => ({}))) as { message?: string };
       if (!res.ok) {
-        throw new Error(data.message || "Failed to load OpenAI credits");
+        throw new Error(data.message || "Failed to load credits");
       }
       setCredits(data as NonNullable<OpenAICreditsState>);
     } catch (e) {
-      setCreditsError(e instanceof Error ? e.message : "Failed to load OpenAI credits");
+      setCreditsError(e instanceof Error ? e.message : "Failed to load credits");
     } finally {
       setCreditsLoading(false);
     }
@@ -416,7 +416,7 @@ export default function DashboardShellV2() {
                       {greeting}{me ? `, ${me.username || me.email}` : ""}
                     </Typography>
                     <Typography variant="body1" color="text.secondary" sx={{ mt: 1, maxWidth: 760, fontWeight: 500 }}>
-                      Reports, approvals, users, CRM and OpenAI credits in one dense control surface.
+                      Reports, approvals, users, CRM and software credits in one dense control surface.
                     </Typography>
                   </Box>
 
@@ -528,7 +528,7 @@ export default function DashboardShellV2() {
                       </Box>
                       <Box minWidth={0}>
                         <Typography variant="h5" sx={{ fontWeight: 950, lineHeight: 1.08 }}>
-                          OpenAI Credits
+                          Software Credits
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                           10 second refresh
@@ -696,7 +696,7 @@ export default function DashboardShellV2() {
                     >
                       <Box>
                         <Typography variant="body2" color="text.secondary">
-                          OpenAI used
+                          Software used
                         </Typography>
                         <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
                           {formatCreditsFromUsd(credits?.officialOpenAISpentUsd, credits?.creditMultiplier)}
@@ -723,10 +723,10 @@ export default function DashboardShellV2() {
                       }}
                     >
                       {credits?.modelBreakdown?.length ? (
-                        credits.modelBreakdown.slice(0, 2).map((item) => (
-                          <Stack key={item.model} direction="row" spacing={1.5} justifyContent="space-between">
+                        credits.modelBreakdown.slice(0, 2).map((item, index) => (
+                          <Stack key={`${item.model}-${index}`} direction="row" spacing={1.5} justifyContent="space-between">
                             <Typography variant="body2" sx={{ fontWeight: 900, minWidth: 0 }} noWrap>
-                              {item.model}
+                              Used per software model
                             </Typography>
                             <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
                               {formatCredits(item.creditsDeducted)} cr
@@ -735,7 +735,7 @@ export default function DashboardShellV2() {
                         ))
                       ) : (
                         <Typography variant="body2" color="text.secondary">
-                          No model usage yet
+                          No software usage yet
                         </Typography>
                       )}
                       <Divider />
