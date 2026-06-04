@@ -120,6 +120,7 @@ type CrDisclaimerLot = {
   lotKey: string;
   lotNumber: string;
   title: string;
+  imageUrls?: string[];
   settings: CrDisclaimerSettings;
   activeCount?: number;
 };
@@ -178,36 +179,132 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
   options,
   disabled,
   onChange,
+  onPreviewImage,
 }: {
   lot: CrDisclaimerLot;
   options: CrDisclaimerOption[];
   disabled: boolean;
   onChange: (lotKey: string, settings: CrDisclaimerSettings) => void;
+  onPreviewImage: (url: string, lot: CrDisclaimerLot) => void;
 }) {
   const update = (patch: Partial<CrDisclaimerSettings>) => {
     onChange(lot.lotKey, { ...lot.settings, ...patch });
   };
+  const images = Array.isArray(lot.imageUrls) ? lot.imageUrls.filter(Boolean) : [];
+  const activeCount = getCrSettingsActiveCount(lot.settings);
 
   return (
-    <Card variant="outlined" sx={{ borderRadius: 2, bgcolor: "#fff" }}>
-      <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+    <Card
+      variant="outlined"
+      sx={{
+        borderRadius: 2.5,
+        bgcolor: "#fff",
+        borderColor: activeCount > 0 ? "#c4b5fd" : "divider",
+        boxShadow: activeCount > 0 ? "0 10px 30px rgba(109, 40, 217, 0.08)" : "none",
+      }}
+    >
+      <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
         <Stack spacing={1.15}>
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ xs: "stretch", md: "flex-start" }} justifyContent="space-between">
             <Stack minWidth={0}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#111827" }}>
-                Lot {lot.lotNumber}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap title={lot.title}>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#111827" }}>
+                  Lot {lot.lotNumber}
+                </Typography>
+                {activeCount > 0 ? (
+                  <Chip
+                    size="small"
+                    label={`${activeCount} notes`}
+                    sx={{ height: 20, fontSize: "0.65rem", fontWeight: 800, bgcolor: "#ede9fe", color: "#5b21b6" }}
+                  />
+                ) : null}
+                {images.length > 0 ? (
+                  <Chip
+                    size="small"
+                    label={`${images.length} image${images.length === 1 ? "" : "s"}`}
+                    variant="outlined"
+                    sx={{ height: 20, fontSize: "0.65rem", fontWeight: 800 }}
+                  />
+                ) : null}
+              </Stack>
+              <Typography variant="caption" color="text.secondary" title={lot.title}>
                 {lot.title || "Untitled lot"}
               </Typography>
             </Stack>
-            {getCrSettingsActiveCount(lot.settings) > 0 ? (
-              <Chip
-                size="small"
-                label={`${getCrSettingsActiveCount(lot.settings)} notes`}
-                sx={{ height: 20, fontSize: "0.65rem", fontWeight: 800, bgcolor: "#ede9fe", color: "#5b21b6" }}
-              />
-            ) : null}
+          </Stack>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              overflowX: "auto",
+              pb: 0.25,
+              scrollbarWidth: "thin",
+              minHeight: images.length ? 84 : "auto",
+            }}
+          >
+            {images.length > 0 ? (
+              images.map((url, index) => (
+                <button
+                  key={`${lot.lotKey}-img-${index}-${url}`}
+                  type="button"
+                  onClick={() => onPreviewImage(url, lot)}
+                  disabled={disabled}
+                  style={{
+                    width: 92,
+                    height: 72,
+                    flex: "0 0 auto",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 12,
+                    padding: 0,
+                    overflow: "hidden",
+                    background: "#f8fafc",
+                    cursor: disabled ? "default" : "zoom-in",
+                    position: "relative",
+                  }}
+                  title={`Open Lot ${lot.lotNumber} image ${index + 1}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Lot ${lot.lotNumber} image ${index + 1}`}
+                    loading="lazy"
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 5,
+                      bottom: 5,
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      background: "rgba(17,24,39,0.76)",
+                      color: "#fff",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      lineHeight: "18px",
+                    }}
+                  >
+                    {index + 1}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  width: "100%",
+                  border: "1px dashed #cbd5e1",
+                  borderRadius: 1.5,
+                  bgcolor: "#f8fafc",
+                  px: 1.5,
+                  py: 1.25,
+                }}
+              >
+                No lot images available for this row.
+              </Typography>
+            )}
           </Stack>
           <Grid container spacing={0.25}>
             {options.map((option) => (
@@ -266,6 +363,7 @@ function CrDisclaimersDialog({
 }: CrDisclaimersDialogProps) {
   const [bulkSettings, setBulkSettings] = useState<CrDisclaimerSettings>(initialSettings);
   const [localLots, setLocalLots] = useState<CrDisclaimerLot[]>([]);
+  const [previewImage, setPreviewImage] = useState<{ url: string; lot: CrDisclaimerLot } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -304,13 +402,40 @@ function CrDisclaimersDialog({
     );
   }, []);
 
+  const clearLotSettings = useCallback((lotKey: string) => {
+    setLocalLots((prev) =>
+      prev.map((lot) =>
+        lot.lotKey === lotKey ? { ...lot, settings: { ...emptyCrDisclaimers } } : lot
+      )
+    );
+  }, []);
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle sx={{ fontWeight: 900 }}>Disclaimers by Lot</DialogTitle>
-      <DialogContent dividers sx={{ bgcolor: "#f8fafc" }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xl"
+      PaperProps={{
+        sx: {
+          height: { xs: "96vh", md: "92vh" },
+          maxHeight: { xs: "96vh", md: "92vh" },
+          borderRadius: { xs: 0, md: 3 },
+        },
+      }}
+    >
+      <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>
+        CR Disclaimers by Lot
+        {localLots.length > 0 ? (
+          <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1, fontWeight: 700 }}>
+            {localLots.length} lot{localLots.length === 1 ? "" : "s"}
+          </Typography>
+        ) : null}
+      </DialogTitle>
+      <DialogContent dividers sx={{ bgcolor: "#f8fafc", p: { xs: 1.5, md: 2.5 } }}>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Select disclaimers per lot. Save stores the selections. Save &amp; Resubmit regenerates the files and refreshes the row links when done.
+            Use each lot image strip to confirm the item, then choose the disclaimers for that specific lot. Save stores selections. Save &amp; Resubmit regenerates Excel/CR and refreshes row links.
           </Typography>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {filesBusy ? (
@@ -322,7 +447,17 @@ function CrDisclaimersDialog({
             </Typography>
           ) : (
             <>
-              <Card variant="outlined" sx={{ borderRadius: 2, bgcolor: "#fff" }}>
+              <Card
+                variant="outlined"
+                sx={{
+                  borderRadius: 2,
+                  bgcolor: "#fff",
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 2,
+                  boxShadow: "0 10px 28px rgba(15,23,42,0.08)",
+                }}
+              >
                 <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
                   <Stack spacing={1.25}>
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1} justifyContent="space-between">
@@ -388,13 +523,27 @@ function CrDisclaimersDialog({
               </Card>
               <Stack spacing={1}>
                 {localLots.map((lot) => (
-                  <CrLotDisclaimerRow
-                    key={lot.lotKey}
-                    lot={lot}
-                    options={options}
-                    disabled={saving}
-                    onChange={updateLotSettings}
-                  />
+                  <Stack key={lot.lotKey} spacing={0.75}>
+                    <CrLotDisclaimerRow
+                      lot={lot}
+                      options={options}
+                      disabled={saving}
+                      onChange={updateLotSettings}
+                      onPreviewImage={(url, selectedLot) => setPreviewImage({ url, lot: selectedLot })}
+                    />
+                    {getCrSettingsActiveCount(lot.settings) > 0 ? (
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="inherit"
+                        disabled={saving}
+                        onClick={() => clearLotSettings(lot.lotKey)}
+                        sx={{ alignSelf: "flex-end", fontWeight: 800, color: "text.secondary" }}
+                      >
+                        Clear lot notes
+                      </Button>
+                    ) : null}
+                  </Stack>
                 ))}
               </Stack>
             </>
@@ -420,6 +569,41 @@ function CrDisclaimersDialog({
           {saving ? "Working..." : "Save & Resubmit"}
         </Button>
       </DialogActions>
+      <Dialog
+        open={Boolean(previewImage)}
+        onClose={() => setPreviewImage(null)}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={{ sx: { bgcolor: "#020617", borderRadius: 2, overflow: "hidden" } }}
+      >
+        <DialogTitle sx={{ color: "#fff", fontWeight: 900, pb: 1 }}>
+          Lot {previewImage?.lot.lotNumber}
+          <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.72)" }}>
+            {previewImage?.lot.title || "Lot image"}
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, bgcolor: "#020617" }}>
+          {previewImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewImage.url}
+              alt={`Lot ${previewImage.lot.lotNumber}`}
+              style={{
+                width: "100%",
+                maxHeight: "78vh",
+                objectFit: "contain",
+                display: "block",
+                background: "#020617",
+              }}
+            />
+          ) : null}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: "#020617" }}>
+          <Button onClick={() => setPreviewImage(null)} sx={{ color: "#fff" }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
