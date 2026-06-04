@@ -361,13 +361,11 @@ function CrDisclaimersDialog({
   onSave,
   onResubmit,
 }: CrDisclaimersDialogProps) {
-  const [bulkSettings, setBulkSettings] = useState<CrDisclaimerSettings>(initialSettings);
   const [localLots, setLocalLots] = useState<CrDisclaimerLot[]>([]);
   const [previewImage, setPreviewImage] = useState<{ url: string; lot: CrDisclaimerLot } | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setBulkSettings(initialSettings);
     setLocalLots(
       initialLots.length
         ? initialLots.map((lot) => normalizeDialogLot(lot, initialSettings))
@@ -383,17 +381,8 @@ function CrDisclaimersDialog({
   }, [initialLots, initialSettings, open]);
 
   const payload: CrDisclaimersPayload = {
-    settings: bulkSettings,
+    settings: emptyCrDisclaimers,
     lots: localLots,
-  };
-
-  const applyBulkToAll = () => {
-    setLocalLots((prev) =>
-      prev.map((lot) => ({
-        ...lot,
-        settings: { ...emptyCrDisclaimers, ...bulkSettings },
-      }))
-    );
   };
 
   const updateLotSettings = useCallback((lotKey: string, settings: CrDisclaimerSettings) => {
@@ -427,19 +416,29 @@ function CrDisclaimersDialog({
         },
       }}
     >
-      <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>
-        CR Disclaimers by Lot
-        {localLots.length > 0 ? (
-          <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1, fontWeight: 700 }}>
-            {localLots.length} lot{localLots.length === 1 ? "" : "s"}
-          </Typography>
-        ) : null}
+      <DialogTitle sx={{ borderBottom: "1px solid #e5e7eb", px: { xs: 2, md: 3 }, py: 2 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
+          <Stack spacing={0.25}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="h6" sx={{ fontWeight: 900, color: "#0f172a" }}>
+                CR Disclaimers
+              </Typography>
+              {localLots.length > 0 ? (
+                <Chip
+                  size="small"
+                  label={`${localLots.length} lot${localLots.length === 1 ? "" : "s"}`}
+                  sx={{ height: 22, fontSize: "0.7rem", fontWeight: 800, bgcolor: "#eef2ff", color: "#3730a3" }}
+                />
+              ) : null}
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              Choose notes for each lot. Save &amp; Resubmit refreshes Excel/CR links.
+            </Typography>
+          </Stack>
+        </Stack>
       </DialogTitle>
-      <DialogContent dividers sx={{ bgcolor: "#f8fafc", p: { xs: 1.5, md: 2.5 } }}>
-        <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
-            Use each lot image strip to confirm the item, then choose the disclaimers for that specific lot. Save stores selections. Save &amp; Resubmit regenerates Excel/CR and refreshes row links.
-          </Typography>
+      <DialogContent sx={{ bgcolor: "#f8fafc", p: { xs: 1.5, md: 2.25 } }}>
+        <Stack spacing={1.5}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {filesBusy ? (
             <Alert severity="warning">This report is already generating files. Save is available, but resubmit is disabled until it finishes.</Alert>
@@ -449,111 +448,35 @@ function CrDisclaimersDialog({
               Loading CR disclaimer settings...
             </Typography>
           ) : (
-            <>
-              <Card
-                variant="outlined"
-                sx={{
-                  borderRadius: 2,
-                  bgcolor: "#fff",
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 2,
-                  boxShadow: "0 10px 28px rgba(15,23,42,0.08)",
-                }}
-              >
-                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
-                  <Stack spacing={1.25}>
-                    <Stack direction={{ xs: "column", md: "row" }} spacing={1} justifyContent="space-between">
-                      <Stack>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
-                          Bulk Apply
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Choose once, then apply to every visible lot.
-                        </Typography>
-                      </Stack>
-                      <Button variant="outlined" size="small" onClick={applyBulkToAll} disabled={saving}>
-                        Apply to all lots
-                      </Button>
-                    </Stack>
-                    <Grid container spacing={0.25}>
-                      {options.map((option) => (
-                        <Grid key={`bulk-${option.key}`} size={{ xs: 12, sm: 6 }}>
-                          <FormControlLabel
-                            sx={{
-                              m: 0,
-                              "& .MuiFormControlLabel-label": {
-                                fontSize: "0.78rem",
-                                lineHeight: 1.2,
-                                fontWeight: 700,
-                              },
-                            }}
-                            control={
-                              <Checkbox
-                                size="small"
-                                disabled={saving}
-                                checked={Boolean(bulkSettings[option.key])}
-                                onChange={(event) =>
-                                  setBulkSettings((prev) => ({
-                                    ...prev,
-                                    [option.key]: event.target.checked,
-                                  }))
-                                }
-                              />
-                            }
-                            label={option.label}
-                          />
-                        </Grid>
-                      ))}
-                    </Grid>
-                    <TextField
+            <Stack spacing={1}>
+              {localLots.map((lot) => (
+                <Stack key={lot.lotKey} spacing={0.75}>
+                  <CrLotDisclaimerRow
+                    lot={lot}
+                    options={options}
+                    disabled={saving}
+                    onChange={updateLotSettings}
+                    onPreviewImage={(url, selectedLot) => setPreviewImage({ url, lot: selectedLot })}
+                  />
+                  {getCrSettingsActiveCount(lot.settings) > 0 ? (
+                    <Button
                       size="small"
-                      label="Bulk custom note"
-                      value={bulkSettings.customText}
-                      onChange={(event) =>
-                        setBulkSettings((prev) => ({
-                          ...prev,
-                          customText: event.target.value,
-                        }))
-                      }
+                      variant="text"
+                      color="inherit"
                       disabled={saving}
-                      multiline
-                      minRows={2}
-                      fullWidth
-                    />
-                  </Stack>
-                </CardContent>
-              </Card>
-              <Stack spacing={1}>
-                {localLots.map((lot) => (
-                  <Stack key={lot.lotKey} spacing={0.75}>
-                    <CrLotDisclaimerRow
-                      lot={lot}
-                      options={options}
-                      disabled={saving}
-                      onChange={updateLotSettings}
-                      onPreviewImage={(url, selectedLot) => setPreviewImage({ url, lot: selectedLot })}
-                    />
-                    {getCrSettingsActiveCount(lot.settings) > 0 ? (
-                      <Button
-                        size="small"
-                        variant="text"
-                        color="inherit"
-                        disabled={saving}
-                        onClick={() => clearLotSettings(lot.lotKey)}
-                        sx={{ alignSelf: "flex-end", fontWeight: 800, color: "text.secondary" }}
-                      >
-                        Clear lot notes
-                      </Button>
-                    ) : null}
-                  </Stack>
-                ))}
-              </Stack>
-            </>
+                      onClick={() => clearLotSettings(lot.lotKey)}
+                      sx={{ alignSelf: "flex-end", fontWeight: 800, color: "text.secondary" }}
+                    >
+                      Clear lot notes
+                    </Button>
+                  ) : null}
+                </Stack>
+              ))}
+            </Stack>
           )}
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ p: 2, gap: 1, flexWrap: "wrap" }}>
+      <DialogActions sx={{ p: { xs: 1.5, md: 2 }, gap: 1, flexWrap: "wrap", borderTop: "1px solid #e5e7eb" }}>
         <Button onClick={onClose} disabled={saving}>
           Cancel
         </Button>
