@@ -418,9 +418,12 @@ function CrDisclaimersDialog({
       maxWidth="xl"
       PaperProps={{
         sx: {
-          height: { xs: "96vh", md: "92vh" },
-          maxHeight: { xs: "96vh", md: "92vh" },
-          borderRadius: { xs: 0, md: 3 },
+          width: { xs: "calc(100% - 16px)", md: "min(1500px, calc(100% - 48px))" },
+          height: { xs: "94vh", md: "90vh" },
+          maxHeight: { xs: "94vh", md: "90vh" },
+          m: { xs: 1, md: 3 },
+          borderRadius: { xs: 2, md: 2 },
+          overflow: "hidden",
         },
       }}
     >
