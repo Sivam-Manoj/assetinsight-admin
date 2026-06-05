@@ -17,10 +17,10 @@ type ReportItem = {
   updatedAt?: string;
   user?: { email?: string; username?: string } | null;
   contract_no?: string;
-  fileType?: "pdf" | "docx" | "xlsx" | "images" | "zip" | "asset-preview" | "realestate-preview" | "lotlisting-preview";
+  fileType?: "pdf" | "spec_pdf" | "cr_docx" | "docx" | "xlsx" | "images" | "zip" | "asset-preview" | "realestate-preview" | "lotlisting-preview";
   approvalStatus?: "pending" | "approved" | "rejected";
   report?: string;
-  preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   isAssetReport?: boolean;
   isRealEstateReport?: boolean;
   isLotListing?: boolean;
@@ -209,8 +209,8 @@ export default function AdminApprovals() {
     createdAt: string;
     updatedAt?: string;
     fairMarketValue: string;
-    variants: { pdf?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
-    preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
+    variants: { pdf?: ReportItem; specPdf?: ReportItem; crDocx?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
+    preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
     isAssetReport?: boolean;
     isRealEstateReport?: boolean;
     isLotListing?: boolean;
@@ -258,6 +258,8 @@ export default function AdminApprovals() {
       }
       const ft = ((r.fileType || r.filename.split('.').pop() || '') as string).toLowerCase();
       if (ft === 'pdf') g.variants.pdf = r;
+      else if (ft === 'spec_pdf') g.variants.specPdf = r;
+      else if (ft === 'cr_docx') g.variants.crDocx = r;
       else if (ft === 'docx') g.variants.docx = r;
       else if (ft === 'xlsx') g.variants.xlsx = r;
       else if (ft === 'images' || ft === 'zip') g.variants.images = r;
@@ -370,6 +372,9 @@ export default function AdminApprovals() {
                                   </span>
                                 )}
                                 <a href={g.preview_files.spec_pdf || g.preview_files.pdf} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.spec_pdf || g.preview_files.pdf ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{g.preview_files.spec_pdf ? "CR" : "PDF"}</a>
+                                {(g.isAssetReport || g.isLotListing) && (
+                                  <a href={g.preview_files.cr_docx || `/api/admin/reports/${g.key}/cr-docx`} target="_blank" rel="noopener noreferrer" className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm ring-1 ring-indigo-200 hover:bg-indigo-100 hover:shadow">CR DOCX</a>
+                                )}
                                 <a href={g.preview_files.docx} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.docx ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>DOCX</a>
                                 <a href={g.preview_files.excel} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.excel ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Excel</a>
                                 <a href={g.preview_files.images} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.images ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>
@@ -449,6 +454,9 @@ export default function AdminApprovals() {
                             Data
                           </button>
                           <a href={g.preview_files.spec_pdf || g.preview_files.pdf} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.spec_pdf || g.preview_files.pdf ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{g.preview_files.spec_pdf ? "CR" : "PDF"}</a>
+                          {(g.isAssetReport || g.isLotListing) && (
+                            <a href={g.preview_files.cr_docx || `/api/admin/reports/${g.key}/cr-docx`} target="_blank" rel="noopener noreferrer" className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm ring-1 ring-indigo-200 hover:bg-indigo-100 hover:shadow">CR DOCX</a>
+                          )}
                           <a href={g.preview_files.docx} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.docx ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>DOCX</a>
                           <a href={g.preview_files.excel} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.excel ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Excel</a>
                           <a href={g.preview_files.images} target="_blank" rel="noopener noreferrer" className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.preview_files.images ? (g.isRealEstateReport ? 'bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow' : 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow') : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>

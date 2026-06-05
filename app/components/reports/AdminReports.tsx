@@ -61,11 +61,11 @@ type ReportItem = {
   reportType: "RealEstate" | "Salvage" | "Asset" | "LotListing" | string;
   createdAt: string;
   reportModel?: string;
-  fileType?: "pdf" | "spec_pdf" | "docx" | "xlsx" | "images";
+  fileType?: "pdf" | "spec_pdf" | "cr_docx" | "docx" | "xlsx" | "images";
   approvalStatus?: "pending" | "approved" | "rejected";
   report?: string;
   contract_no?: string;
-  preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   crDisclaimerCount?: number;
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
@@ -89,11 +89,11 @@ type ReportGroup = {
   createdAt: string;
   fairMarketValue: string;
   userEmail?: string;
-  variants: { pdf?: ReportItem; specPdf?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
+  variants: { pdf?: ReportItem; specPdf?: ReportItem; crDocx?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
   isAssetReport?: boolean;
   isRealEstateReport?: boolean;
   isLotListingReport?: boolean;
-  preview_files?: { pdf?: string; spec_pdf?: string; docx?: string; excel?: string; images?: string };
+  preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   crDisclaimerCount?: number;
   adminArchivedAt?: string | null;
 };
@@ -549,6 +549,7 @@ function getPreviewTargetId(group: ReportGroup) {
   return (
     group.variants.pdf?._id ||
     group.variants.specPdf?._id ||
+    group.variants.crDocx?._id ||
     group.variants.docx?._id ||
     group.variants.xlsx?._id ||
     group.variants.images?._id ||
@@ -560,6 +561,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if (group.isLotListingReport) {
     return [
       { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf/download`, download: true },
+      { label: "CR DOCX", href: group.preview_files?.cr_docx || `/api/admin/reports/${group.key}/cr-docx`, download: true },
       { label: "Excel", href: group.preview_files?.excel },
       { label: "Images", href: group.preview_files?.images },
     ];
@@ -574,6 +576,15 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
           : group.preview_files.spec_pdf || group.preview_files.pdf,
         download: group.isAssetReport,
       },
+      ...(group.isAssetReport
+        ? [
+            {
+              label: "CR DOCX",
+              href: group.preview_files.cr_docx || `/api/admin/reports/${group.key}/cr-docx`,
+              download: true,
+            },
+          ]
+        : []),
       { label: "DOCX", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
@@ -583,6 +594,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if (group.isAssetReport) {
     return [
       { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf/download`, download: true },
+      { label: "CR DOCX", href: `/api/admin/reports/${group.key}/cr-docx`, download: true },
       {
         label: "DOCX",
         href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
@@ -631,6 +643,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 function getFileActionIcon(label: string) {
   const key = label.toLowerCase();
   if (key === "cr" || key.includes("pdf") || key.includes("conditional report")) return <PictureAsPdfRoundedIcon />;
+  if (key.includes("docx")) return <NoteAddRoundedIcon />;
   if (key.includes("excel")) return <TableChartRoundedIcon />;
   if (key.includes("image")) return <CollectionsRoundedIcon />;
   return undefined;
@@ -1015,6 +1028,7 @@ export default function AdminReports() {
       const ft = ((r.fileType || r.filename.split(".").pop() || "") as string).toLowerCase();
       if (ft === "pdf") g.variants.pdf = r;
       else if (ft === "spec_pdf") g.variants.specPdf = r;
+      else if (ft === "cr_docx") g.variants.crDocx = r;
       else if (ft === "docx") g.variants.docx = r;
       else if (ft === "xlsx") g.variants.xlsx = r;
       else if (ft === "images" || ft === "zip") g.variants.images = r;
