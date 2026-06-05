@@ -9,29 +9,25 @@ export async function GET(
   const token = request.cookies.get("cv_admin")?.value;
   if (!token) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
 
-  const res = await fetch(`${SERVER_URL}/api/admin/reports/${id}/spec-pdf`, {
+  const res = await fetch(`${SERVER_URL}/api/admin/reports/${id}/spec-pdf/download`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
-    redirect: "manual",
   });
 
-  if (res.status >= 300 && res.status < 400) {
-    const location = res.headers.get("location");
-    if (location) {
-      return NextResponse.redirect(location, { status: 302 });
-    }
-  }
-
   if (!res.ok) {
-    const data = await res.json().catch(() => ({ message: "Failed to generate CR" }));
+    const data = await res.json().catch(() => ({ message: "Failed to download CR" }));
     return NextResponse.json(data, { status: res.status });
   }
 
   const headers = new Headers();
   headers.set("content-type", res.headers.get("content-type") || "application/pdf");
-  const disposition = res.headers.get("content-disposition");
-  if (disposition) headers.set("content-disposition", disposition);
+  headers.set(
+    "content-disposition",
+    res.headers.get("content-disposition") || `attachment; filename="cr-${id}.pdf"`
+  );
+  const contentLength = res.headers.get("content-length");
+  if (contentLength) headers.set("content-length", contentLength);
   headers.set("cache-control", res.headers.get("cache-control") || "private, max-age=30");
 
   return new NextResponse(res.body, { status: 200, headers });

@@ -111,10 +111,9 @@ function buildTheme(mode: PaletteMode) {
             backgroundImage: isDark
               ? "linear-gradient(135deg, rgba(15,23,42,0.90), rgba(13,27,45,0.76))"
               : "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(241,245,255,0.84))",
-            backdropFilter: "blur(20px)",
             boxShadow: isDark
-              ? "0 20px 50px rgba(2,6,23,0.45)"
-              : "0 20px 50px rgba(37,99,235,0.14)",
+              ? "0 12px 30px rgba(2,6,23,0.34)"
+              : "0 10px 26px rgba(37,99,235,0.10)",
           },
         },
       },
@@ -124,7 +123,6 @@ function buildTheme(mode: PaletteMode) {
             backgroundImage: isDark
               ? "linear-gradient(180deg, rgba(9,16,28,0.96), rgba(15,27,45,0.94))"
               : "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(242,247,255,0.96))",
-            backdropFilter: "blur(18px)",
           },
         },
       },
@@ -134,11 +132,10 @@ function buildTheme(mode: PaletteMode) {
             backgroundImage: isDark
               ? "linear-gradient(180deg, rgba(15,27,45,0.92), rgba(9,17,31,0.94))"
               : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(246,249,255,0.96))",
-            backdropFilter: "blur(18px)",
             border: `1px solid ${alpha(isDark ? "#93c5fd" : "#c7d2fe", isDark ? 0.10 : 0.28)}`,
             boxShadow: isDark
-              ? "0 18px 48px rgba(2,6,23,0.42), inset 0 1px 0 rgba(255,255,255,0.03)"
-              : "0 18px 48px rgba(37,99,235,0.10), inset 0 1px 0 rgba(255,255,255,0.9)",
+              ? "0 10px 26px rgba(2,6,23,0.30), inset 0 1px 0 rgba(255,255,255,0.03)"
+              : "0 8px 22px rgba(37,99,235,0.08), inset 0 1px 0 rgba(255,255,255,0.9)",
           },
         },
       },
@@ -147,7 +144,7 @@ function buildTheme(mode: PaletteMode) {
           root: {
             borderRadius: 24,
             transform: "translateZ(0)",
-            transition: "transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease",
+            transition: "border-color 160ms ease, background-color 160ms ease",
           },
         },
       },
@@ -166,8 +163,8 @@ function buildTheme(mode: PaletteMode) {
               ? "linear-gradient(135deg, #38bdf8, #2563eb)"
               : "linear-gradient(135deg, #2563eb, #7c3aed)",
             boxShadow: isDark
-              ? "0 18px 36px rgba(37,99,235,0.30)"
-              : "0 18px 36px rgba(37,99,235,0.22)",
+              ? "0 8px 18px rgba(37,99,235,0.24)"
+              : "0 8px 18px rgba(37,99,235,0.18)",
           },
         },
       },

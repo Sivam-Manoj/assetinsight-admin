@@ -155,6 +155,11 @@ function formatDashboardDate(value: Date) {
   return `${weekday} ${dayMonth} - ${time}`;
 }
 
+function getNextMinuteDelay() {
+  const now = new Date();
+  return Math.max(1000, 60_000 - (now.getSeconds() * 1000 + now.getMilliseconds()));
+}
+
 const surfaceSx = {
   height: "100%",
   overflow: "hidden",
@@ -208,8 +213,16 @@ export default function DashboardShellV2() {
   const [specWebSearchError, setSpecWebSearchError] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(id);
+    let intervalId: number | undefined;
+    const timeoutId = window.setTimeout(() => {
+      setNow(new Date());
+      intervalId = window.setInterval(() => setNow(new Date()), 60_000);
+    }, getNextMinuteDelay());
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -259,7 +272,7 @@ export default function DashboardShellV2() {
     loadOpenAICredits();
     const id = window.setInterval(() => {
       loadOpenAICredits();
-    }, 10_000);
+    }, 60_000);
     return () => window.clearInterval(id);
   }, [loadOpenAICredits]);
 

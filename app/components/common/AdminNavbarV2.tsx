@@ -149,19 +149,16 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
     py: 1,
     minHeight: 44,
     justifyContent: collapsed ? "center" : "flex-start",
-    transition: "all 180ms ease",
+    transition: "background-color 140ms ease, border-color 140ms ease, color 140ms ease",
     border: "1px solid",
     borderColor: active ? "primary.main" : "transparent",
     bgcolor: active ? "action.selected" : "transparent",
     boxShadow: active
-      ? "0 4px 16px rgba(37,99,235,0.15), inset 0 1px 0 rgba(255,255,255,0.1)"
+      ? "inset 0 1px 0 rgba(255,255,255,0.1)"
       : "none",
     "&:hover": {
       bgcolor: active ? "action.selected" : "action.hover",
-      transform: "translateX(2px)",
-      boxShadow: active
-        ? "0 6px 20px rgba(37,99,235,0.20)"
-        : "0 2px 8px rgba(0,0,0,0.06)",
+      boxShadow: "none",
     },
   });
 
@@ -348,9 +345,8 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
             borderRight: "1px solid",
             borderColor: "divider",
             backgroundImage: (t) => sidebarBg(t),
-            backdropFilter: "blur(20px)",
             boxShadow: (t) => sidebarShadow(t),
-            transition: "width 220ms ease, box-shadow 220ms ease",
+            transition: "width 180ms ease",
             overflowX: "hidden",
           }}
         >
@@ -374,11 +370,10 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
               t.palette.mode === "dark"
                 ? "linear-gradient(135deg, rgba(15,23,42,0.92), rgba(13,27,45,0.80))"
                 : "linear-gradient(135deg, rgba(255,255,255,0.94), rgba(241,245,255,0.88))",
-            backdropFilter: "blur(20px)",
             boxShadow: (t) =>
               t.palette.mode === "dark"
-                ? "0 4px 20px rgba(0,0,0,0.4)"
-                : "0 4px 20px rgba(37,99,235,0.10)",
+                ? "0 4px 14px rgba(0,0,0,0.24)"
+                : "0 4px 14px rgba(37,99,235,0.08)",
           }}
         >
           <Toolbar sx={{ minHeight: MOBILE_TOPBAR_HEIGHT, px: 1.5, justifyContent: "space-between", gap: 1 }}>
@@ -433,7 +428,6 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
             sx: {
               width: MOBILE_DRAWER_WIDTH,
               backgroundImage: (t) => sidebarBg(t),
-              backdropFilter: "blur(20px)",
               boxShadow: (t) => sidebarShadow(t),
               borderRight: "1px solid",
               borderColor: "divider",
@@ -453,7 +447,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
           mt: isDesktop ? 0 : `${MOBILE_TOPBAR_HEIGHT}px`,
           minHeight: isDesktop ? "100vh" : `calc(100vh - ${MOBILE_TOPBAR_HEIGHT}px)`,
           overflow: "auto",
-          transition: "margin-left 220ms ease",
+          transition: "margin-left 180ms ease",
         }}
       >
         {children}

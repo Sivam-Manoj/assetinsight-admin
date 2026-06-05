@@ -101,6 +101,7 @@ type ReportGroup = {
 type ReportFileLink = {
   label: string;
   href?: string;
+  download?: boolean;
 };
 
 type CrDisclaimerSettings = {
@@ -534,7 +535,7 @@ function CrDisclaimersDialog({
   );
 }
 
-const ALL_PAGE_SIZE = 100000;
+const LARGE_PAGE_SIZE = 500;
 
 function formatFMV(value: string) {
   return value || "N/A";
@@ -558,7 +559,7 @@ function getPreviewTargetId(group: ReportGroup) {
 function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if (group.isLotListingReport) {
     return [
-      { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf` },
+      { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf/download`, download: true },
       { label: "Excel", href: group.preview_files?.excel },
       { label: "Images", href: group.preview_files?.images },
     ];
@@ -569,8 +570,9 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
       {
         label: group.isAssetReport ? "CR" : "PDF",
         href: group.isAssetReport
-          ? `/api/admin/reports/${group.key}/spec-pdf`
+          ? `/api/admin/reports/${group.key}/spec-pdf/download`
           : group.preview_files.spec_pdf || group.preview_files.pdf,
+        download: group.isAssetReport,
       },
       { label: "DOCX", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
@@ -580,7 +582,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 
   if (group.isAssetReport) {
     return [
-      { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf` },
+      { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf/download`, download: true },
       {
         label: "DOCX",
         href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
@@ -646,7 +648,8 @@ const actionButtonSx = {
   lineHeight: 1,
   boxShadow: "none",
   whiteSpace: "nowrap",
-  "&:hover": { boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)" },
+  transition: "background-color 120ms ease, border-color 120ms ease",
+  "&:hover": { boxShadow: "none" },
   "& .MuiButton-startIcon": { mr: 0.28, ml: -0.22 },
   "& .MuiSvgIcon-root": { fontSize: "0.76rem" },
 };
@@ -654,10 +657,12 @@ const actionButtonSx = {
 export default function AdminReports() {
   // Filters
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [reportType, setReportType] = useState<string>("");
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
+  const [debouncedUserEmail, setDebouncedUserEmail] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [pageSizeMode, setPageSizeMode] = useState<"20" | "50" | "100" | "all" | "custom">("20");
@@ -692,19 +697,33 @@ export default function AdminReports() {
   const [crCounts, setCrCounts] = useState<Record<string, number>>({});
   const [crSubmitSuccess, setCrSubmitSuccess] = useState<string | null>(null);
 
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedQ(q.trim());
+    }, 350);
+    return () => window.clearTimeout(id);
+  }, [q]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedUserEmail(userEmail.trim());
+    }, 350);
+    return () => window.clearTimeout(id);
+  }, [userEmail]);
+
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
-    if (q) p.set("q", q);
+    if (debouncedQ) p.set("q", debouncedQ);
     if (reportType) p.set("reportType", reportType);
     p.set("approvalStatus", "approved");
     if (from) p.set("from", from);
     if (to) p.set("to", to);
-    if (userEmail) p.set("userEmail", userEmail.trim());
+    if (debouncedUserEmail) p.set("userEmail", debouncedUserEmail);
     if (archiveMode === "archived") p.set("archived", "true");
     p.set("page", String(pagination.pageIndex + 1));
     p.set("limit", String(pagination.pageSize));
     return p.toString();
-  }, [q, reportType, from, to, userEmail, archiveMode, pagination.pageIndex, pagination.pageSize]);
+  }, [debouncedQ, reportType, from, to, debouncedUserEmail, archiveMode, pagination.pageIndex, pagination.pageSize]);
 
   async function load() {
     setLoading(true);
@@ -928,10 +947,12 @@ export default function AdminReports() {
 
   function onReset() {
     setQ("");
+    setDebouncedQ("");
     setReportType("");
     setFrom("");
     setTo("");
     setUserEmail("");
+    setDebouncedUserEmail("");
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }
 
@@ -955,6 +976,12 @@ export default function AdminReports() {
     const parsed = Number(customPageSizeInput);
     if (!Number.isFinite(parsed) || parsed <= 0) return;
     applyPageSize(parsed, "custom");
+  }
+
+  function applyTextFiltersNow() {
+    setDebouncedQ(q.trim());
+    setDebouncedUserEmail(userEmail.trim());
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }
 
   const groups = useMemo<ReportGroup[]>(() => {
@@ -1072,8 +1099,9 @@ export default function AdminReports() {
                   {...(link.href
                     ? {
                         href: link.href,
-                        target: "_blank",
-                        rel: "noopener noreferrer",
+                        ...(link.download
+                          ? { download: true }
+                          : { target: "_blank", rel: "noopener noreferrer" }),
                       }
                     : {})}
                 >
@@ -1396,7 +1424,7 @@ export default function AdminReports() {
             sx={{ mt: 2 }}
           >
             <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-              <Button variant="contained" onClick={() => load()}>Apply</Button>
+              <Button variant="contained" onClick={applyTextFiltersNow}>Apply</Button>
               <Button variant="outlined" onClick={() => load()} disabled={loading}>
                 {loading ? "Refreshing..." : "Refresh"}
               </Button>
@@ -1416,7 +1444,7 @@ export default function AdminReports() {
                       return;
                     }
                     if (value === "all") {
-                      applyPageSize(ALL_PAGE_SIZE, "all");
+                      applyPageSize(LARGE_PAGE_SIZE, "all");
                       return;
                     }
                     setPageSizeMode("custom");
@@ -1426,7 +1454,7 @@ export default function AdminReports() {
                   <MenuItem value="20">20</MenuItem>
                   <MenuItem value="50">50</MenuItem>
                   <MenuItem value="100">100</MenuItem>
-                  <MenuItem value="all">All</MenuItem>
+                  <MenuItem value="all">500</MenuItem>
                   <MenuItem value="custom">Custom</MenuItem>
                 </Select>
               </FormControl>
@@ -1539,7 +1567,14 @@ export default function AdminReports() {
                   <TableBody>
                     {rows.length ? (
                       rows.map((row) => (
-                        <TableRow key={row.id} hover>
+                        <TableRow
+                          key={row.id}
+                          hover
+                          sx={{
+                            contentVisibility: "auto",
+                            containIntrinsicSize: "64px",
+                          }}
+                        >
                           {row.getVisibleCells().map((cell) => (
                             <TableCell
                               key={cell.id}
@@ -1570,7 +1605,14 @@ export default function AdminReports() {
                   rows.map((row) => {
                     const g = row.original;
                     return (
-                      <Card key={g.key} variant="outlined">
+                      <Card
+                        key={g.key}
+                        variant="outlined"
+                        sx={{
+                          contentVisibility: "auto",
+                          containIntrinsicSize: "260px",
+                        }}
+                      >
                         <CardContent>
                           <Stack spacing={1.5}>
                             <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
