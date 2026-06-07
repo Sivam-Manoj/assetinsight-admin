@@ -25,6 +25,7 @@ import {
   Drawer,
   IconButton,
   InputAdornment,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -43,7 +44,11 @@ type SpecField = {
   name: string;
   normalizedName: string;
   order: number;
+  type?: SpecFieldType;
+  options?: string[];
 };
+
+type SpecFieldType = "text" | "number" | "select";
 
 type SpecCategory = {
   _id: string;
@@ -77,6 +82,28 @@ async function readJson<T = any>(res: Response): Promise<T> {
 
 function normalizeFieldName(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizeFieldType(value: unknown): SpecFieldType {
+  return value === "number" || value === "select" ? value : "text";
+}
+
+function optionsToDraft(options: unknown): string {
+  return Array.isArray(options) ? options.map((item) => String(item || "").trim()).filter(Boolean).join(", ") : "";
+}
+
+function parseOptions(value: string): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const raw of value.split(/[\n,]+/g)) {
+    const option = raw.trim().replace(/\s+/g, " ");
+    if (!option) continue;
+    const key = normalizeFieldName(option);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    next.push(option);
+  }
+  return next;
 }
 
 function formatUpdatedAt(value: string) {
@@ -113,7 +140,11 @@ export default function AdminSpecSheet() {
     description: "",
   });
   const [fieldDrafts, setFieldDrafts] = useState<Record<string, string>>({});
+  const [fieldTypeDrafts, setFieldTypeDrafts] = useState<Record<string, SpecFieldType>>({});
+  const [fieldOptionsDrafts, setFieldOptionsDrafts] = useState<Record<string, string>>({});
   const [newFieldName, setNewFieldName] = useState("");
+  const [newFieldType, setNewFieldType] = useState<SpecFieldType>("text");
+  const [newFieldOptions, setNewFieldOptions] = useState("");
   const [extractFile, setExtractFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
@@ -150,16 +181,26 @@ export default function AdminSpecSheet() {
   useEffect(() => {
     if (!selectedCategory) {
       setFieldDrafts({});
+      setFieldTypeDrafts({});
+      setFieldOptionsDrafts({});
       if (drawerOpen) setDrawerOpen(false);
       return;
     }
     setFieldDrafts(
       Object.fromEntries(selectedCategory.fields.map((field) => [field._id, field.name]))
     );
+    setFieldTypeDrafts(
+      Object.fromEntries(selectedCategory.fields.map((field) => [field._id, normalizeFieldType(field.type)]))
+    );
+    setFieldOptionsDrafts(
+      Object.fromEntries(selectedCategory.fields.map((field) => [field._id, optionsToDraft(field.options)]))
+    );
   }, [selectedCategory, drawerOpen]);
 
   useEffect(() => {
     setNewFieldName("");
+    setNewFieldType("text");
+    setNewFieldOptions("");
     setExtractFile(null);
     setExtractedFields([]);
     setExtractionNotes("");
@@ -252,11 +293,17 @@ export default function AdminSpecSheet() {
         await fetch(`/api/admin/spec-sheet/categories/${selectedCategory._id}/fields`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({
+            name,
+            type: newFieldType,
+            options: newFieldType === "select" ? parseOptions(newFieldOptions) : [],
+          }),
         })
       );
       upsertCategory(data.data);
       setNewFieldName("");
+      setNewFieldType("text");
+      setNewFieldOptions("");
       setSuccess(data.message || "Field added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to add field");
@@ -268,6 +315,8 @@ export default function AdminSpecSheet() {
   async function updateField(field: SpecField) {
     if (!selectedCategory) return;
     const name = (fieldDrafts[field._id] || "").trim();
+    const type = normalizeFieldType(fieldTypeDrafts[field._id] || field.type);
+    const options = type === "select" ? parseOptions(fieldOptionsDrafts[field._id] || "") : [];
     if (!name) {
       setError("Field name is required");
       return;
@@ -282,7 +331,7 @@ export default function AdminSpecSheet() {
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name }),
+            body: JSON.stringify({ name, type, options }),
           }
         )
       );
@@ -485,7 +534,11 @@ export default function AdminSpecSheet() {
             <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>
               Ordered Fields
             </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={1.25}
+              alignItems={{ md: "flex-start" }}
+            >
               <TextField
                 fullWidth
                 size="small"
@@ -496,6 +549,29 @@ export default function AdminSpecSheet() {
                   if (event.key === "Enter") addField();
                 }}
               />
+              <TextField
+                select
+                size="small"
+                label="Type"
+                value={newFieldType}
+                onChange={(event) => setNewFieldType(normalizeFieldType(event.target.value))}
+                sx={{ minWidth: { md: 132 } }}
+              >
+                <MenuItem value="text">Text</MenuItem>
+                <MenuItem value="number">Number</MenuItem>
+                <MenuItem value="select">Select</MenuItem>
+              </TextField>
+              {newFieldType === "select" && (
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Select values"
+                  placeholder="Option 1, Option 2, Option 3"
+                  value={newFieldOptions}
+                  onChange={(event) => setNewFieldOptions(event.target.value)}
+                  helperText="Comma or line separated"
+                />
+              )}
               <Button
                 variant="contained"
                 startIcon={<AddRoundedIcon />}
@@ -514,6 +590,8 @@ export default function AdminSpecSheet() {
                 <TableRow>
                   <TableCell width={70}>#</TableCell>
                   <TableCell>Field Name</TableCell>
+                  <TableCell width={150}>Type</TableCell>
+                  <TableCell>Values</TableCell>
                   <TableCell width={176} align="right">
                     Actions
                   </TableCell>
@@ -522,14 +600,19 @@ export default function AdminSpecSheet() {
               <TableBody>
                 {selectedCategory.fields.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} sx={{ color: "text.secondary", py: 3 }}>
+                    <TableCell colSpan={5} sx={{ color: "text.secondary", py: 3 }}>
                       Add fields manually or extract them from a PDF/image.
                     </TableCell>
                   </TableRow>
                 ) : (
                   selectedCategory.fields.map((field, index) => {
                     const draft = fieldDrafts[field._id] ?? field.name;
-                    const changed = draft.trim() !== field.name;
+                    const typeDraft = normalizeFieldType(fieldTypeDrafts[field._id] || field.type);
+                    const optionsDraft = fieldOptionsDrafts[field._id] ?? optionsToDraft(field.options);
+                    const changed =
+                      draft.trim() !== field.name ||
+                      typeDraft !== normalizeFieldType(field.type) ||
+                      optionsToDraft(parseOptions(optionsDraft)) !== optionsToDraft(field.options);
                     return (
                       <TableRow key={field._id} hover>
                         <TableCell>
@@ -546,6 +629,47 @@ export default function AdminSpecSheet() {
                                 [field._id]: event.target.value,
                               }))
                             }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            select
+                            fullWidth
+                            size="small"
+                            value={typeDraft}
+                            onChange={(event) => {
+                              const nextType = normalizeFieldType(event.target.value);
+                              setFieldTypeDrafts((current) => ({
+                                ...current,
+                                [field._id]: nextType,
+                              }));
+                              if (nextType !== "select") {
+                                setFieldOptionsDrafts((current) => ({
+                                  ...current,
+                                  [field._id]: "",
+                                }));
+                              }
+                            }}
+                          >
+                            <MenuItem value="text">Text</MenuItem>
+                            <MenuItem value="number">Number</MenuItem>
+                            <MenuItem value="select">Select</MenuItem>
+                          </TextField>
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={typeDraft === "select" ? optionsDraft : ""}
+                            placeholder={typeDraft === "select" ? "Red, Blue, Green, Black" : "Not used"}
+                            disabled={typeDraft !== "select"}
+                            onChange={(event) =>
+                              setFieldOptionsDrafts((current) => ({
+                                ...current,
+                                [field._id]: event.target.value,
+                              }))
+                            }
+                            helperText={typeDraft === "select" ? "Software will choose one value" : " "}
                           />
                         </TableCell>
                         <TableCell align="right">
