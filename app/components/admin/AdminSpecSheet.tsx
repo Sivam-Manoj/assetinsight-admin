@@ -6,6 +6,7 @@ import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -39,6 +40,8 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type SpecFieldType = "text" | "number" | "select";
+
 type SpecField = {
   _id: string;
   name: string;
@@ -48,14 +51,22 @@ type SpecField = {
   options?: string[];
 };
 
-type SpecFieldType = "text" | "number" | "select";
-
 type SpecCategory = {
   _id: string;
   name: string;
   normalizedName: string;
   description: string;
+  parentCategoryId?: string;
   fields: SpecField[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SpecParentCategory = {
+  _id: string;
+  name: string;
+  normalizedName: string;
+  description: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -65,18 +76,27 @@ type ExtractedField = {
   order: number;
 };
 
-type CategoryDialogState = {
-  open: boolean;
-  id?: string;
-  name: string;
-  description: string;
-};
+type EditDialogState =
+  | {
+      open: false;
+      kind?: "parent" | "category";
+      id?: string;
+      name: string;
+      description: string;
+      parentCategoryId?: string;
+    }
+  | {
+      open: true;
+      kind: "parent" | "category";
+      id?: string;
+      name: string;
+      description: string;
+      parentCategoryId?: string;
+    };
 
 async function readJson<T = any>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || "Request failed");
-  }
+  if (!res.ok) throw new Error(data?.message || "Request failed");
   return data as T;
 }
 
@@ -89,7 +109,9 @@ function normalizeFieldType(value: unknown): SpecFieldType {
 }
 
 function optionsToDraft(options: unknown): string {
-  return Array.isArray(options) ? options.map((item) => String(item || "").trim()).filter(Boolean).join(", ") : "";
+  return Array.isArray(options)
+    ? options.map((item) => String(item || "").trim()).filter(Boolean).join(", ")
+    : "";
 }
 
 function parseOptions(value: string): string[] {
@@ -116,25 +138,30 @@ function formatUpdatedAt(value: string) {
   }).format(date);
 }
 
-function categoryInitials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "S";
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "S"
+  );
 }
 
 export default function AdminSpecSheet() {
+  const [parents, setParents] = useState<SpecParentCategory[]>([]);
   const [categories, setCategories] = useState<SpecCategory[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedParentId, setSelectedParentId] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [parentDrawerOpen, setParentDrawerOpen] = useState(false);
+  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [categoryDialog, setCategoryDialog] = useState<CategoryDialogState>({
+  const [editDialog, setEditDialog] = useState<EditDialogState>({
     open: false,
     name: "",
     description: "",
@@ -150,23 +177,77 @@ export default function AdminSpecSheet() {
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [extractionNotes, setExtractionNotes] = useState("");
 
+  const selectedParent = useMemo(
+    () => parents.find((parent) => parent._id === selectedParentId) || null,
+    [parents, selectedParentId]
+  );
   const selectedCategory = useMemo(
-    () => categories.find((category) => category._id === selectedId) || null,
-    [categories, selectedId]
+    () => categories.find((category) => category._id === selectedCategoryId) || null,
+    [categories, selectedCategoryId]
   );
 
-  const loadCategories = useCallback(async (nextSearch = "") => {
+  const childCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const category of categories) {
+      if (!category.parentCategoryId) continue;
+      counts.set(category.parentCategoryId, (counts.get(category.parentCategoryId) || 0) + 1);
+    }
+    return counts;
+  }, [categories]);
+
+  const fieldCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const category of categories) {
+      if (!category.parentCategoryId) continue;
+      counts.set(
+        category.parentCategoryId,
+        (counts.get(category.parentCategoryId) || 0) + category.fields.length
+      );
+    }
+    return counts;
+  }, [categories]);
+
+  const filteredParents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return parents;
+    return parents.filter((parent) =>
+      `${parent.name} ${parent.description}`.toLowerCase().includes(q)
+    );
+  }, [parents, search]);
+
+  const parentChildren = useMemo(
+    () =>
+      selectedParent
+        ? categories
+            .filter((category) => category.parentCategoryId === selectedParent._id)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [],
+    [categories, selectedParent]
+  );
+
+  const unassignedCategories = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const items = categories.filter((category) => !category.parentCategoryId);
+    if (!q) return items.sort((a, b) => a.name.localeCompare(b.name));
+    return items
+      .filter((category) => `${category.name} ${category.description}`.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [categories, search]);
+
+  const loadSpecSheet = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const qs = nextSearch.trim() ? `?q=${encodeURIComponent(nextSearch.trim())}` : "";
-      const data = await readJson<{ data: SpecCategory[] }>(
-        await fetch(`/api/admin/spec-sheet/categories${qs}`, { cache: "no-store" })
-      );
-      setCategories(data.data || []);
-      setSelectedId((current) =>
-        current && data.data?.some((category) => category._id === current) ? current : ""
-      );
+      const [parentData, categoryData] = await Promise.all([
+        readJson<{ data: SpecParentCategory[] }>(
+          await fetch("/api/admin/spec-sheet/parents", { cache: "no-store" })
+        ),
+        readJson<{ data: SpecCategory[] }>(
+          await fetch("/api/admin/spec-sheet/categories", { cache: "no-store" })
+        ),
+      ]);
+      setParents(parentData.data || []);
+      setCategories(categoryData.data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load Spec Sheet");
     } finally {
@@ -175,27 +256,31 @@ export default function AdminSpecSheet() {
   }, []);
 
   useEffect(() => {
-    loadCategories("");
-  }, [loadCategories]);
+    loadSpecSheet();
+  }, [loadSpecSheet]);
 
   useEffect(() => {
     if (!selectedCategory) {
       setFieldDrafts({});
       setFieldTypeDrafts({});
       setFieldOptionsDrafts({});
-      if (drawerOpen) setDrawerOpen(false);
+      setCategoryDrawerOpen(false);
       return;
     }
     setFieldDrafts(
       Object.fromEntries(selectedCategory.fields.map((field) => [field._id, field.name]))
     );
     setFieldTypeDrafts(
-      Object.fromEntries(selectedCategory.fields.map((field) => [field._id, normalizeFieldType(field.type)]))
+      Object.fromEntries(
+        selectedCategory.fields.map((field) => [field._id, normalizeFieldType(field.type)])
+      )
     );
     setFieldOptionsDrafts(
-      Object.fromEntries(selectedCategory.fields.map((field) => [field._id, optionsToDraft(field.options)]))
+      Object.fromEntries(
+        selectedCategory.fields.map((field) => [field._id, optionsToDraft(field.options)])
+      )
     );
-  }, [selectedCategory, drawerOpen]);
+  }, [selectedCategory]);
 
   useEffect(() => {
     setNewFieldName("");
@@ -204,15 +289,17 @@ export default function AdminSpecSheet() {
     setExtractFile(null);
     setExtractedFields([]);
     setExtractionNotes("");
-  }, [selectedId]);
+  }, [selectedCategoryId]);
 
-  function openCategoryDrawer(categoryId: string) {
-    setSelectedId(categoryId);
-    setDrawerOpen(true);
-  }
-
-  function closeCategoryDrawer() {
-    setDrawerOpen(false);
+  function upsertParent(parent: SpecParentCategory) {
+    setParents((current) => {
+      const exists = current.some((item) => item._id === parent._id);
+      const next = exists
+        ? current.map((item) => (item._id === parent._id ? parent : item))
+        : [...current, parent];
+      return next.sort((a, b) => a.name.localeCompare(b.name));
+    });
+    setSelectedParentId(parent._id);
   }
 
   function upsertCategory(category: SpecCategory) {
@@ -223,36 +310,105 @@ export default function AdminSpecSheet() {
         : [...current, category];
       return next.sort((a, b) => a.name.localeCompare(b.name));
     });
-    setSelectedId(category._id);
+    setSelectedCategoryId(category._id);
   }
 
-  async function saveCategoryDialog() {
+  function openParent(parentId: string) {
+    setSelectedParentId(parentId);
+    setParentDrawerOpen(true);
+  }
+
+  function openCategory(categoryId: string) {
+    setSelectedCategoryId(categoryId);
+    setCategoryDrawerOpen(true);
+  }
+
+  async function saveEditDialog() {
+    if (!editDialog.open) return;
     setBusy(true);
     setError("");
     setSuccess("");
     try {
-      const isEdit = Boolean(categoryDialog.id);
-      const data = await readJson<{ data: SpecCategory; message?: string }>(
-        await fetch(
-          isEdit
-            ? `/api/admin/spec-sheet/categories/${categoryDialog.id}`
-            : "/api/admin/spec-sheet/categories",
-          {
-            method: isEdit ? "PATCH" : "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: categoryDialog.name,
-              description: categoryDialog.description,
-            }),
-          }
-        )
-      );
-      upsertCategory(data.data);
-      setDrawerOpen(true);
-      setCategoryDialog({ open: false, name: "", description: "" });
-      setSuccess(data.message || "Category saved");
+      if (editDialog.kind === "parent") {
+        const isEdit = Boolean(editDialog.id);
+        const data = await readJson<{ data: SpecParentCategory; message?: string }>(
+          await fetch(
+            isEdit
+              ? `/api/admin/spec-sheet/parents/${editDialog.id}`
+              : "/api/admin/spec-sheet/parents",
+            {
+              method: isEdit ? "PATCH" : "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: editDialog.name,
+                description: editDialog.description,
+              }),
+            }
+          )
+        );
+        upsertParent(data.data);
+        setParentDrawerOpen(true);
+        setSuccess(data.message || "Parent category saved");
+      } else {
+        const isEdit = Boolean(editDialog.id);
+        const data = await readJson<{ data: SpecCategory; message?: string }>(
+          await fetch(
+            isEdit
+              ? `/api/admin/spec-sheet/categories/${editDialog.id}`
+              : "/api/admin/spec-sheet/categories",
+            {
+              method: isEdit ? "PATCH" : "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: editDialog.name,
+                description: editDialog.description,
+                parentCategoryId: editDialog.parentCategoryId || "",
+              }),
+            }
+          )
+        );
+        upsertCategory(data.data);
+        setSelectedParentId(data.data.parentCategoryId || selectedParentId);
+        setParentDrawerOpen(true);
+        setCategoryDrawerOpen(true);
+        setSuccess(data.message || "Child category saved");
+      }
+      setEditDialog({ open: false, name: "", description: "" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save category");
+      setError(err instanceof Error ? err.message : "Unable to save Spec Sheet item");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSelectedParent() {
+    if (!selectedParent) return;
+    const childCount = childCounts.get(selectedParent._id) || 0;
+    const confirmed = window.confirm(
+      `Delete "${selectedParent.name}"? This will also delete ${childCount} child categor${childCount === 1 ? "y" : "ies"} and all fields inside them.`
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const data = await readJson<{ data?: { deletedChildren?: number }; message?: string }>(
+        await fetch(`/api/admin/spec-sheet/parents/${selectedParent._id}`, { method: "DELETE" })
+      );
+      setParents((current) => current.filter((item) => item._id !== selectedParent._id));
+      setCategories((current) =>
+        current.filter((category) => category.parentCategoryId !== selectedParent._id)
+      );
+      setSelectedParentId("");
+      setSelectedCategoryId("");
+      setParentDrawerOpen(false);
+      setCategoryDrawerOpen(false);
+      setSuccess(
+        data.message ||
+          `Parent deleted${data.data?.deletedChildren ? ` with ${data.data.deletedChildren} child categories` : ""}`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete parent category");
     } finally {
       setBusy(false);
     }
@@ -266,16 +422,14 @@ export default function AdminSpecSheet() {
     setSuccess("");
     try {
       const data = await readJson<{ message?: string }>(
-        await fetch(`/api/admin/spec-sheet/categories/${selectedCategory._id}`, {
-          method: "DELETE",
-        })
+        await fetch(`/api/admin/spec-sheet/categories/${selectedCategory._id}`, { method: "DELETE" })
       );
       setCategories((current) => current.filter((item) => item._id !== selectedCategory._id));
-      setSelectedId("");
-      setDrawerOpen(false);
-      setSuccess(data.message || "Category deleted");
+      setSelectedCategoryId("");
+      setCategoryDrawerOpen(false);
+      setSuccess(data.message || "Child category deleted");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to delete category");
+      setError(err instanceof Error ? err.message : "Unable to delete child category");
     } finally {
       setBusy(false);
     }
@@ -423,9 +577,7 @@ export default function AdminSpecSheet() {
 
   async function saveExtracted(mode: "append" | "replace") {
     if (!selectedCategory || extractedFields.length === 0) return;
-    if (mode === "replace" && !window.confirm("Replace all existing fields with this extracted list?")) {
-      return;
-    }
+    if (mode === "replace" && !window.confirm("Replace all existing fields with this extracted list?")) return;
     setBusy(true);
     setError("");
     setSuccess("");
@@ -459,9 +611,120 @@ export default function AdminSpecSheet() {
     [categories]
   );
 
-  const showEmptyState = !loading && categories.length === 0;
+  const parentDrawer = selectedParent ? (
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", bgcolor: "background.default" }}>
+      <Box
+        sx={{
+          position: "sticky",
+          top: 0,
+          zIndex: 2,
+          bgcolor: "background.paper",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          px: { xs: 2, md: 3 },
+          py: 2,
+        }}
+      >
+        <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="flex-start">
+          <Box sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Typography variant="h5" sx={{ fontWeight: 950, letterSpacing: 0 }}>
+                {selectedParent.name}
+              </Typography>
+              <Chip size="small" label={`${parentChildren.length} child categories`} />
+              <Chip size="small" label={`${fieldCounts.get(selectedParent._id) || 0} fields`} />
+            </Stack>
+            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+              {selectedParent.description || "No description yet."}
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setParentDrawerOpen(false)} aria-label="Close parent drawer">
+            <CloseRoundedIcon />
+          </IconButton>
+        </Stack>
+        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<AddRoundedIcon />}
+            onClick={() =>
+              setEditDialog({
+                open: true,
+                kind: "category",
+                name: "",
+                description: "",
+                parentCategoryId: selectedParent._id,
+              })
+            }
+          >
+            New Child Category
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<EditRoundedIcon />}
+            onClick={() =>
+              setEditDialog({
+                open: true,
+                kind: "parent",
+                id: selectedParent._id,
+                name: selectedParent.name,
+                description: selectedParent.description || "",
+              })
+            }
+          >
+            Edit Parent
+          </Button>
+          <Button
+            color="error"
+            variant="outlined"
+            size="small"
+            startIcon={<DeleteOutlineRoundedIcon />}
+            onClick={deleteSelectedParent}
+          >
+            Delete Parent
+          </Button>
+        </Stack>
+      </Box>
 
-  const drawerContent = selectedCategory ? (
+      <Box sx={{ flex: 1, overflow: "auto", p: { xs: 2, md: 3 } }}>
+        {parentChildren.length === 0 ? (
+          <Paper
+            variant="outlined"
+            sx={{ p: 3, borderStyle: "dashed", borderRadius: "8px", textAlign: "center" }}
+          >
+            <Typography sx={{ fontWeight: 900 }}>No child categories yet</Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
+              Add the first child category, then manage its ordered field list.
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddRoundedIcon />}
+              onClick={() =>
+                setEditDialog({
+                  open: true,
+                  kind: "category",
+                  name: "",
+                  description: "",
+                  parentCategoryId: selectedParent._id,
+                })
+              }
+            >
+              Add Child Category
+            </Button>
+          </Paper>
+        ) : (
+          <Stack spacing={1.5}>
+            {parentChildren.map((category) => (
+              <CategoryCard key={category._id} category={category} onClick={() => openCategory(category._id)} />
+            ))}
+          </Stack>
+        )}
+      </Box>
+    </Box>
+  ) : null;
+
+  const categoryDrawer = selectedCategory ? (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column", bgcolor: "background.default" }}>
       <Box
         sx={{
@@ -478,35 +741,44 @@ export default function AdminSpecSheet() {
         <Stack direction="row" spacing={1.5} alignItems="flex-start" justifyContent="space-between">
           <Box sx={{ minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-              <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: 0 }}>
+              <Typography variant="h5" sx={{ fontWeight: 950, letterSpacing: 0 }}>
                 {selectedCategory.name}
               </Typography>
               <Chip size="small" label={`${selectedCategory.fields.length} fields`} />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={
+                  parents.find((parent) => parent._id === selectedCategory.parentCategoryId)?.name ||
+                  "Unassigned"
+                }
+              />
             </Stack>
             <Typography color="text.secondary" sx={{ mt: 0.75 }}>
               {selectedCategory.description || "No description yet."}
             </Typography>
           </Box>
-          <IconButton onClick={closeCategoryDrawer} aria-label="Close Spec Sheet category drawer">
+          <IconButton onClick={() => setCategoryDrawerOpen(false)} aria-label="Close child category drawer">
             <CloseRoundedIcon />
           </IconButton>
         </Stack>
-
         <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 2 }}>
           <Button
             variant="outlined"
             size="small"
             startIcon={<EditRoundedIcon />}
             onClick={() =>
-              setCategoryDialog({
+              setEditDialog({
                 open: true,
+                kind: "category",
                 id: selectedCategory._id,
                 name: selectedCategory.name,
                 description: selectedCategory.description || "",
+                parentCategoryId: selectedCategory.parentCategoryId || "",
               })
             }
           >
-            Edit Category
+            Edit Child Category
           </Button>
           <Button
             color="error"
@@ -521,24 +793,12 @@ export default function AdminSpecSheet() {
       </Box>
 
       <Box sx={{ flex: 1, overflow: "auto", p: { xs: 2, md: 3 } }}>
-        <Paper
-          variant="outlined"
-          sx={{
-            borderRadius: "8px",
-            borderColor: "divider",
-            overflow: "hidden",
-            bgcolor: "background.paper",
-          }}
-        >
+        <Paper variant="outlined" sx={{ borderRadius: "8px", overflow: "hidden" }}>
           <Box sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>
               Ordered Fields
             </Typography>
-            <Stack
-              direction={{ xs: "column", md: "row" }}
-              spacing={1.25}
-              alignItems={{ md: "flex-start" }}
-            >
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ md: "flex-start" }}>
               <TextField
                 fullWidth
                 size="small"
@@ -572,13 +832,7 @@ export default function AdminSpecSheet() {
                   helperText="Comma or line separated"
                 />
               )}
-              <Button
-                variant="contained"
-                startIcon={<AddRoundedIcon />}
-                onClick={addField}
-                disabled={busy}
-                sx={{ minWidth: { sm: 132 } }}
-              >
+              <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={addField} disabled={busy}>
                 Add
               </Button>
             </Stack>
@@ -624,10 +878,7 @@ export default function AdminSpecSheet() {
                             size="small"
                             value={draft}
                             onChange={(event) =>
-                              setFieldDrafts((current) => ({
-                                ...current,
-                                [field._id]: event.target.value,
-                              }))
+                              setFieldDrafts((current) => ({ ...current, [field._id]: event.target.value }))
                             }
                           />
                         </TableCell>
@@ -639,15 +890,9 @@ export default function AdminSpecSheet() {
                             value={typeDraft}
                             onChange={(event) => {
                               const nextType = normalizeFieldType(event.target.value);
-                              setFieldTypeDrafts((current) => ({
-                                ...current,
-                                [field._id]: nextType,
-                              }));
+                              setFieldTypeDrafts((current) => ({ ...current, [field._id]: nextType }));
                               if (nextType !== "select") {
-                                setFieldOptionsDrafts((current) => ({
-                                  ...current,
-                                  [field._id]: "",
-                                }));
+                                setFieldOptionsDrafts((current) => ({ ...current, [field._id]: "" }));
                               }
                             }}
                           >
@@ -675,11 +920,7 @@ export default function AdminSpecSheet() {
                         <TableCell align="right">
                           <Tooltip title="Move up">
                             <span>
-                              <IconButton
-                                size="small"
-                                disabled={index === 0 || busy}
-                                onClick={() => reorderFields(index, index - 1)}
-                              >
+                              <IconButton size="small" disabled={index === 0 || busy} onClick={() => reorderFields(index, index - 1)}>
                                 <ArrowUpwardRoundedIcon fontSize="small" />
                               </IconButton>
                             </span>
@@ -697,23 +938,14 @@ export default function AdminSpecSheet() {
                           </Tooltip>
                           <Tooltip title="Save field">
                             <span>
-                              <IconButton
-                                size="small"
-                                disabled={!changed || busy}
-                                onClick={() => updateField(field)}
-                              >
+                              <IconButton size="small" disabled={!changed || busy} onClick={() => updateField(field)}>
                                 <SaveRoundedIcon fontSize="small" />
                               </IconButton>
                             </span>
                           </Tooltip>
                           <Tooltip title="Delete field">
                             <span>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                disabled={busy}
-                                onClick={() => deleteField(field)}
-                              >
+                              <IconButton size="small" color="error" disabled={busy} onClick={() => deleteField(field)}>
                                 <DeleteOutlineRoundedIcon fontSize="small" />
                               </IconButton>
                             </span>
@@ -728,16 +960,7 @@ export default function AdminSpecSheet() {
           </Box>
         </Paper>
 
-        <Paper
-          variant="outlined"
-          sx={{
-            mt: 2,
-            borderRadius: "8px",
-            borderColor: "divider",
-            overflow: "hidden",
-            bgcolor: "background.paper",
-          }}
-        >
+        <Paper variant="outlined" sx={{ mt: 2, borderRadius: "8px", overflow: "hidden" }}>
           <Box sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 900, mb: 0.5 }}>
               Extract Fields From PDF/Image
@@ -766,13 +989,11 @@ export default function AdminSpecSheet() {
                 {extracting ? "Extracting..." : "Extract"}
               </Button>
             </Stack>
-
             {extractionNotes && (
               <Alert severity="info" sx={{ mt: 2 }}>
                 {extractionNotes}
               </Alert>
             )}
-
             {extractedFields.length > 0 && (
               <Paper variant="outlined" sx={{ mt: 2, borderRadius: "8px", overflow: "hidden" }}>
                 <Box sx={{ p: 2 }}>
@@ -792,12 +1013,7 @@ export default function AdminSpecSheet() {
                       <Button onClick={() => saveExtracted("append")} disabled={busy}>
                         Append
                       </Button>
-                      <Button
-                        variant="contained"
-                        color="warning"
-                        onClick={() => saveExtracted("replace")}
-                        disabled={busy}
-                      >
+                      <Button variant="contained" color="warning" onClick={() => saveExtracted("replace")} disabled={busy}>
                         Replace
                       </Button>
                       <Button
@@ -842,7 +1058,7 @@ export default function AdminSpecSheet() {
       sx={{
         minHeight: "100%",
         p: { xs: 2, md: 3 },
-        bgcolor: (t) => (t.palette.mode === "dark" ? "background.default" : "#eef4ff"),
+        bgcolor: (theme) => (theme.palette.mode === "dark" ? "background.default" : "#eef4ff"),
       }}
     >
       <Stack
@@ -857,25 +1073,26 @@ export default function AdminSpecSheet() {
             Spec Sheet
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 1, fontSize: "1rem" }}>
-            Manage category field lists before connecting them to report generation.
+            Manage parent categories, child categories, and ordered field lists.
           </Typography>
         </Box>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+          <Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={loadSpecSheet} disabled={loading}>
+            Refresh
+          </Button>
           <Button
             variant="outlined"
-            startIcon={<RefreshRoundedIcon />}
-            onClick={() => loadCategories(search)}
-            disabled={loading}
+            onClick={() => window.open("/api/admin/spec-sheet/registry-json", "_blank", "noopener,noreferrer")}
           >
-            Refresh
+            Registry JSON
           </Button>
           <Button
             variant="contained"
             startIcon={<AddRoundedIcon />}
-            onClick={() => setCategoryDialog({ open: true, name: "", description: "" })}
+            onClick={() => setEditDialog({ open: true, kind: "parent", name: "", description: "" })}
             sx={{ boxShadow: "0 14px 28px rgba(79,70,229,0.22)" }}
           >
-            New Category
+            New Parent Category
           </Button>
         </Stack>
       </Stack>
@@ -910,13 +1127,10 @@ export default function AdminSpecSheet() {
         >
           <TextField
             size="small"
-            placeholder="Search categories"
+            placeholder="Search parents or unassigned child categories"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") loadCategories(search);
-            }}
-            sx={{ maxWidth: { md: 460 } }}
+            sx={{ maxWidth: { md: 520 } }}
             fullWidth
             InputProps={{
               startAdornment: (
@@ -927,11 +1141,9 @@ export default function AdminSpecSheet() {
             }}
           />
           <Stack direction="row" spacing={1} flexWrap="wrap">
-            <Chip label={`${categories.length} categories`} />
+            <Chip label={`${parents.length} parents`} />
+            <Chip label={`${categories.length} child categories`} />
             <Chip label={`${totalFields} fields`} />
-            <Button size="small" onClick={() => loadCategories(search)}>
-              Search
-            </Button>
           </Stack>
         </Stack>
       </Paper>
@@ -940,122 +1152,98 @@ export default function AdminSpecSheet() {
         <Stack alignItems="center" sx={{ py: 8 }}>
           <CircularProgress />
         </Stack>
-      ) : showEmptyState ? (
-        <Paper
-          variant="outlined"
-          sx={{
-            borderRadius: "8px",
-            borderStyle: "dashed",
-            borderColor: "rgba(99,102,241,0.35)",
-            bgcolor: "rgba(255,255,255,0.76)",
-            p: { xs: 3, md: 5 },
-            textAlign: "center",
-          }}
-        >
-          <Typography variant="h5" sx={{ fontWeight: 900 }}>
-            No categories yet
-          </Typography>
-          <Typography color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-            Create the first category, then open it to add ordered field names.
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddRoundedIcon />}
-            onClick={() => setCategoryDialog({ open: true, name: "", description: "" })}
-          >
-            Create Category
-          </Button>
-        </Paper>
       ) : (
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: {
-              xs: "1fr",
-              sm: "repeat(2, minmax(0, 1fr))",
-              xl: "repeat(3, minmax(0, 1fr))",
-            },
-            gap: 2,
-          }}
-        >
-          {categories.map((category) => (
-            <Paper
-              key={category._id}
-              component={ButtonBase}
-              onClick={() => openCategoryDrawer(category._id)}
-              variant="outlined"
-              sx={{
-                display: "block",
-                textAlign: "left",
-                borderRadius: "8px",
-                borderColor: "rgba(148,163,184,0.28)",
-                bgcolor: "background.paper",
-                p: 0,
-                overflow: "hidden",
-                transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
-                "&:hover": {
-                  transform: "translateY(-2px)",
-                  borderColor: "primary.main",
-                  boxShadow: "0 20px 48px rgba(37,99,235,0.12)",
-                },
-              }}
-            >
-              <Box sx={{ p: 2.25 }}>
-                <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                  <Box
-                    sx={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: "8px",
-                      display: "grid",
-                      placeItems: "center",
-                      bgcolor: "primary.main",
-                      color: "primary.contrastText",
-                      fontWeight: 900,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {categoryInitials(category.name)}
-                  </Box>
-                  <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.15 }}>
-                      {category.name}
-                    </Typography>
-                    <Typography
-                      color="text.secondary"
-                      sx={{
-                        mt: 0.75,
-                        minHeight: 44,
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {category.description || "No description added yet."}
-                    </Typography>
-                  </Box>
-                </Stack>
+        <Stack spacing={3}>
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+              <FolderRoundedIcon color="primary" />
+              <Typography variant="h5" sx={{ fontWeight: 950 }}>
+                Parent Categories
+              </Typography>
+            </Stack>
+            {filteredParents.length === 0 ? (
+              <EmptyPanel
+                title={parents.length === 0 ? "No parent categories yet" : "No parent categories match your search"}
+                body="Create parent categories, then add child categories and field names inside them."
+                actionLabel="Create Parent Category"
+                onAction={() => setEditDialog({ open: true, kind: "parent", name: "", description: "" })}
+              />
+            ) : (
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "repeat(2, minmax(0, 1fr))",
+                    xl: "repeat(3, minmax(0, 1fr))",
+                  },
+                  gap: 2,
+                }}
+              >
+                {filteredParents.map((parent) => (
+                  <ParentCard
+                    key={parent._id}
+                    parent={parent}
+                    childCount={childCounts.get(parent._id) || 0}
+                    fieldCount={fieldCounts.get(parent._id) || 0}
+                    onClick={() => openParent(parent._id)}
+                  />
+                ))}
               </Box>
-              <Divider />
-              <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ px: 2.25, py: 1.5 }}>
-                <Chip size="small" label={`${category.fields.length} fields`} sx={{ fontWeight: 700 }} />
-                <Typography variant="caption" color="text.secondary">
-                  Updated {formatUpdatedAt(category.updatedAt)}
+            )}
+          </Box>
+
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 950 }}>
+                  Unassigned Categories
                 </Typography>
+                <Typography color="text.secondary">
+                  Existing child categories remain here until an admin assigns a parent.
+                </Typography>
+              </Box>
+              <Button
+                variant="outlined"
+                startIcon={<AddRoundedIcon />}
+                onClick={() =>
+                  setEditDialog({
+                    open: true,
+                    kind: "category",
+                    name: "",
+                    description: "",
+                    parentCategoryId: "",
+                  })
+                }
+              >
+                New Unassigned Child
+              </Button>
+            </Stack>
+            {unassignedCategories.length === 0 ? (
+              <Paper
+                variant="outlined"
+                sx={{ p: 2.5, borderRadius: "8px", borderStyle: "dashed", color: "text.secondary" }}
+              >
+                No unassigned child categories.
+              </Paper>
+            ) : (
+              <Stack spacing={1.5}>
+                {unassignedCategories.map((category) => (
+                  <CategoryCard key={category._id} category={category} onClick={() => openCategory(category._id)} />
+                ))}
               </Stack>
-            </Paper>
-          ))}
-        </Box>
+            )}
+          </Box>
+        </Stack>
       )}
 
       <Drawer
         anchor="right"
-        open={drawerOpen && Boolean(selectedCategory)}
-        onClose={closeCategoryDrawer}
+        open={parentDrawerOpen && Boolean(selectedParent)}
+        onClose={() => setParentDrawerOpen(false)}
         PaperProps={{
           sx: {
-            width: { xs: "100%", md: 760, xl: 880 },
+            width: { xs: "100%", md: 720, xl: 820 },
             maxWidth: "100%",
             borderTopLeftRadius: { xs: 0, md: "8px" },
             borderBottomLeftRadius: { xs: 0, md: "8px" },
@@ -1063,32 +1251,73 @@ export default function AdminSpecSheet() {
           },
         }}
       >
-        {drawerContent}
+        {parentDrawer}
+      </Drawer>
+
+      <Drawer
+        anchor="right"
+        open={categoryDrawerOpen && Boolean(selectedCategory)}
+        onClose={() => setCategoryDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: { xs: "100%", md: 780, xl: 920 },
+            maxWidth: "100%",
+            borderTopLeftRadius: { xs: 0, md: "8px" },
+            borderBottomLeftRadius: { xs: 0, md: "8px" },
+            overflow: "hidden",
+          },
+        }}
+      >
+        {categoryDrawer}
       </Drawer>
 
       <Dialog
-        open={categoryDialog.open}
-        onClose={() => setCategoryDialog({ open: false, name: "", description: "" })}
+        open={editDialog.open}
+        onClose={() => setEditDialog({ open: false, name: "", description: "" })}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>{categoryDialog.id ? "Edit Category" : "New Category"}</DialogTitle>
+        <DialogTitle>
+          {editDialog.kind === "parent"
+            ? editDialog.id
+              ? "Edit Parent Category"
+              : "New Parent Category"
+            : editDialog.id
+              ? "Edit Child Category"
+              : "New Child Category"}
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
-              label="Category name"
-              value={categoryDialog.name}
-              onChange={(event) =>
-                setCategoryDialog((current) => ({ ...current, name: event.target.value }))
-              }
+              label={editDialog.kind === "parent" ? "Parent category name" : "Child category name"}
+              value={editDialog.name}
+              onChange={(event) => setEditDialog((current) => ({ ...current, name: event.target.value }))}
               autoFocus
               fullWidth
             />
+            {editDialog.kind === "category" && (
+              <TextField
+                select
+                label="Parent category"
+                value={editDialog.parentCategoryId || ""}
+                onChange={(event) =>
+                  setEditDialog((current) => ({ ...current, parentCategoryId: event.target.value }))
+                }
+                fullWidth
+              >
+                <MenuItem value="">Unassigned</MenuItem>
+                {parents.map((parent) => (
+                  <MenuItem key={parent._id} value={parent._id}>
+                    {parent.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
             <TextField
               label="Description"
-              value={categoryDialog.description}
+              value={editDialog.description}
               onChange={(event) =>
-                setCategoryDialog((current) => ({ ...current, description: event.target.value }))
+                setEditDialog((current) => ({ ...current, description: event.target.value }))
               }
               minRows={3}
               multiline
@@ -1097,14 +1326,169 @@ export default function AdminSpecSheet() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCategoryDialog({ open: false, name: "", description: "" })}>
+          <Button onClick={() => setEditDialog({ open: false, name: "", description: "" })}>
             Cancel
           </Button>
-          <Button variant="contained" disabled={busy} onClick={saveCategoryDialog}>
+          <Button variant="contained" disabled={busy} onClick={saveEditDialog}>
             Save
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
+  );
+}
+
+function ParentCard({
+  parent,
+  childCount,
+  fieldCount,
+  onClick,
+}: {
+  parent: SpecParentCategory;
+  childCount: number;
+  fieldCount: number;
+  onClick: () => void;
+}) {
+  return (
+    <Paper
+      component={ButtonBase}
+      onClick={onClick}
+      variant="outlined"
+      sx={{
+        display: "block",
+        textAlign: "left",
+        borderRadius: "8px",
+        borderColor: "rgba(148,163,184,0.28)",
+        bgcolor: "background.paper",
+        overflow: "hidden",
+        transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
+        "&:hover": {
+          transform: "translateY(-2px)",
+          borderColor: "primary.main",
+          boxShadow: "0 20px 48px rgba(37,99,235,0.12)",
+        },
+      }}
+    >
+      <Box sx={{ p: 2.25 }}>
+        <Stack direction="row" spacing={1.5} alignItems="flex-start">
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: "8px",
+              display: "grid",
+              placeItems: "center",
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+              fontWeight: 900,
+              flexShrink: 0,
+            }}
+          >
+            {initials(parent.name)}
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.15 }}>
+              {parent.name}
+            </Typography>
+            <Typography
+              color="text.secondary"
+              sx={{
+                mt: 0.75,
+                minHeight: 44,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {parent.description || "No description added yet."}
+            </Typography>
+          </Box>
+        </Stack>
+      </Box>
+      <Divider />
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ px: 2.25, py: 1.5 }}>
+        <Stack direction="row" spacing={1}>
+          <Chip size="small" label={`${childCount} children`} sx={{ fontWeight: 700 }} />
+          <Chip size="small" label={`${fieldCount} fields`} sx={{ fontWeight: 700 }} />
+        </Stack>
+        <Typography variant="caption" color="text.secondary">
+          Updated {formatUpdatedAt(parent.updatedAt)}
+        </Typography>
+      </Stack>
+    </Paper>
+  );
+}
+
+function CategoryCard({ category, onClick }: { category: SpecCategory; onClick: () => void }) {
+  return (
+    <Paper
+      component={ButtonBase}
+      onClick={onClick}
+      variant="outlined"
+      sx={{
+        width: "100%",
+        display: "block",
+        textAlign: "left",
+        borderRadius: "8px",
+        borderColor: "rgba(148,163,184,0.32)",
+        bgcolor: "background.paper",
+        p: 2,
+        transition: "border-color 140ms ease, box-shadow 140ms ease",
+        "&:hover": {
+          borderColor: "primary.main",
+          boxShadow: "0 16px 38px rgba(37,99,235,0.1)",
+        },
+      }}
+    >
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "center" }} justifyContent="space-between">
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 950, fontSize: "1.05rem" }}>{category.name}</Typography>
+          <Typography color="text.secondary" variant="body2" sx={{ mt: 0.35 }}>
+            {category.description || "No description added yet."}
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1} flexShrink={0}>
+          <Chip size="small" label={`${category.fields.length} fields`} />
+          <Chip size="small" variant="outlined" label={`Updated ${formatUpdatedAt(category.updatedAt)}`} />
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
+function EmptyPanel({
+  title,
+  body,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  body: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        borderRadius: "8px",
+        borderStyle: "dashed",
+        borderColor: "rgba(99,102,241,0.35)",
+        bgcolor: "rgba(255,255,255,0.76)",
+        p: { xs: 3, md: 5 },
+        textAlign: "center",
+      }}
+    >
+      <Typography variant="h5" sx={{ fontWeight: 900 }}>
+        {title}
+      </Typography>
+      <Typography color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+        {body}
+      </Typography>
+      <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={onAction}>
+        {actionLabel}
+      </Button>
+    </Paper>
   );
 }
