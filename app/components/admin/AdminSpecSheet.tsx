@@ -249,7 +249,7 @@ export default function AdminSpecSheet() {
       setParents(parentData.data || []);
       setCategories(categoryData.data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load Spec Sheet");
+      setError(err instanceof Error ? err.message : "Unable to load CR Management");
     } finally {
       setLoading(false);
     }
@@ -375,7 +375,7 @@ export default function AdminSpecSheet() {
       }
       setEditDialog({ open: false, name: "", description: "" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save Spec Sheet item");
+      setError(err instanceof Error ? err.message : "Unable to save CR Management item");
     } finally {
       setBusy(false);
     }
@@ -1070,10 +1070,10 @@ export default function AdminSpecSheet() {
       >
         <Box>
           <Typography variant="h3" sx={{ fontWeight: 950, letterSpacing: 0, lineHeight: 1 }}>
-            Spec Sheet
+            CR Management
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 1, fontSize: "1rem" }}>
-            Manage parent categories, child categories, and ordered field lists.
+            Manage CR parent categories, child categories, and ordered field lists.
           </Typography>
         </Box>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
