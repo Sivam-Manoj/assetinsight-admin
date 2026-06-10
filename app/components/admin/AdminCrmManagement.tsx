@@ -1645,6 +1645,31 @@ export default function AdminCrmManagement() {
     });
   }
 
+  function removePreviewRows(rowNumbers: number[]) {
+    const rowNumberSet = new Set(rowNumbers);
+    if (rowNumberSet.size === 0) return;
+
+    setPreviewRows((prev) => prev.filter((row) => !rowNumberSet.has(row.rowNumber)));
+    setDuplicateIssues((prev) => prev.filter((issue) => !rowNumberSet.has(issue.rowNumber)));
+    setSelectedPreviewRows((prev) => prev.filter((rowNumber) => !rowNumberSet.has(rowNumber)));
+    setPreviewDueDateOverrides((prev) => {
+      const next = { ...prev };
+      rowNumberSet.forEach((rowNumber) => {
+        delete next[rowNumber];
+      });
+      return next;
+    });
+
+    if (importPreviewSource === "autoFind") {
+      const autoFindRowIndexes = new Set(
+        [...rowNumberSet]
+          .map((rowNumber) => rowNumber - 2)
+          .filter((index) => index >= 0)
+      );
+      setAutoFindPreviewResultIds((prev) => prev.filter((_, index) => !autoFindRowIndexes.has(index)));
+    }
+  }
+
   function applyBulkPreviewDueDate() {
     if (!bulkPreviewDueDate) {
       pushToast("Choose a due date to apply", "error");
@@ -1707,8 +1732,8 @@ export default function AdminCrmManagement() {
       return;
     }
 
-    if (duplicateIssues.length > 0) {
-      pushToast("Remove duplicate rows before importing", "error");
+    if (readyPreviewRows === 0) {
+      pushToast("No ready rows to import. Remove duplicates or choose a different file.", "error");
       return;
     }
 
@@ -2327,8 +2352,7 @@ export default function AdminCrmManagement() {
   const importPreviewCanImport =
     !importPreviewBusy &&
     !parsingPreview &&
-    previewRows.length > 0 &&
-    duplicateIssues.length === 0 &&
+    readyPreviewRows > 0 &&
     Boolean(excelFile);
   useEffect(() => {
     setAutoFindRegions((prev) => prev.filter((region) => autoFindRegionOptions.includes(region)));
@@ -4033,7 +4057,7 @@ export default function AdminCrmManagement() {
           <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
             <Box>
               <Typography variant="h6" fontWeight={800}>CRM Excel Upload Preview</Typography>
-              <Typography variant="body2" color="text.secondary">Extracted rows shown below. Duplicates are blocked before upload.</Typography>
+              <Typography variant="body2" color="text.secondary">Extracted rows shown below. Duplicate rows are skipped during upload.</Typography>
             </Box>
             <IconButton size="small" disabled={importPreviewBusy} onClick={closeImportPreviewModal}><CloseRoundedIcon /></IconButton>
           </DialogTitle>
@@ -4051,11 +4075,18 @@ export default function AdminCrmManagement() {
                     onClick={() => void onImportLeads()}
                     disabled={!importPreviewCanImport}
                   >
-                    {importPreviewBusy ? "Importing…" : "Import Leads to CRM"}
+                    {importPreviewBusy ? "Importing..." : rowCountWithDuplicates > 0 ? "Import Ready Leads" : "Import Leads to CRM"}
                   </Button>
-                  {previewRows.length > 0 && !duplicateIssues.length && (excelFile || isAutoFindImportPreview) && (
-                    <Typography variant="caption" color="success.main" sx={{ mt: 0.5, display: "block", textAlign: "center" }}>
-                      {readyPreviewRows} leads ready to import
+                  {previewRows.length > 0 && (excelFile || isAutoFindImportPreview) && (
+                    <Typography
+                      variant="caption"
+                      color={rowCountWithDuplicates > 0 ? "warning.main" : "success.main"}
+                      sx={{ mt: 0.5, display: "block", textAlign: "center" }}
+                    >
+                      {readyPreviewRows} ready
+                      {rowCountWithDuplicates > 0
+                        ? `, ${rowCountWithDuplicates} duplicate${rowCountWithDuplicates === 1 ? "" : "s"} will be skipped`
+                        : " to import"}
                     </Typography>
                   )}
                 </Box>
@@ -4183,10 +4214,24 @@ export default function AdminCrmManagement() {
 
                   {duplicateIssues.length > 0 && (
                     <Alert severity="warning" sx={{ mt: 2 }}>
-                      <Typography variant="subtitle2">Duplicate entries detected</Typography>
-                      <Typography variant="caption">
-                        {isAutoFindImportPreview ? "Remove duplicate auto-found rows before importing." : "Remove duplicates from file before importing."}
-                      </Typography>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "flex-start" }} justifyContent="space-between">
+                        <Box>
+                          <Typography variant="subtitle2">Duplicate entries detected</Typography>
+                          <Typography variant="caption">
+                            Duplicate rows are skipped during upload. You can remove them from this preview to clean up the list.
+                          </Typography>
+                        </Box>
+                        <Button
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                          onClick={() => removePreviewRows([...duplicateIssuesByRow.keys()])}
+                          disabled={importPreviewBusy}
+                          sx={{ flexShrink: 0 }}
+                        >
+                          Remove duplicates
+                        </Button>
+                      </Stack>
                       <Box component="ul" sx={{ mt: 1, pl: 2, maxHeight: 120, overflow: "auto" }}>
                         {duplicateIssues.slice(0, 12).map((issue, idx) => (
                           <Typography component="li" variant="caption" key={`${issue.rowNumber}-${idx}`}>Row {issue.rowNumber}: {issue.reason}</Typography>
@@ -4266,9 +4311,22 @@ export default function AdminCrmManagement() {
                               </Stack>
                               {row.notes && <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }} noWrap>{row.notes}</Typography>}
                               {hasIssue && (
-                                <Alert severity="warning" sx={{ mt: 1, py: 0, "& .MuiAlert-message": { py: 0.5 } }}>
-                                  {issues.map((reason, idx) => <Typography variant="caption" display="block" key={`${row.rowNumber}-${idx}`}>{reason}</Typography>)}
-                                </Alert>
+                                <>
+                                  <Alert severity="warning" sx={{ mt: 1, py: 0, "& .MuiAlert-message": { py: 0.5 } }}>
+                                    {issues.map((reason, idx) => <Typography variant="caption" display="block" key={`${row.rowNumber}-${idx}`}>{reason}</Typography>)}
+                                  </Alert>
+                                  <Button
+                                    size="small"
+                                    color="warning"
+                                    variant="outlined"
+                                    startIcon={<DeleteRoundedIcon sx={{ fontSize: 16 }} />}
+                                    onClick={() => removePreviewRows([row.rowNumber])}
+                                    disabled={importPreviewBusy}
+                                    sx={{ mt: 1 }}
+                                  >
+                                    Remove from preview
+                                  </Button>
+                                </>
                               )}
                             </CardContent>
                           </Card>
