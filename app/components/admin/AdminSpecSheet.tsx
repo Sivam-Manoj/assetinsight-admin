@@ -16,6 +16,7 @@ import {
   Box,
   Button,
   ButtonBase,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -26,6 +27,7 @@ import {
   Drawer,
   IconButton,
   InputAdornment,
+  FormControlLabel,
   MenuItem,
   Paper,
   Stack,
@@ -40,7 +42,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type SpecFieldType = "text" | "number" | "select";
+type SpecFieldType = "text" | "number" | "select" | "checkbox";
 
 type SpecField = {
   _id: string;
@@ -48,6 +50,7 @@ type SpecField = {
   normalizedName: string;
   order: number;
   type?: SpecFieldType;
+  required?: boolean;
   options?: string[];
 };
 
@@ -74,6 +77,23 @@ type SpecParentCategory = {
 type ExtractedField = {
   name: string;
   order: number;
+  type?: SpecFieldType;
+  required?: boolean;
+  options?: string[];
+};
+
+type WorkbookImportSummary = {
+  parents: Array<{ name: string; normalizedName: string }>;
+  children: Array<{ name: string; normalizedName: string; parentName: string; fields: SpecField[] }>;
+  warnings: string[];
+  stats: {
+    parentCount: number;
+    childCount: number;
+    fieldCount: number;
+    duplicateFieldCount: number;
+  };
+  deletedParents?: number;
+  deletedChildren?: number;
 };
 
 type EditDialogState =
@@ -105,7 +125,7 @@ function normalizeFieldName(value: string) {
 }
 
 function normalizeFieldType(value: unknown): SpecFieldType {
-  return value === "number" || value === "select" ? value : "text";
+  return value === "number" || value === "select" || value === "checkbox" ? value : "text";
 }
 
 function optionsToDraft(options: unknown): string {
@@ -117,7 +137,8 @@ function optionsToDraft(options: unknown): string {
 function parseOptions(value: string): string[] {
   const seen = new Set<string>();
   const next: string[] = [];
-  for (const raw of value.split(/[\n,]+/g)) {
+  const rawValues = value.includes(" / ") ? value.split(/\s+\/\s+/g) : value.split(/[\n,]+/g);
+  for (const raw of rawValues) {
     const option = raw.trim().replace(/\s+/g, " ");
     if (!option) continue;
     const key = normalizeFieldName(option);
@@ -169,13 +190,20 @@ export default function AdminSpecSheet() {
   const [fieldDrafts, setFieldDrafts] = useState<Record<string, string>>({});
   const [fieldTypeDrafts, setFieldTypeDrafts] = useState<Record<string, SpecFieldType>>({});
   const [fieldOptionsDrafts, setFieldOptionsDrafts] = useState<Record<string, string>>({});
+  const [fieldRequiredDrafts, setFieldRequiredDrafts] = useState<Record<string, boolean>>({});
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState<SpecFieldType>("text");
   const [newFieldOptions, setNewFieldOptions] = useState("");
+  const [newFieldRequired, setNewFieldRequired] = useState(false);
   const [extractFile, setExtractFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [extractionNotes, setExtractionNotes] = useState("");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<WorkbookImportSummary | null>(null);
+  const [importConfirmed, setImportConfirmed] = useState(false);
+  const [importingWorkbook, setImportingWorkbook] = useState(false);
 
   const selectedParent = useMemo(
     () => parents.find((parent) => parent._id === selectedParentId) || null,
@@ -264,6 +292,7 @@ export default function AdminSpecSheet() {
       setFieldDrafts({});
       setFieldTypeDrafts({});
       setFieldOptionsDrafts({});
+      setFieldRequiredDrafts({});
       setCategoryDrawerOpen(false);
       return;
     }
@@ -280,12 +309,18 @@ export default function AdminSpecSheet() {
         selectedCategory.fields.map((field) => [field._id, optionsToDraft(field.options)])
       )
     );
+    setFieldRequiredDrafts(
+      Object.fromEntries(
+        selectedCategory.fields.map((field) => [field._id, Boolean(field.required)])
+      )
+    );
   }, [selectedCategory]);
 
   useEffect(() => {
     setNewFieldName("");
     setNewFieldType("text");
     setNewFieldOptions("");
+    setNewFieldRequired(false);
     setExtractFile(null);
     setExtractedFields([]);
     setExtractionNotes("");
@@ -450,7 +485,8 @@ export default function AdminSpecSheet() {
           body: JSON.stringify({
             name,
             type: newFieldType,
-            options: newFieldType === "select" ? parseOptions(newFieldOptions) : [],
+            required: newFieldRequired,
+            options: newFieldType === "select" || newFieldType === "checkbox" ? parseOptions(newFieldOptions) : [],
           }),
         })
       );
@@ -458,6 +494,7 @@ export default function AdminSpecSheet() {
       setNewFieldName("");
       setNewFieldType("text");
       setNewFieldOptions("");
+      setNewFieldRequired(false);
       setSuccess(data.message || "Field added");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to add field");
@@ -470,7 +507,8 @@ export default function AdminSpecSheet() {
     if (!selectedCategory) return;
     const name = (fieldDrafts[field._id] || "").trim();
     const type = normalizeFieldType(fieldTypeDrafts[field._id] || field.type);
-    const options = type === "select" ? parseOptions(fieldOptionsDrafts[field._id] || "") : [];
+    const required = Boolean(fieldRequiredDrafts[field._id]);
+    const options = type === "select" || type === "checkbox" ? parseOptions(fieldOptionsDrafts[field._id] || "") : [];
     if (!name) {
       setError("Field name is required");
       return;
@@ -485,7 +523,7 @@ export default function AdminSpecSheet() {
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, type, options }),
+            body: JSON.stringify({ name, type, required, options }),
           }
         )
       );
@@ -598,6 +636,65 @@ export default function AdminSpecSheet() {
       setError(err instanceof Error ? err.message : "Unable to save extracted fields");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function previewWorkbookImport() {
+    if (!importFile) return;
+    setImportingWorkbook(true);
+    setError("");
+    setSuccess("");
+    setImportPreview(null);
+    setImportConfirmed(false);
+    try {
+      const form = new FormData();
+      form.append("file", importFile);
+      const data = await readJson<{ data: WorkbookImportSummary; message?: string }>(
+        await fetch("/api/admin/spec-sheet/import-workbook?dryRun=true", {
+          method: "POST",
+          body: form,
+        })
+      );
+      setImportPreview(data.data);
+      setSuccess(data.message || "Workbook parsed for review");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to parse workbook");
+    } finally {
+      setImportingWorkbook(false);
+    }
+  }
+
+  async function replaceRegistryFromWorkbook() {
+    if (!importFile || !importPreview || !importConfirmed) return;
+    setImportingWorkbook(true);
+    setError("");
+    setSuccess("");
+    try {
+      const form = new FormData();
+      form.append("file", importFile);
+      form.append("mode", "replace");
+      const data = await readJson<{ data: WorkbookImportSummary; message?: string }>(
+        await fetch("/api/admin/spec-sheet/import-workbook?mode=replace", {
+          method: "POST",
+          body: form,
+        })
+      );
+      setImportDialogOpen(false);
+      setImportFile(null);
+      setImportPreview(null);
+      setImportConfirmed(false);
+      setSelectedParentId("");
+      setSelectedCategoryId("");
+      setParentDrawerOpen(false);
+      setCategoryDrawerOpen(false);
+      setSuccess(
+        `${data.message || "Workbook imported"}: ${data.data.stats.parentCount} parents, ${data.data.stats.childCount} child categories, ${data.data.stats.fieldCount} fields`
+      );
+      await loadSpecSheet();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to import workbook");
+    } finally {
+      setImportingWorkbook(false);
     }
   }
 
@@ -820,16 +917,27 @@ export default function AdminSpecSheet() {
                 <MenuItem value="text">Text</MenuItem>
                 <MenuItem value="number">Number</MenuItem>
                 <MenuItem value="select">Select</MenuItem>
+                <MenuItem value="checkbox">Checkbox</MenuItem>
               </TextField>
-              {newFieldType === "select" && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={newFieldRequired}
+                    onChange={(event) => setNewFieldRequired(event.target.checked)}
+                  />
+                }
+                label="Required"
+                sx={{ minWidth: { md: 118 } }}
+              />
+              {(newFieldType === "select" || newFieldType === "checkbox") && (
                 <TextField
                   fullWidth
                   size="small"
-                  label="Select values"
+                  label={newFieldType === "checkbox" ? "Checkbox values" : "Select values"}
                   placeholder="Option 1, Option 2, Option 3"
                   value={newFieldOptions}
                   onChange={(event) => setNewFieldOptions(event.target.value)}
-                  helperText="Comma or line separated"
+                  helperText="Use /, comma, or line breaks"
                 />
               )}
               <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={addField} disabled={busy}>
@@ -845,6 +953,7 @@ export default function AdminSpecSheet() {
                   <TableCell width={70}>#</TableCell>
                   <TableCell>Field Name</TableCell>
                   <TableCell width={150}>Type</TableCell>
+                  <TableCell width={120}>Required</TableCell>
                   <TableCell>Values</TableCell>
                   <TableCell width={176} align="right">
                     Actions
@@ -854,7 +963,7 @@ export default function AdminSpecSheet() {
               <TableBody>
                 {selectedCategory.fields.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} sx={{ color: "text.secondary", py: 3 }}>
+                    <TableCell colSpan={6} sx={{ color: "text.secondary", py: 3 }}>
                       Add fields manually or extract them from a PDF/image.
                     </TableCell>
                   </TableRow>
@@ -863,9 +972,11 @@ export default function AdminSpecSheet() {
                     const draft = fieldDrafts[field._id] ?? field.name;
                     const typeDraft = normalizeFieldType(fieldTypeDrafts[field._id] || field.type);
                     const optionsDraft = fieldOptionsDrafts[field._id] ?? optionsToDraft(field.options);
+                    const requiredDraft = Boolean(fieldRequiredDrafts[field._id]);
                     const changed =
                       draft.trim() !== field.name ||
                       typeDraft !== normalizeFieldType(field.type) ||
+                      requiredDraft !== Boolean(field.required) ||
                       optionsToDraft(parseOptions(optionsDraft)) !== optionsToDraft(field.options);
                     return (
                       <TableRow key={field._id} hover>
@@ -891,7 +1002,7 @@ export default function AdminSpecSheet() {
                             onChange={(event) => {
                               const nextType = normalizeFieldType(event.target.value);
                               setFieldTypeDrafts((current) => ({ ...current, [field._id]: nextType }));
-                              if (nextType !== "select") {
+                              if (nextType !== "select" && nextType !== "checkbox") {
                                 setFieldOptionsDrafts((current) => ({ ...current, [field._id]: "" }));
                               }
                             }}
@@ -899,22 +1010,46 @@ export default function AdminSpecSheet() {
                             <MenuItem value="text">Text</MenuItem>
                             <MenuItem value="number">Number</MenuItem>
                             <MenuItem value="select">Select</MenuItem>
+                            <MenuItem value="checkbox">Checkbox</MenuItem>
+                          </TextField>
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            select
+                            fullWidth
+                            size="small"
+                            value={requiredDraft ? "yes" : "no"}
+                            onChange={(event) =>
+                              setFieldRequiredDrafts((current) => ({
+                                ...current,
+                                [field._id]: event.target.value === "yes",
+                              }))
+                            }
+                          >
+                            <MenuItem value="no">No</MenuItem>
+                            <MenuItem value="yes">Yes</MenuItem>
                           </TextField>
                         </TableCell>
                         <TableCell>
                           <TextField
                             fullWidth
                             size="small"
-                            value={typeDraft === "select" ? optionsDraft : ""}
-                            placeholder={typeDraft === "select" ? "Red, Blue, Green, Black" : "Not used"}
-                            disabled={typeDraft !== "select"}
+                            value={typeDraft === "select" || typeDraft === "checkbox" ? optionsDraft : ""}
+                            placeholder={typeDraft === "select" || typeDraft === "checkbox" ? "Red / Blue / Green / Black" : "Not used"}
+                            disabled={typeDraft !== "select" && typeDraft !== "checkbox"}
                             onChange={(event) =>
                               setFieldOptionsDrafts((current) => ({
                                 ...current,
                                 [field._id]: event.target.value,
                               }))
                             }
-                            helperText={typeDraft === "select" ? "Software will choose one value" : " "}
+                            helperText={
+                              typeDraft === "select"
+                                ? "Software will choose one value"
+                                : typeDraft === "checkbox"
+                                  ? "One or more checkbox values"
+                                  : " "
+                            }
                           />
                         </TableCell>
                         <TableCell align="right">
@@ -1079,6 +1214,18 @@ export default function AdminSpecSheet() {
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
           <Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={loadSpecSheet} disabled={loading}>
             Refresh
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<UploadFileRoundedIcon />}
+            onClick={() => {
+              setImportDialogOpen(true);
+              setImportFile(null);
+              setImportPreview(null);
+              setImportConfirmed(false);
+            }}
+          >
+            Import Excel
           </Button>
           <Button
             variant="outlined"
@@ -1272,6 +1419,112 @@ export default function AdminSpecSheet() {
       </Drawer>
 
       <Dialog
+        open={importDialogOpen}
+        onClose={() => {
+          if (importingWorkbook) return;
+          setImportDialogOpen(false);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Import CR Management Excel</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Alert severity="warning">
+              This replaces the database CR Management registry with the uploaded workbook. Asset and Lot Listing generation still uses the generated v2 file registry until the future DB runtime switch.
+            </Alert>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "center" }}>
+              <Button variant="outlined" component="label" startIcon={<UploadFileRoundedIcon />}>
+                Choose Excel
+                <input
+                  hidden
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(event) => {
+                    setImportFile(event.target.files?.[0] || null);
+                    setImportPreview(null);
+                    setImportConfirmed(false);
+                  }}
+                />
+              </Button>
+              <Typography color="text.secondary" sx={{ flex: 1 }}>
+                {importFile ? importFile.name : "Upload McDougall_Child_Category_Specifications_Reordered_v2.xlsx"}
+              </Typography>
+              <Button variant="contained" disabled={!importFile || importingWorkbook} onClick={previewWorkbookImport}>
+                {importingWorkbook && !importPreview ? "Parsing..." : "Preview"}
+              </Button>
+            </Stack>
+
+            {importPreview && (
+              <Paper variant="outlined" sx={{ borderRadius: "8px", overflow: "hidden" }}>
+                <Box sx={{ p: 2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                    Import Summary
+                  </Typography>
+                  <GridSummary
+                    items={[
+                      { label: "Parents", value: importPreview.stats.parentCount },
+                      { label: "Child categories", value: importPreview.stats.childCount },
+                      { label: "Fields", value: importPreview.stats.fieldCount },
+                      { label: "Duplicates skipped", value: importPreview.stats.duplicateFieldCount },
+                    ]}
+                  />
+                  {importPreview.warnings.length > 0 && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      <Typography sx={{ fontWeight: 800 }}>Warnings</Typography>
+                      <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2, maxHeight: 150, overflow: "auto" }}>
+                        {importPreview.warnings.slice(0, 20).map((warning, index) => (
+                          <Typography component="li" variant="caption" key={`${warning}-${index}`}>
+                            {warning}
+                          </Typography>
+                        ))}
+                        {importPreview.warnings.length > 20 && (
+                          <Typography component="li" variant="caption">
+                            +{importPreview.warnings.length - 20} more
+                          </Typography>
+                        )}
+                      </Box>
+                    </Alert>
+                  )}
+                  <FormControlLabel
+                    sx={{ mt: 1.5 }}
+                    control={
+                      <Checkbox
+                        checked={importConfirmed}
+                        onChange={(event) => setImportConfirmed(event.target.checked)}
+                      />
+                    }
+                    label="I understand this will replace the CR Management database registry"
+                  />
+                </Box>
+              </Paper>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setImportDialogOpen(false);
+              setImportFile(null);
+              setImportPreview(null);
+              setImportConfirmed(false);
+            }}
+            disabled={importingWorkbook}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={!importPreview || !importConfirmed || importingWorkbook}
+            onClick={replaceRegistryFromWorkbook}
+          >
+            {importingWorkbook && importPreview ? "Importing..." : "Replace Registry"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
         open={editDialog.open}
         onClose={() => setEditDialog({ open: false, name: "", description: "" })}
         maxWidth="sm"
@@ -1417,6 +1670,30 @@ function ParentCard({
         </Typography>
       </Stack>
     </Paper>
+  );
+}
+
+function GridSummary({ items }: { items: Array<{ label: string; value: number | string }> }) {
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))" },
+        gap: 1,
+        mt: 1.5,
+      }}
+    >
+      {items.map((item) => (
+        <Paper key={item.label} variant="outlined" sx={{ p: 1.25, borderRadius: "8px" }}>
+          <Typography variant="caption" color="text.secondary">
+            {item.label}
+          </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 900 }}>
+            {item.value}
+          </Typography>
+        </Paper>
+      ))}
+    </Box>
   );
 }
 
