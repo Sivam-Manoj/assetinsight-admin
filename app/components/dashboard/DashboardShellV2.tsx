@@ -37,7 +37,7 @@ type StatsState = {
   totalUsers: number;
   totalAdmins: number;
   totalReports: number;
-  byType: { Asset: number; RealEstate: number; Salvage: number };
+  byType: { Asset: number; LotListing: number; RealEstate: number; Salvage: number };
 } | null;
 
 type OpenAICreditsStatus = "ok" | "low" | "depleted" | "unavailable";
@@ -109,13 +109,14 @@ const statCards: Array<{
 ];
 
 const reportCards: Array<{
-  key: "Asset" | "RealEstate" | "Salvage";
+  key: "Asset" | "LotListing" | "RealEstate" | "Salvage";
   label: string;
   icon: ReactNode;
   color: string;
   iconBg: string;
 }> = [
   { key: "Asset", label: "Asset Reports", icon: <WarehouseRoundedIcon />, color: "#2563eb", iconBg: "#dbeafe" },
+  { key: "LotListing", label: "Lot Listing Reports", icon: <AssessmentRoundedIcon />, color: "#7c3aed", iconBg: "#ede9fe" },
   { key: "RealEstate", label: "Real Estate Reports", icon: <DashboardRoundedIcon />, color: "#16a34a", iconBg: "#dcfce7" },
   { key: "Salvage", label: "Salvage Reports", icon: <CheckCircleRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
 ];
@@ -191,7 +192,7 @@ const compactHoverSx = {
 
 function metricProgress(value: number, stats: StatsState, key: string) {
   if (!value) return 0;
-  if (key === "Asset" || key === "RealEstate" || key === "Salvage") {
+  if (key === "Asset" || key === "LotListing" || key === "RealEstate" || key === "Salvage") {
     const totalReports = stats?.totalReports || 1;
     return Math.min(100, Math.max(28, (value / totalReports) * 100));
   }
@@ -375,7 +376,7 @@ export default function DashboardShellV2() {
         }}
       >
         <Grid container spacing={1.5} alignItems="stretch">
-          <Grid size={{ xs: 12, lg: 6 }}>
+          <Grid size={{ xs: 12, lg: 8 }}>
             <Card sx={{ ...surfaceSx, ...compactHoverSx }}>
               <CardContent sx={{ p: { xs: 2, md: 3 }, height: "100%" }}>
                 <Stack spacing={2.25} sx={{ height: "100%" }}>
@@ -507,16 +508,16 @@ export default function DashboardShellV2() {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, lg: 6 }}>
+          <Grid size={{ xs: 12, lg: 4 }}>
             <Card sx={{ ...surfaceSx, ...compactHoverSx }}>
-              <CardContent sx={{ p: { xs: 2, md: 3 }, height: "100%" }}>
-                <Stack spacing={1.75} sx={{ height: "100%" }}>
+              <CardContent sx={{ p: { xs: 2, md: 2.25 }, height: "100%" }}>
+                <Stack spacing={1.35} sx={{ height: "100%" }}>
                   <Stack direction="row" spacing={1.5} alignItems="flex-start" justifyContent="space-between">
-                    <Stack direction="row" spacing={1.75} alignItems="center" minWidth={0}>
+                    <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
                       <Box
                         sx={{
-                          width: 60,
-                          height: 60,
+                          width: 48,
+                          height: 48,
                           borderRadius: "999px",
                           display: "grid",
                           placeItems: "center",
@@ -526,8 +527,8 @@ export default function DashboardShellV2() {
                       >
                         <Box
                           sx={{
-                            width: 42,
-                            height: 42,
+                            width: 34,
+                            height: 34,
                             borderRadius: "999px",
                             display: "grid",
                             placeItems: "center",
@@ -540,26 +541,27 @@ export default function DashboardShellV2() {
                         </Box>
                       </Box>
                       <Box minWidth={0}>
-                        <Typography variant="h5" sx={{ fontWeight: 950, lineHeight: 1.08 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.08 }}>
                           Software Credits
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          10 second refresh
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", fontWeight: 650 }}>
+                          Compact usage monitor
                         </Typography>
                       </Box>
                     </Stack>
 
-                    <Stack spacing={1} alignItems="flex-end">
+                    <Stack spacing={0.75} alignItems="flex-end">
                       <Chip
+                        size="small"
                         label={creditMeta.label}
                         sx={{
-                          height: 40,
-                          px: 1.25,
-                          borderRadius: "10px",
+                          height: 28,
+                          px: 0.75,
+                          borderRadius: "8px",
                           bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(creditMeta.color, 0.15) : creditMeta.bg),
                           color: creditMeta.color,
                           border: `1px solid ${alpha(creditMeta.color, 0.24)}`,
-                          fontSize: 16,
+                          fontSize: 12,
                           fontWeight: 850,
                         }}
                       />
@@ -570,9 +572,10 @@ export default function DashboardShellV2() {
                         onClick={() => loadOpenAICredits(true)}
                         disabled={creditsLoading}
                         sx={{
-                          minHeight: 38,
-                          borderRadius: "9px",
-                          px: 1.5,
+                          minHeight: 30,
+                          borderRadius: "8px",
+                          px: 1,
+                          fontSize: 12,
                           color: "text.primary",
                           borderColor: (theme) =>
                             theme.palette.mode === "dark" ? alpha("#93a9c8", 0.28) : alpha("#94a3b8", 0.45),
@@ -589,8 +592,8 @@ export default function DashboardShellV2() {
                       Remaining
                     </Typography>
                     <Typography
-                      variant="h3"
-                      sx={{ mt: 0.25, fontWeight: 950, lineHeight: 1, fontSize: { xs: 34, md: 42 } }}
+                      variant="h4"
+                      sx={{ mt: 0.25, fontWeight: 950, lineHeight: 1, fontSize: { xs: 30, md: 34 } }}
                       suppressHydrationWarning
                     >
                       {creditsLoading && !credits ? "..." : formatCredits(credits?.remainingCredits, "Set budget")}
@@ -600,7 +603,7 @@ export default function DashboardShellV2() {
                       value={creditSpentPercent}
                       sx={{
                         mt: 1.25,
-                        height: 8,
+                        height: 6,
                         borderRadius: 999,
                         bgcolor: alpha("#16a34a", 0.16),
                         "& .MuiLinearProgress-bar": {
@@ -619,15 +622,13 @@ export default function DashboardShellV2() {
                     </Stack>
                   </Box>
 
-                  <Divider />
-
                   <Box
                     sx={{
                       border: "1px solid",
                       borderColor: (theme) =>
                         theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
-                      borderRadius: "12px",
-                      p: { xs: 1.25, sm: 1.5 },
+                      borderRadius: "10px",
+                      p: { xs: 1, sm: 1.15 },
                       bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#0f172a", 0.28) : alpha("#f8fafc", 0.8)),
                     }}
                   >
@@ -649,8 +650,8 @@ export default function DashboardShellV2() {
                             }}
                           />
                         </Stack>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-                          Off uses only specs found in uploaded images and provided data. Turn on only when you want web research to fill missing Auctioneer fields.
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.35, display: "block", lineHeight: 1.35 }}>
+                          Off uses uploaded images and provided data only.
                         </Typography>
                         {specWebSearchError ? (
                           <Typography variant="caption" sx={{ mt: 0.75, display: "block", color: "#dc2626", fontWeight: 800 }}>
@@ -669,58 +670,58 @@ export default function DashboardShellV2() {
                     </Stack>
                   </Box>
 
-                  <Divider />
-
                   <Box
                     sx={{
                       display: "grid",
-                      gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "1fr 1fr 1.2fr" },
-                      gap: { xs: 1.5, md: 2 },
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 1,
                       alignItems: "stretch",
                     }}
                   >
-                    <Stack spacing={1.35}>
+                    <Stack spacing={0.85}>
                       <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Live used
+                        <Typography variant="caption" color="text.secondary">
+                          Used
                         </Typography>
-                        <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
                           {formatCreditsFromUsd(credits?.localLedgerSpentUsd, credits?.creditMultiplier)}
                         </Typography>
                       </Box>
                       <Divider />
                       <Box>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="caption" color="text.secondary">
                           Requests
                         </Typography>
-                        <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
                           {credits ? numberFormatter.format(credits.requestCount) : "--"}
                         </Typography>
                       </Box>
                     </Stack>
 
                     <Stack
-                      spacing={1.35}
+                      spacing={0.85}
                       sx={{
-                        pl: { sm: 2 },
-                        borderLeft: { sm: "1px solid" },
+                        pl: 1.25,
+                        borderLeft: "1px solid",
                         borderColor: "divider",
                       }}
                     >
                       <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Software used
+                        <Typography variant="caption" color="text.secondary">
+                          Software model
                         </Typography>
-                        <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
-                          {formatCreditsFromUsd(credits?.officialOpenAISpentUsd, credits?.creditMultiplier)}
+                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
+                          {credits?.modelBreakdown?.length
+                            ? `${formatCredits(credits.modelBreakdown.reduce((sum, item) => sum + item.creditsDeducted, 0))} cr`
+                            : "--"}
                         </Typography>
                       </Box>
                       <Divider />
                       <Box>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="caption" color="text.secondary">
                           Web searches
                         </Typography>
-                        <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
                           {credits ? numberFormatter.format(credits.webSearchCalls) : "--"}
                         </Typography>
                       </Box>
@@ -729,30 +730,13 @@ export default function DashboardShellV2() {
                     <Stack
                       spacing={1}
                       sx={{
-                        gridColumn: { xs: "1 / -1", sm: "auto" },
-                        pl: { sm: 2 },
-                        borderLeft: { sm: "1px solid" },
+                        gridColumn: "1 / -1",
+                        pt: 1,
+                        borderTop: "1px solid",
                         borderColor: "divider",
                       }}
                     >
-                      {credits?.modelBreakdown?.length ? (
-                        credits.modelBreakdown.slice(0, 2).map((item, index) => (
-                          <Stack key={`${item.model}-${index}`} direction="row" spacing={1.5} justifyContent="space-between">
-                            <Typography variant="body2" sx={{ fontWeight: 900, minWidth: 0 }} noWrap>
-                              Used per software model
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
-                              {formatCredits(item.creditsDeducted)} cr
-                            </Typography>
-                          </Stack>
-                        ))
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          No software usage yet
-                        </Typography>
-                      )}
-                      <Divider />
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary">
                         Last call {formatDateTime(credits?.lastOpenAICallAt)} - updated {formatDateTime(credits?.asOf)}
                       </Typography>
                       {creditsError || credits?.warnings?.length ? (
