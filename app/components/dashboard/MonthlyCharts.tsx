@@ -503,11 +503,11 @@ export default function MonthlyCharts() {
       <Card sx={surfaceSx}>
         <CardContent sx={{ p: { xs: 2, md: 2.6 }, "&:last-child": { pb: { xs: 2, md: 2.6 } } }}>
           <Typography component="h3" sx={{ fontSize: 20, fontWeight: 950, mb: 1 }}>
-            Lot Count vs Lot Value by User
+            All Reports by User
           </Typography>
           <Box sx={{ height: { xs: 300, md: 340, xl: 360 }, overflowX: "auto" }}>
-            <Box sx={{ minWidth: { xs: 620, md: "auto" }, height: "100%" }}>
-              {error ? chartErrorBox(theme, error) : <Chart type="bar" data={lotCountValueData as any} options={lotCountValueOptions as any} />}
+            <Box sx={{ minWidth: { xs: 720, md: "auto" }, height: "100%" }}>
+              {error ? chartErrorBox(theme, error) : <Bar data={reportsByUserData} options={stackedUserOptions as any} />}
             </Box>
           </Box>
         </CardContent>
@@ -527,11 +527,11 @@ export default function MonthlyCharts() {
       <Card sx={{ ...surfaceSx, gridColumn: { xs: "auto", lg: "span 2" } }}>
         <CardContent sx={{ p: { xs: 2, md: 2.6 }, "&:last-child": { pb: { xs: 2, md: 2.6 } } }}>
           <Typography component="h3" sx={{ fontSize: 20, fontWeight: 950, mb: 1 }}>
-            All Reports by User
+            Lot Count vs Lot Value by User
           </Typography>
-          <Box sx={{ height: { xs: 320, md: 360 }, overflowX: "auto" }}>
+          <Box sx={{ height: { xs: 320, md: 390, xl: 420 }, overflowX: "auto" }}>
             <Box sx={{ minWidth: { xs: 720, md: "auto" }, height: "100%" }}>
-              {error ? chartErrorBox(theme, error) : <Bar data={reportsByUserData} options={stackedUserOptions as any} />}
+              {error ? chartErrorBox(theme, error) : <Chart type="bar" data={lotCountValueData as any} options={lotCountValueOptions as any} />}
             </Box>
           </Box>
         </CardContent>
