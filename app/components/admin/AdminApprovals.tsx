@@ -19,6 +19,7 @@ type ReportItem = {
   contract_no?: string;
   fileType?: "pdf" | "spec_pdf" | "cr_docx" | "docx" | "xlsx" | "images" | "zip" | "asset-preview" | "realestate-preview" | "lotlisting-preview";
   approvalStatus?: "pending" | "approved" | "rejected";
+  approval_assigned_to?: { _id?: string; email?: string; username?: string; companyName?: string; role?: string } | null;
   report?: string;
   preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   isAssetReport?: boolean;
@@ -132,6 +133,11 @@ export default function AdminApprovals() {
     return value || "N/A";
   }
 
+  function approverLabel(value?: ReportItem["approval_assigned_to"]) {
+    if (!value) return "Legacy / unassigned";
+    return value.username || value.companyName || value.email || "Assigned manager";
+  }
+
   function getPreviewTargetId(group: Group) {
     return (
       group.variants.pdf?._id ||
@@ -215,6 +221,7 @@ export default function AdminApprovals() {
     isRealEstateReport?: boolean;
     isLotListing?: boolean;
     files_regenerating?: boolean;
+    assignedApprover?: { _id?: string; email?: string; username?: string; companyName?: string; role?: string } | null;
   };
 
   const groups = useMemo<Group[]>(() => {
@@ -248,8 +255,12 @@ export default function AdminApprovals() {
           isRealEstateReport: r.isRealEstateReport,
           isLotListing: r.isLotListing,
           files_regenerating: r.files_regenerating,
+          assignedApprover: r.approval_assigned_to || null,
         };
         map.set(key, g);
+      }
+      if (!g.assignedApprover && r.approval_assigned_to) {
+        g.assignedApprover = r.approval_assigned_to;
       }
       // Track the most recent createdAt and updatedAt
       if (new Date(r.createdAt).getTime() > new Date(g.createdAt).getTime()) g.createdAt = r.createdAt;
@@ -333,7 +344,12 @@ export default function AdminApprovals() {
                           <div className="font-medium text-gray-900">{g.title}</div>
                         </td>
                         <td className="py-2 pr-4 text-gray-700">{g.contract_no || "-"}</td>
-                        <td className="py-2 pr-4 text-gray-700">{g.userEmail || "-"}</td>
+                        <td className="py-2 pr-4 text-gray-700">
+                          <div>{g.userEmail || "-"}</div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            Approver: {approverLabel(g.assignedApprover)}
+                          </div>
+                        </td>
                         <td className="py-2 pr-4">{formatFMV(g.fairMarketValue)}</td>
                         <td className="py-2 pr-4 text-gray-700">
                           {(() => {
@@ -429,6 +445,7 @@ export default function AdminApprovals() {
                   <div key={g.key} className="rounded-xl border border-rose-200 bg-white/90 backdrop-blur p-4 shadow-md">
                     <div className="font-semibold text-gray-900">{g.title}</div>
                     <div className="text-sm text-gray-600">{g.userEmail || "-"}</div>
+                    <div className="text-xs text-gray-500 mt-1">Approver: {approverLabel(g.assignedApprover)}</div>
                     <div className="text-xs text-gray-600 mt-1"><span className="text-gray-500">Contract: </span>{g.contract_no || "-"}</div>
                     <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
                       <div>
