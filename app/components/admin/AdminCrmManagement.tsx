@@ -359,7 +359,7 @@ type AutoFindOptions = {
   maxResults: number;
 };
 
-type AutoFindRunStatus = "queued" | "running" | "completed" | "failed";
+type AutoFindRunStatus = "queued" | "running" | "stopping" | "cancelled" | "completed" | "failed";
 
 type AutoFindRunProgress = {
   runId: string;
@@ -1229,6 +1229,11 @@ export default function AdminCrmManagement() {
         setAutoFinding(false);
         const items = Array.isArray(payload.items) ? payload.items : [];
         pushToast(`Found ${items.length} client lead${items.length === 1 ? "" : "s"}`, "success");
+      } else if (payload.status === "cancelled") {
+        stopAutoFindPolling();
+        setAutoFinding(false);
+        const items = Array.isArray(payload.items) ? payload.items.filter((item) => !item.duplicate) : [];
+        pushToast(`Search stopped. ${items.length} lead${items.length === 1 ? "" : "s"} available to import.`, "info");
       } else if (payload.status === "failed") {
         stopAutoFindPolling();
         setAutoFinding(false);
@@ -1898,6 +1903,33 @@ export default function AdminCrmManagement() {
       stopAutoFindPolling();
       setAutoFinding(false);
       pushToast(e instanceof Error ? e.message : "Failed to auto find clients", "error");
+    }
+  }
+
+  async function stopAutoFindClients() {
+    if (!autoFindRunId) {
+      clearAutoFindRunState();
+      return;
+    }
+    try {
+      setAutoFindRunStatus("stopping");
+      setAutoFindProgressMessage("Stopping search after the current batch finishes");
+      const res = await fetch(`/api/admin/crm/leads/auto-find/runs/${encodeURIComponent(autoFindRunId)}/stop`, {
+        method: "POST",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to stop auto-find search");
+      applyAutoFindRunPayload(json as AutoFindRunProgress);
+      pushToast("Stop requested. Partial results will remain importable.", "info");
+      if (!autoFindPollRef.current && autoFindRunId) {
+        const runId = autoFindRunId;
+        autoFindActiveRunRef.current = runId;
+        autoFindPollRef.current = setInterval(() => {
+          void pollAutoFindRun(runId);
+        }, 1000);
+      }
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to stop auto-find search", "error");
     }
   }
 
@@ -2857,7 +2889,7 @@ export default function AdminCrmManagement() {
                   color="success"
                   startIcon={<CloudUploadRoundedIcon />}
                   onClick={openAutoFindImportPreview}
-                  disabled={autoFinding || selectedAutoFindReadyCount === 0}
+                  disabled={autoFindRunStatus === "queued" || autoFindRunStatus === "running" || autoFindRunStatus === "stopping" || selectedAutoFindReadyCount === 0}
                 >
                   {`Import ${selectedAutoFindReadyCount}`}
                 </Button>
@@ -2983,16 +3015,24 @@ export default function AdminCrmManagement() {
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
                 <Button
                   variant="outlined"
+                  color={autoFinding ? "warning" : "primary"}
                   startIcon={<RefreshRoundedIcon />}
-                  onClick={resetAutoFindFilters}
+                  onClick={() => {
+                    if (autoFinding || autoFindRunStatus === "stopping") {
+                      void stopAutoFindClients();
+                      return;
+                    }
+                    resetAutoFindFilters();
+                  }}
+                  disabled={autoFindRunStatus === "stopping"}
                 >
-                  {autoFinding ? "Cancel" : "Reset"}
+                  {autoFinding || autoFindRunStatus === "stopping" ? "Stop Search" : "Reset"}
                 </Button>
                 <Button
                   variant="contained"
                   startIcon={<SearchRoundedIcon />}
                   onClick={() => void onAutoFindClients()}
-                  disabled={autoFinding || autoFindCategories.length === 0}
+                  disabled={autoFinding || autoFindRunStatus === "stopping" || autoFindCategories.length === 0}
                   sx={autoFindSearchButtonSx}
                 >
                   <Stack spacing={0} alignItems="flex-start" sx={{ minWidth: 0 }}>
