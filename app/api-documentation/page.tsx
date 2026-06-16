@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ApiTester from "./ApiTester";
 
 const SERVER_URL =
   process.env.NEXT_PUBLIC_SERVER_URL || "https://api.assetinsightvaluator.com";
@@ -87,6 +88,8 @@ export default function ApiDocumentationPage() {
             <div className="mt-2 text-sm">Approved assets and approved lot listings only</div>
           </div>
         </div>
+
+        <ApiTester />
 
         <section className="mt-10 space-y-4">
           <h2 className="text-2xl font-bold">Authentication</h2>
