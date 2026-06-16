@@ -179,12 +179,16 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
   lot,
   options,
   disabled,
+  selected,
+  onSelectedChange,
   onChange,
   onPreviewImage,
 }: {
   lot: CrDisclaimerLot;
   options: CrDisclaimerOption[];
   disabled: boolean;
+  selected: boolean;
+  onSelectedChange: (lotKey: string, selected: boolean) => void;
   onChange: (lotKey: string, settings: CrDisclaimerSettings) => void;
   onPreviewImage: (url: string, lot: CrDisclaimerLot) => void;
 }) {
@@ -207,6 +211,15 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
       <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
         <Stack spacing={1.15}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ xs: "stretch", md: "flex-start" }} justifyContent="space-between">
+            <Stack direction="row" spacing={1} alignItems="flex-start" minWidth={0}>
+              <Checkbox
+                size="small"
+                disabled={disabled}
+                checked={selected}
+                onChange={(event) => onSelectedChange(lot.lotKey, event.target.checked)}
+                sx={{ p: 0.25, mt: -0.25 }}
+                inputProps={{ "aria-label": `Select lot ${lot.lotNumber}` }}
+              />
             <Stack minWidth={0}>
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                 <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#111827" }}>
@@ -231,6 +244,7 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
               <Typography variant="caption" color="text.secondary" title={lot.title}>
                 {lot.title || "Untitled lot"}
               </Typography>
+            </Stack>
             </Stack>
           </Stack>
           <Stack
@@ -363,11 +377,13 @@ function CrDisclaimersDialog({
   onResubmit,
 }: CrDisclaimersDialogProps) {
   const [localLots, setLocalLots] = useState<CrDisclaimerLot[]>([]);
+  const [selectedLotKeys, setSelectedLotKeys] = useState<Set<string>>(new Set());
+  const [bulkSettings, setBulkSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
   const [previewImage, setPreviewImage] = useState<{ url: string; lot: CrDisclaimerLot } | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setLocalLots(
+    const nextLots =
       initialLots.length
         ? initialLots.map((lot) => normalizeDialogLot(lot, initialSettings))
         : [
@@ -377,8 +393,10 @@ function CrDisclaimersDialog({
               title: "All visible lots",
               settings: { ...emptyCrDisclaimers, ...initialSettings },
             },
-          ]
-    );
+          ];
+    setLocalLots(nextLots);
+    setSelectedLotKeys(new Set(nextLots.map((lot) => lot.lotKey)));
+    setBulkSettings({ ...emptyCrDisclaimers });
   }, [initialLots, initialSettings, open]);
 
   const payload: CrDisclaimersPayload = {
@@ -399,6 +417,34 @@ function CrDisclaimersDialog({
       )
     );
   }, []);
+
+  const selectedCount = selectedLotKeys.size;
+  const allSelected = localLots.length > 0 && selectedCount === localLots.length;
+  const toggleLotSelection = useCallback((lotKey: string, selected: boolean) => {
+    setSelectedLotKeys((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(lotKey);
+      else next.delete(lotKey);
+      return next;
+    });
+  }, []);
+  const selectAllLots = useCallback(() => {
+    setSelectedLotKeys(new Set(localLots.map((lot) => lot.lotKey)));
+  }, [localLots]);
+  const clearSelectedLots = useCallback(() => setSelectedLotKeys(new Set()), []);
+  const updateBulkSettings = useCallback((patch: Partial<CrDisclaimerSettings>) => {
+    setBulkSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
+  const applyBulkToSelected = useCallback(() => {
+    if (!selectedLotKeys.size) return;
+    setLocalLots((prev) =>
+      prev.map((lot) =>
+        selectedLotKeys.has(lot.lotKey)
+          ? { ...lot, settings: { ...emptyCrDisclaimers, ...bulkSettings } }
+          : lot
+      )
+    );
+  }, [bulkSettings, selectedLotKeys]);
 
   return (
     <Dialog
@@ -444,6 +490,86 @@ function CrDisclaimersDialog({
           {filesBusy ? (
             <Alert severity="warning">This report is already generating files. Save is available, but resubmit is disabled until it finishes.</Alert>
           ) : null}
+          {!loading ? (
+            <Card variant="outlined" sx={{ borderRadius: 2.5, bgcolor: "#fff" }}>
+              <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
+                <Stack spacing={1.25}>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
+                    <Stack spacing={0.25}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
+                        Multi-lot apply
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Select lots below, choose disclaimer settings here, then apply them to all selected lots.
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Chip
+                        size="small"
+                        color={selectedCount ? "primary" : "default"}
+                        label={`${selectedCount} selected`}
+                        sx={{ fontWeight: 800 }}
+                      />
+                      <Button size="small" variant="outlined" disabled={saving || allSelected} onClick={selectAllLots}>
+                        Select all
+                      </Button>
+                      <Button size="small" variant="text" disabled={saving || selectedCount === 0} onClick={clearSelectedLots}>
+                        Clear selection
+                      </Button>
+                    </Stack>
+                  </Stack>
+                  <Grid container spacing={0.25}>
+                    {options.map((option) => (
+                      <Grid key={`bulk-${option.key}`} size={{ xs: 12, sm: 6, md: 3 }}>
+                        <FormControlLabel
+                          sx={{
+                            m: 0,
+                            width: "100%",
+                            "& .MuiFormControlLabel-label": {
+                              fontSize: "0.76rem",
+                              lineHeight: 1.2,
+                              fontWeight: 700,
+                            },
+                          }}
+                          control={
+                            <Checkbox
+                              size="small"
+                              disabled={saving}
+                              checked={Boolean(bulkSettings[option.key])}
+                              onChange={(event) =>
+                                updateBulkSettings({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)
+                              }
+                            />
+                          }
+                          label={option.label}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "flex-start" }}>
+                    <TextField
+                      size="small"
+                      label="Bulk custom note"
+                      value={bulkSettings.customText}
+                      onChange={(event) => updateBulkSettings({ customText: event.target.value })}
+                      disabled={saving}
+                      multiline
+                      minRows={2}
+                      fullWidth
+                    />
+                    <Button
+                      variant="contained"
+                      disabled={saving || selectedCount === 0}
+                      onClick={applyBulkToSelected}
+                      sx={{ minWidth: { md: 180 }, fontWeight: 900 }}
+                    >
+                      Apply to selected
+                    </Button>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          ) : null}
           {loading ? (
             <Typography variant="body2" color="text.secondary">
               Loading CR disclaimer settings...
@@ -456,6 +582,8 @@ function CrDisclaimersDialog({
                     lot={lot}
                     options={options}
                     disabled={saving}
+                    selected={selectedLotKeys.has(lot.lotKey)}
+                    onSelectedChange={toggleLotSelection}
                     onChange={updateLotSettings}
                     onPreviewImage={(url, selectedLot) => setPreviewImage({ url, lot: selectedLot })}
                   />
