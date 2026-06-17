@@ -22,6 +22,7 @@ import {
   LinearProgress,
   Stack,
   Switch,
+  TextField,
   Typography,
 } from "@mui/material";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -86,6 +87,12 @@ type SpecWebSearchState = {
   message?: string;
 } | null;
 
+type AssetApprovalThresholdState = {
+  threshold: number;
+  defaultThreshold: number;
+  message?: string;
+} | null;
+
 type MetricCard = {
   key: string;
   label: string;
@@ -132,9 +139,16 @@ const numberFormatter = new Intl.NumberFormat("en-US");
 const creditFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
+const moneyFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+});
 
 function formatCredits(value: number | null | undefined, fallback = "--") {
   return typeof value === "number" ? creditFormatter.format(value) : fallback;
+}
+
+function formatMoney(value: number | null | undefined, fallback = "--") {
+  return typeof value === "number" ? moneyFormatter.format(value) : fallback;
 }
 
 function formatCreditsFromUsd(value: number | null | undefined, multiplier: number | null | undefined) {
@@ -212,6 +226,11 @@ export default function DashboardShellV2() {
   const [specWebSearchLoading, setSpecWebSearchLoading] = useState(true);
   const [specWebSearchSaving, setSpecWebSearchSaving] = useState(false);
   const [specWebSearchError, setSpecWebSearchError] = useState<string | null>(null);
+  const [approvalThreshold, setApprovalThreshold] = useState<AssetApprovalThresholdState>(null);
+  const [approvalThresholdInput, setApprovalThresholdInput] = useState("");
+  const [approvalThresholdLoading, setApprovalThresholdLoading] = useState(true);
+  const [approvalThresholdSaving, setApprovalThresholdSaving] = useState(false);
+  const [approvalThresholdError, setApprovalThresholdError] = useState<string | null>(null);
 
   useEffect(() => {
     let intervalId: number | undefined;
@@ -319,6 +338,78 @@ export default function DashboardShellV2() {
       setSpecWebSearchSaving(false);
     }
   }, [specWebSearch?.enabled]);
+
+  const loadApprovalThreshold = useCallback(async () => {
+    try {
+      setApprovalThresholdLoading(true);
+      setApprovalThresholdError(null);
+      const res = await fetch("/api/admin/asset-approval-threshold", { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as {
+        threshold?: number;
+        defaultThreshold?: number;
+        message?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load asset approval threshold");
+      }
+      const threshold = Number(data.threshold);
+      const defaultThreshold = Number(data.defaultThreshold || 500000);
+      const next = {
+        threshold: Number.isFinite(threshold) ? threshold : defaultThreshold,
+        defaultThreshold: Number.isFinite(defaultThreshold) ? defaultThreshold : 500000,
+        message: data.message,
+      };
+      setApprovalThreshold(next);
+      setApprovalThresholdInput(String(next.threshold));
+    } catch (e) {
+      setApprovalThresholdError(e instanceof Error ? e.message : "Failed to load asset approval threshold");
+    } finally {
+      setApprovalThresholdLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadApprovalThreshold();
+  }, [loadApprovalThreshold]);
+
+  const saveApprovalThreshold = useCallback(async () => {
+    const threshold = Number.parseFloat(approvalThresholdInput.replace(/,/g, ""));
+    if (!Number.isFinite(threshold) || threshold < 0) {
+      setApprovalThresholdError("Enter a non-negative approval limit.");
+      return;
+    }
+
+    try {
+      setApprovalThresholdSaving(true);
+      setApprovalThresholdError(null);
+      const res = await fetch("/api/admin/asset-approval-threshold", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        threshold?: number;
+        defaultThreshold?: number;
+        message?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to update asset approval threshold");
+      }
+      const savedThreshold = Number(data.threshold);
+      const defaultThreshold = Number(data.defaultThreshold || approvalThreshold?.defaultThreshold || 500000);
+      const next = {
+        threshold: Number.isFinite(savedThreshold) ? savedThreshold : threshold,
+        defaultThreshold: Number.isFinite(defaultThreshold) ? defaultThreshold : 500000,
+        message: data.message,
+      };
+      setApprovalThreshold(next);
+      setApprovalThresholdInput(String(next.threshold));
+    } catch (e) {
+      setApprovalThresholdError(e instanceof Error ? e.message : "Failed to update asset approval threshold");
+    } finally {
+      setApprovalThresholdSaving(false);
+    }
+  }, [approvalThreshold?.defaultThreshold, approvalThresholdInput]);
 
   const greeting = useMemo(() => {
     const hours = now.getHours();
@@ -667,6 +758,92 @@ export default function DashboardShellV2() {
                         inputProps={{ "aria-label": "Toggle spec web search" }}
                         sx={{ flexShrink: 0 }}
                       />
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      border: "1px solid",
+                      borderColor: (theme) =>
+                        theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
+                      borderRadius: "10px",
+                      p: { xs: 1, sm: 1.15 },
+                      bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#0f172a", 0.28) : alpha("#f8fafc", 0.8)),
+                    }}
+                  >
+                    <Stack spacing={1}>
+                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
+                        <Box minWidth={0}>
+                          <Typography variant="body1" sx={{ fontWeight: 950 }}>
+                            Asset approval limit
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", lineHeight: 1.35 }}>
+                            Asset reports above this value require manager approval.
+                          </Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          label={`Saved ${formatMoney(approvalThreshold?.threshold, approvalThresholdLoading ? "..." : "--")}`}
+                          sx={{
+                            height: 24,
+                            bgcolor: alpha("#2563eb", 0.12),
+                            color: "#2563eb",
+                            border: `1px solid ${alpha("#2563eb", 0.18)}`,
+                            fontWeight: 850,
+                          }}
+                        />
+                      </Stack>
+
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
+                        <TextField
+                          size="small"
+                          value={approvalThresholdInput}
+                          onChange={(event) => setApprovalThresholdInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void saveApprovalThreshold();
+                            }
+                          }}
+                          disabled={approvalThresholdLoading || approvalThresholdSaving}
+                          placeholder="500000"
+                          inputProps={{ inputMode: "decimal", "aria-label": "Asset approval limit" }}
+                          sx={{
+                            flex: 1,
+                            "& .MuiOutlinedInput-root": {
+                              borderRadius: "8px",
+                              bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#020617", 0.32) : "#fff"),
+                            },
+                          }}
+                        />
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => void saveApprovalThreshold()}
+                          disabled={approvalThresholdLoading || approvalThresholdSaving}
+                          sx={{
+                            minHeight: 38,
+                            borderRadius: "8px",
+                            px: 1.5,
+                            fontWeight: 850,
+                            bgcolor: "#2563eb",
+                            boxShadow: `0 10px 20px ${alpha("#2563eb", 0.18)}`,
+                            "&:hover": { bgcolor: "#1d4ed8" },
+                          }}
+                        >
+                          {approvalThresholdSaving ? "Saving" : "Save"}
+                        </Button>
+                      </Stack>
+
+                      {approvalThresholdError ? (
+                        <Typography variant="caption" sx={{ color: "#dc2626", fontWeight: 800 }}>
+                          {approvalThresholdError}
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          Current rule: {formatMoney(approvalThreshold?.threshold, "--")} and below auto-approves.
+                        </Typography>
+                      )}
                     </Stack>
                   </Box>
 
