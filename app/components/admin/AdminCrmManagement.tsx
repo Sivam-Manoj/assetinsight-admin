@@ -1920,6 +1920,7 @@ export default function AdminCrmManagement() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || "Failed to stop auto-find search");
       applyAutoFindRunPayload(json as AutoFindRunProgress);
+      setAutoFinding(false);
       pushToast("Stop requested. Partial results will remain importable.", "info");
       if (!autoFindPollRef.current && autoFindRunId) {
         const runId = autoFindRunId;
@@ -2889,7 +2890,7 @@ export default function AdminCrmManagement() {
                   color="success"
                   startIcon={<CloudUploadRoundedIcon />}
                   onClick={openAutoFindImportPreview}
-                  disabled={autoFindRunStatus === "queued" || autoFindRunStatus === "running" || autoFindRunStatus === "stopping" || selectedAutoFindReadyCount === 0}
+                  disabled={autoFindRunStatus === "queued" || autoFindRunStatus === "running" || selectedAutoFindReadyCount === 0}
                 >
                   {`Import ${selectedAutoFindReadyCount}`}
                 </Button>
