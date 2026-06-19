@@ -12,6 +12,7 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
+import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
 import SupportAgentRoundedIcon from "@mui/icons-material/SupportAgentRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import Image from "next/image";
@@ -116,6 +117,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         { href: "/spec-sheet", label: "CR Management", icon: <ViewListRoundedIcon fontSize="small" /> },
         { href: "/revenue-radar", label: "Revenue Radar", icon: <QueryStatsRoundedIcon fontSize="small" /> },
         { href: "/approvals", label: "Pending Approval", icon: <CheckCircleRoundedIcon fontSize="small" /> },
+        { href: "/apk-manager", label: "APK Manager", icon: <SystemUpdateAltRoundedIcon fontSize="small" /> },
         ...(role === "superadmin"
           ? [{ href: "/admins", label: "Admins", icon: <ManageAccountsRoundedIcon fontSize="small" /> }]
           : []),

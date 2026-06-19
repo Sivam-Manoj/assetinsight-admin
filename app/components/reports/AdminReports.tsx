@@ -63,6 +63,10 @@ type ReportItem = {
   reportModel?: string;
   fileType?: "pdf" | "spec_pdf" | "cr_docx" | "docx" | "xlsx" | "images";
   approvalStatus?: "pending" | "approved" | "rejected";
+  release_status?: "pending_release" | "released";
+  release_assigned_to?: { _id?: string; email?: string; username?: string; companyName?: string; role?: string } | string | null;
+  released_at?: string | null;
+  downloadable?: boolean;
   report?: string;
   contract_no?: string;
   preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
@@ -95,6 +99,10 @@ type ReportGroup = {
   isLotListingReport?: boolean;
   preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   crDisclaimerCount?: number;
+  release_status?: "pending_release" | "released";
+  release_assigned_to?: ReportItem["release_assigned_to"];
+  released_at?: string | null;
+  downloadable?: boolean;
   adminArchivedAt?: string | null;
 };
 
@@ -993,6 +1001,22 @@ export default function AdminReports() {
     }
   }
 
+  async function releaseReport(id: string) {
+    try {
+      setActionBusyId(id);
+      const res = await fetch(`/api/admin/reports/${id}/release`, {
+        method: "POST",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to release report");
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to release report");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
   function canUseCrDisclaimers(group: ReportGroup) {
     return Boolean(group.isAssetReport || group.isLotListingReport);
   }
@@ -1148,9 +1172,20 @@ export default function AdminReports() {
           isLotListingReport: r.reportType === 'LotListing' || (r as any).isLotListingReport || (r as any).isLotListing,
           preview_files: (r as any).preview_files,
           crDisclaimerCount: Number((r as any).crDisclaimerCount || 0),
+          release_status: r.release_status || "released",
+          release_assigned_to: r.release_assigned_to || null,
+          released_at: r.released_at || null,
+          downloadable: r.downloadable !== false,
           adminArchivedAt: r.adminArchivedAt || null,
         };
         map.set(key, g);
+      } else {
+        if (g.release_status !== "pending_release" && r.release_status === "pending_release") {
+          g.release_status = "pending_release";
+          g.release_assigned_to = r.release_assigned_to || null;
+          g.released_at = r.released_at || null;
+          g.downloadable = false;
+        }
       }
       if (new Date(r.createdAt).getTime() > new Date(g.createdAt).getTime()) g.createdAt = r.createdAt;
       const ft = ((r.fileType || r.filename.split(".").pop() || "") as string).toLowerCase();
@@ -1293,6 +1328,48 @@ export default function AdminReports() {
             </span>
           </Tooltip>
         ) : null}
+
+        <Tooltip
+          title={
+            group.release_status === "pending_release"
+              ? "Release this approved report so the user can download files"
+              : group.released_at
+                ? `Released ${new Date(group.released_at).toLocaleString()}`
+                : "Released"
+          }
+        >
+          <span>
+            {group.release_status === "pending_release" ? (
+              <Button
+                size="small"
+                variant="contained"
+                disabled={actionBusyId === group.key}
+                sx={{
+                  ...actionButtonSx,
+                  bgcolor: "#7c3aed",
+                  color: "#fff",
+                  "&:hover": { bgcolor: "#6d28d9", boxShadow: "0 8px 18px rgba(124, 58, 237, 0.22)" },
+                }}
+                onClick={() => void releaseReport(group.key)}
+              >
+                Release
+              </Button>
+            ) : (
+              <Chip
+                size="small"
+                label="Released"
+                sx={{
+                  height: 24,
+                  fontSize: "0.6rem",
+                  fontWeight: 900,
+                  bgcolor: "#ecfdf5",
+                  color: "#047857",
+                  border: "1px solid #a7f3d0",
+                }}
+              />
+            )}
+          </span>
+        </Tooltip>
 
         <Tooltip title={archiveTooltip}>
           <span>

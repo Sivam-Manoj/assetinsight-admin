@@ -41,6 +41,7 @@ type UserItem = {
   isCrmAgent?: boolean;
   crmAssignedAt?: string;
   reportApprover?: ReportApproverOption | string | null;
+  releaseManager?: ReportApproverOption | string | null;
   createdAt: string;
 };
 
@@ -61,6 +62,10 @@ type ApiResponse = {
 
 type ReportApproversResponse = {
   approvers: ReportApproverOption[];
+};
+
+type ReleaseManagersResponse = {
+  releaseManagers: ReportApproverOption[];
 };
 
 const CRM_SPECIALIZATION_LABELS: Record<string, string> = {
@@ -98,6 +103,11 @@ function getApproverId(value?: UserItem["reportApprover"]): string {
   return typeof value === "string" ? value : value._id || "";
 }
 
+function getReleaseManagerId(value?: UserItem["releaseManager"]): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : value._id || "";
+}
+
 function approverLabel(value?: ReportApproverOption | null): string {
   if (!value) return "No manager assigned";
   const name = value.username || value.companyName || value.email;
@@ -130,7 +140,9 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [approvers, setApprovers] = useState<ReportApproverOption[]>([]);
+  const [releaseManagers, setReleaseManagers] = useState<ReportApproverOption[]>([]);
   const [loadingApprovers, setLoadingApprovers] = useState(false);
+  const [loadingReleaseManagers, setLoadingReleaseManagers] = useState(false);
 
   // Delete confirm
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -138,6 +150,7 @@ export default function AdminUsers() {
   const [deleting, setDeleting] = useState(false);
   const [updatingCrmId, setUpdatingCrmId] = useState<string | null>(null);
   const [updatingApproverId, setUpdatingApproverId] = useState<string | null>(null);
+  const [updatingReleaseManagerId, setUpdatingReleaseManagerId] = useState<string | null>(null);
 
   // CRM profile edit
   const [crmEditUser, setCrmEditUser] = useState<UserItem | null>(null);
@@ -258,6 +271,20 @@ export default function AdminUsers() {
     }
   }
 
+  async function loadReleaseManagers() {
+    setLoadingReleaseManagers(true);
+    try {
+      const res = await fetch("/api/admin/release-managers", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to load release managers");
+      setReleaseManagers((json as ReleaseManagersResponse).releaseManagers || []);
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to load release managers", "error");
+    } finally {
+      setLoadingReleaseManagers(false);
+    }
+  }
+
   async function updateReportApprover(userId: string, reportApprover: string) {
     try {
       setUpdatingApproverId(userId);
@@ -277,6 +304,25 @@ export default function AdminUsers() {
     }
   }
 
+  async function updateReleaseManager(userId: string, releaseManager: string) {
+    try {
+      setUpdatingReleaseManagerId(userId);
+      const res = await fetch(`/api/admin/users/${userId}/release-manager`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ releaseManager: releaseManager || null }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Failed to update release manager");
+      pushToast("Release manager updated", "success");
+      await load();
+    } catch (e: unknown) {
+      pushToast(e instanceof Error ? e.message : "Failed to update release manager", "error");
+    } finally {
+      setUpdatingReleaseManagerId(null);
+    }
+  }
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,6 +330,7 @@ export default function AdminUsers() {
 
   useEffect(() => {
     void loadApprovers();
+    void loadReleaseManagers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -438,6 +485,34 @@ export default function AdminUsers() {
             </select>
             <div className="mt-1 text-xs text-gray-500">
               {updatingApproverId === u._id ? "Saving..." : "Routes Asset, Real Estate, and Salvage approvals."}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "releaseManager",
+      accessorFn: (row: UserItem) => getReleaseManagerId(row.releaseManager),
+      header: "Release Manager",
+      cell: ({ row }: CellContext<UserItem, unknown>) => {
+        const u = row.original;
+        return (
+          <div className="min-w-0">
+            <select
+              value={getReleaseManagerId(u.releaseManager)}
+              disabled={loadingReleaseManagers || updatingReleaseManagerId === u._id}
+              onChange={(event) => updateReleaseManager(u._id, event.target.value)}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm outline-none transition hover:border-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:opacity-60"
+            >
+              <option value="">Auto release</option>
+              {releaseManagers.map((manager) => (
+                <option key={manager._id} value={manager._id}>
+                  {approverLabel(manager)}
+                </option>
+              ))}
+            </select>
+            <div className="mt-1 text-xs text-gray-500">
+              {updatingReleaseManagerId === u._id ? "Saving..." : "Holds approved files until release."}
             </div>
           </div>
         );
@@ -716,6 +791,22 @@ export default function AdminUsers() {
                           {approvers.map((approver) => (
                             <option key={approver._id} value={approver._id}>
                               {approverLabel(approver)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="rounded-xl border border-purple-100 bg-white p-3 shadow-sm sm:col-span-2">
+                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Release manager</div>
+                        <select
+                          value={getReleaseManagerId(u.releaseManager)}
+                          disabled={loadingReleaseManagers || updatingReleaseManagerId === u._id}
+                          onChange={(event) => updateReleaseManager(u._id, event.target.value)}
+                          className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm outline-none transition hover:border-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:opacity-60"
+                        >
+                          <option value="">Auto release</option>
+                          {releaseManagers.map((manager) => (
+                            <option key={manager._id} value={manager._id}>
+                              {approverLabel(manager)}
                             </option>
                           ))}
                         </select>
