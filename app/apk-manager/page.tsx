@@ -27,6 +27,7 @@ import CloudUploadRoundedIcon from "@mui/icons-material/CloudUploadRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import AdminNavbarV2 from "@/app/components/common/AdminNavbarV2";
 
 type ApkRelease = {
   id: string;
@@ -144,13 +145,14 @@ export default function ApkManagerPage() {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        bgcolor: "background.default",
-        p: { xs: 2, md: 3 },
-      }}
-    >
+    <AdminNavbarV2>
+      <Box
+        sx={{
+          maxWidth: 1320,
+          mx: "auto",
+          p: { xs: 2, md: 3 },
+        }}
+      >
       <Stack
         direction={{ xs: "column", md: "row" }}
         justifyContent="space-between"
@@ -159,7 +161,7 @@ export default function ApkManagerPage() {
         sx={{ mb: 3 }}
       >
         <Box>
-          <Typography variant="h3" fontWeight={900} letterSpacing={-1}>
+          <Typography variant="h4" fontWeight={900} letterSpacing={-0.5}>
             APK Manager
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.5 }}>
@@ -171,7 +173,7 @@ export default function ApkManagerPage() {
           startIcon={<RefreshRoundedIcon />}
           onClick={loadReleases}
           disabled={loading || uploading}
-          sx={{ alignSelf: { xs: "flex-start", md: "center" } }}
+          sx={{ alignSelf: { xs: "flex-start", md: "center" }, borderRadius: 1.5 }}
         >
           Refresh
         </Button>
@@ -188,14 +190,14 @@ export default function ApkManagerPage() {
         }}
       >
         <Box>
-          <Card sx={{ borderRadius: 4, boxShadow: "0 18px 48px rgba(15,23,42,0.08)" }}>
-            <CardContent sx={{ p: 3 }}>
+          <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: "0 14px 34px rgba(15,23,42,0.06)" }}>
+            <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
               <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
                 <Box
                   sx={{
                     width: 48,
                     height: 48,
-                    borderRadius: 3,
+                    borderRadius: 2,
                     display: "grid",
                     placeItems: "center",
                     bgcolor: "success.light",
@@ -239,7 +241,7 @@ export default function ApkManagerPage() {
                     rel="noopener noreferrer"
                     variant="contained"
                     startIcon={<DownloadRoundedIcon />}
-                    sx={{ alignSelf: "flex-start", mt: 1 }}
+                    sx={{ alignSelf: "flex-start", mt: 1, borderRadius: 1.5 }}
                   >
                     Download APK
                   </Button>
@@ -250,8 +252,8 @@ export default function ApkManagerPage() {
             </CardContent>
           </Card>
 
-          <Card sx={{ mt: 2.5, borderRadius: 4 }}>
-            <CardContent sx={{ p: 3 }}>
+          <Card variant="outlined" sx={{ mt: 2.5, borderRadius: 2 }}>
+            <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
               <Typography variant="h6" fontWeight={900} sx={{ mb: 2 }}>
                 Upload new version
               </Typography>
@@ -262,6 +264,7 @@ export default function ApkManagerPage() {
                     variant="outlined"
                     startIcon={<CloudUploadRoundedIcon />}
                     disabled={uploading}
+                    sx={{ borderRadius: 1.5, alignSelf: "flex-start" }}
                   >
                     Choose APK
                     <input id="apk-file-input" hidden type="file" accept=".apk,application/vnd.android.package-archive" onChange={onFileChange} />
@@ -309,9 +312,9 @@ export default function ApkManagerPage() {
                   <Button
                     type="submit"
                     variant="contained"
-                    size="large"
                     disabled={uploading}
                     startIcon={uploading ? <CircularProgress size={18} color="inherit" /> : <CloudUploadRoundedIcon />}
+                    sx={{ borderRadius: 1.5, height: 42 }}
                   >
                     {uploading ? "Uploading..." : "Upload and activate"}
                   </Button>
@@ -322,13 +325,13 @@ export default function ApkManagerPage() {
         </Box>
 
         <Box>
-          <Paper sx={{ borderRadius: 4, overflow: "hidden" }}>
+          <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden", boxShadow: "0 14px 34px rgba(15,23,42,0.05)" }}>
             <Stack
               direction={{ xs: "column", sm: "row" }}
               justifyContent="space-between"
               alignItems={{ xs: "stretch", sm: "center" }}
               spacing={1}
-              sx={{ p: 2.5 }}
+              sx={{ p: { xs: 2, md: 2.5 } }}
             >
               <Box>
                 <Typography variant="h6" fontWeight={900}>
@@ -338,7 +341,7 @@ export default function ApkManagerPage() {
                   Older entries stay available for audit; the newest upload becomes the active APK.
                 </Typography>
               </Box>
-              <Chip label={`${releases.length} releases`} />
+              <Chip label={`${releases.length} releases`} sx={{ borderRadius: 1.25 }} />
             </Stack>
             <Divider />
             {loading ? (
@@ -406,6 +409,8 @@ export default function ApkManagerPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               startIcon={<DownloadRoundedIcon />}
+                              size="small"
+                              sx={{ borderRadius: 1.25 }}
                             >
                               APK
                             </Button>
@@ -420,6 +425,7 @@ export default function ApkManagerPage() {
           </Paper>
         </Box>
       </Box>
-    </Box>
+      </Box>
+    </AdminNavbarV2>
   );
 }

@@ -147,7 +147,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
   }, [pathname]);
 
   const navItemsSx = (active: boolean, collapsed: boolean) => ({
-    borderRadius: 2.5,
+    borderRadius: 1.5,
     mb: 0.75,
     px: collapsed ? 1 : 1.5,
     py: 1,
@@ -197,7 +197,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
             justifyContent: collapsed ? "center" : "flex-start",
             flexGrow: 1,
             minWidth: 0,
-            borderRadius: 3,
+            borderRadius: 1.5,
             textDecoration: "none",
             transition: "background 200ms",
             "&:hover": { bgcolor: "action.hover" },

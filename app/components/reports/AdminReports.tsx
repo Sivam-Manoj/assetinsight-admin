@@ -787,12 +787,12 @@ function getFileActionIcon(label: string) {
 
 const actionButtonSx = {
   minWidth: "auto",
-  height: 24,
-  px: 0.72,
+  height: 22,
+  px: 0.62,
   py: 0,
-  borderRadius: 999,
+  borderRadius: 1.25,
   textTransform: "none",
-  fontSize: "0.6rem",
+  fontSize: "0.58rem",
   fontWeight: 800,
   lineHeight: 1,
   boxShadow: "none",
@@ -1211,9 +1211,9 @@ export default function AdminReports() {
     return (
       <Stack
         direction="row"
-        flexWrap="wrap"
+        flexWrap="nowrap"
         useFlexGap
-        spacing={0.32}
+        spacing={0.28}
         sx={{
           alignItems: "center",
           minWidth: 0,
@@ -1223,8 +1223,9 @@ export default function AdminReports() {
           overflowY: "hidden",
           pb: 0.25,
           scrollbarWidth: "thin",
+          "& > span": { flexShrink: 0 },
           "&::-webkit-scrollbar": { height: 4 },
-          "&::-webkit-scrollbar-thumb": { bgcolor: "#cbd5e1", borderRadius: 999 },
+          "&::-webkit-scrollbar-thumb": { bgcolor: "#cbd5e1", borderRadius: 4 },
         }}
       >
         <Tooltip title="Open report data">
@@ -1313,11 +1314,11 @@ export default function AdminReports() {
                 {getCrCount(group) > 0 ? (
                   <Chip
                     size="small"
-                    label={`${getCrCount(group)} lots`}
+                    label={String(getCrCount(group))}
                     sx={{
-                      ml: 0.5,
-                      height: 16,
-                      fontSize: "0.56rem",
+                      ml: 0.35,
+                      height: 14,
+                      fontSize: "0.52rem",
                       fontWeight: 900,
                       bgcolor: "#ede9fe",
                       color: "#5b21b6",
@@ -1359,12 +1360,13 @@ export default function AdminReports() {
                 size="small"
                 label="Released"
                 sx={{
-                  height: 24,
-                  fontSize: "0.6rem",
+                  height: 22,
+                  fontSize: "0.58rem",
                   fontWeight: 900,
                   bgcolor: "#ecfdf5",
                   color: "#047857",
                   border: "1px solid #a7f3d0",
+                  borderRadius: 1.25,
                 }}
               />
             )}
