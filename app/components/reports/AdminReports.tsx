@@ -29,6 +29,8 @@ import {
   FormControlLabel,
   Grid,
   InputLabel,
+  IconButton,
+  Menu,
   MenuItem,
   Select,
   Stack,
@@ -51,6 +53,7 @@ import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import FolderZipRoundedIcon from "@mui/icons-material/FolderZipRounded";
 
 type ReportItem = {
   _id: string;
@@ -787,20 +790,20 @@ function getFileActionIcon(label: string) {
 
 const actionButtonSx = {
   minWidth: "auto",
-  height: 22,
-  px: 0.62,
+  height: 28,
+  px: 0.9,
   py: 0,
   borderRadius: 1.25,
   textTransform: "none",
-  fontSize: "0.58rem",
+  fontSize: "0.68rem",
   fontWeight: 800,
   lineHeight: 1,
   boxShadow: "none",
   whiteSpace: "nowrap",
   transition: "background-color 120ms ease, border-color 120ms ease",
   "&:hover": { boxShadow: "none" },
-  "& .MuiButton-startIcon": { mr: 0.28, ml: -0.22 },
-  "& .MuiSvgIcon-root": { fontSize: "0.76rem" },
+  "& .MuiButton-startIcon": { mr: 0.4, ml: -0.25 },
+  "& .MuiSvgIcon-root": { fontSize: "0.88rem" },
 };
 
 export default function AdminReports() {
@@ -845,6 +848,7 @@ export default function AdminReports() {
   const [crOptions, setCrOptions] = useState<CrDisclaimerOption[]>(fallbackCrDisclaimerOptions);
   const [crCounts, setCrCounts] = useState<Record<string, number>>({});
   const [crSubmitSuccess, setCrSubmitSuccess] = useState<string | null>(null);
+  const [fileMenu, setFileMenu] = useState<{ groupKey: string; anchorEl: HTMLElement } | null>(null);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -1207,25 +1211,22 @@ export default function AdminReports() {
     const archiveLabel = archiveMode === "archived" ? "Restore" : "Done";
     const archiveTooltip =
       archiveMode === "archived" ? "Restore report to active list" : "Move report to archived list";
+    const fileLinks = buildFileLinks(group);
+    const availableFileCount = fileLinks.filter((link) => Boolean(link.href)).length;
 
     return (
       <Stack
         direction="row"
         flexWrap="nowrap"
         useFlexGap
-        spacing={0.28}
+        spacing={0.6}
         sx={{
           alignItems: "center",
           minWidth: 0,
           width: "100%",
           maxWidth: "100%",
-          overflowX: "auto",
-          overflowY: "hidden",
-          pb: 0.25,
-          scrollbarWidth: "thin",
+          overflow: "visible",
           "& > span": { flexShrink: 0 },
-          "&::-webkit-scrollbar": { height: 4 },
-          "&::-webkit-scrollbar-thumb": { bgcolor: "#cbd5e1", borderRadius: 4 },
         }}
       >
         <Tooltip title="Open report data">
@@ -1249,46 +1250,45 @@ export default function AdminReports() {
           </span>
         </Tooltip>
 
-        {buildFileLinks(group).map((link) => {
-          const linkKey = link.label.toLowerCase();
-          const tooltipLabel = linkKey === "cr" ? "CR" : link.label;
-          const isPdf = linkKey === "cr" || linkKey.includes("pdf");
-          const isExcel = link.label.toLowerCase().includes("excel");
-          const color = isPdf ? "#4f46e5" : isExcel ? "#2563eb" : "#7c3aed";
-          const hover = isPdf ? "#4338ca" : isExcel ? "#1d4ed8" : "#6d28d9";
-          return (
-            <Tooltip key={`${group.key}-${link.label}`} title={link.href ? tooltipLabel : `${tooltipLabel} unavailable`}>
-              <span>
-                <Button
+        <Tooltip title={availableFileCount ? "Download report files" : "No files available"}>
+          <span>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={!availableFileCount}
+              startIcon={<FolderZipRoundedIcon />}
+              onClick={(event) => setFileMenu({ groupKey: group.key, anchorEl: event.currentTarget })}
+              sx={{
+                ...actionButtonSx,
+                bgcolor: "#4f46e5",
+                color: "#fff",
+                "&:hover": { bgcolor: "#4338ca", boxShadow: "0 8px 18px rgba(79,70,229,0.18)" },
+                "&.Mui-disabled": {
+                  bgcolor: "#e5e7eb",
+                  color: "#94a3b8",
+                },
+              }}
+            >
+              Files
+              {availableFileCount ? (
+                <Chip
                   size="small"
-                  variant="contained"
-                  disabled={!link.href}
-                  startIcon={getFileActionIcon(link.label)}
+                  label={availableFileCount}
                   sx={{
-                    ...actionButtonSx,
-                    bgcolor: color,
+                    ml: 0.45,
+                    height: 15,
+                    minWidth: 15,
+                    fontSize: "0.55rem",
+                    fontWeight: 900,
+                    bgcolor: "rgba(255,255,255,0.22)",
                     color: "#fff",
-                    "&:hover": { bgcolor: hover, boxShadow: `0 8px 18px ${color}33` },
-                    "&.Mui-disabled": {
-                      bgcolor: "#e5e7eb",
-                      color: "#94a3b8",
-                    },
+                    borderRadius: 1,
                   }}
-                  {...(link.href
-                    ? {
-                        href: link.href,
-                        ...(link.download
-                          ? { download: true }
-                          : { target: "_blank", rel: "noopener noreferrer" }),
-                      }
-                    : {})}
-                >
-                  {link.label}
-                </Button>
-              </span>
-            </Tooltip>
-          );
-        })}
+                />
+              ) : null}
+            </Button>
+          </span>
+        </Tooltip>
 
         {canUseCrDisclaimers(group) ? (
           <Tooltip title="Select CR disclaimers and resubmit Excel/CR">
@@ -1310,7 +1310,7 @@ export default function AdminReports() {
                 }}
                 onClick={() => void openCrDisclaimers(group)}
               >
-                Disclaimer
+                CR Notes
                 {getCrCount(group) > 0 ? (
                   <Chip
                     size="small"
@@ -1360,8 +1360,8 @@ export default function AdminReports() {
                 size="small"
                 label="Released"
                 sx={{
-                  height: 22,
-                  fontSize: "0.58rem",
+                  height: 28,
+                  fontSize: "0.68rem",
                   fontWeight: 900,
                   bgcolor: "#ecfdf5",
                   color: "#047857",
@@ -1399,13 +1399,14 @@ export default function AdminReports() {
 
         <Tooltip title="Delete report">
           <span>
-            <Button
+            <IconButton
               size="small"
-              variant="outlined"
               color="error"
-              startIcon={<DeleteOutlineRoundedIcon />}
               sx={{
-                ...actionButtonSx,
+                width: 28,
+                height: 28,
+                borderRadius: 1.25,
+                border: "1px solid #fca5a5",
                 borderColor: "#f87171",
                 color: "#dc2626",
                 bgcolor: "#fff7f7",
@@ -1416,8 +1417,8 @@ export default function AdminReports() {
               }}
               onClick={() => openDelete(group.key)}
             >
-              Delete
-            </Button>
+              <DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />
+            </IconButton>
           </span>
         </Tooltip>
       </Stack>
@@ -1504,6 +1505,10 @@ export default function AdminReports() {
   });
 
   const rows = table.getRowModel().rows;
+  const fileMenuGroup = fileMenu
+    ? groups.find((group) => group.key === fileMenu.groupKey) || null
+    : null;
+  const fileMenuLinks = fileMenuGroup ? buildFileLinks(fileMenuGroup) : [];
 
   return (
     <div className="admin-page-shell">
@@ -1917,6 +1922,43 @@ export default function AdminReports() {
         }}
         loading={deleting}
       />
+      <Menu
+        anchorEl={fileMenu?.anchorEl || null}
+        open={Boolean(fileMenu)}
+        onClose={() => setFileMenu(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        slotProps={{
+          paper: {
+            sx: {
+              mt: 0.75,
+              minWidth: 190,
+              borderRadius: 2,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 18px 42px rgba(15,23,42,0.16)",
+            },
+          },
+        }}
+      >
+        {fileMenuLinks.map((link) => (
+          <MenuItem
+            key={`${fileMenu?.groupKey || ""}-${link.label}`}
+            disabled={!link.href}
+            component={link.href ? "a" : "li"}
+            href={link.href || undefined}
+            {...(link.href
+              ? link.download
+                ? { download: true }
+                : { target: "_blank", rel: "noopener noreferrer" }
+              : {})}
+            onClick={() => setFileMenu(null)}
+            sx={{ gap: 1.2, py: 1, fontWeight: 800, fontSize: "0.85rem" }}
+          >
+            {getFileActionIcon(link.label)}
+            {link.label}
+          </MenuItem>
+        ))}
+      </Menu>
       <ReportPreviewModal
         open={previewOpen}
         loading={previewLoading}
