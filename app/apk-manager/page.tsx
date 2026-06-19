@@ -10,6 +10,7 @@ import {
   CircularProgress,
   Divider,
   FormControlLabel,
+  LinearProgress,
   Paper,
   Stack,
   Switch,
@@ -77,6 +78,8 @@ export default function ApkManagerPage() {
   const [releaseNotes, setReleaseNotes] = useState("");
   const [mandatory, setMandatory] = useState(false);
   const [apkFile, setApkFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState("");
 
   const latest = useMemo(() => releases.find((release) => release.isActive) || releases[0], [releases]);
 
@@ -101,6 +104,45 @@ export default function ApkManagerPage() {
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     setApkFile(event.target.files?.[0] || null);
+    setUploadProgress(0);
+    setUploadPhase("");
+  }
+
+  function uploadApkWithProgress(formData: FormData): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/admin/apk-releases");
+      xhr.responseType = "text";
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          setUploadPhase("Uploading APK...");
+          return;
+        }
+        const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        setUploadProgress(percent);
+        setUploadPhase(percent >= 100 ? "Upload received. Saving release..." : `Uploading APK... ${percent}%`);
+      };
+
+      xhr.onload = () => {
+        let payload: any = {};
+        try {
+          payload = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+        } catch {
+          payload = { message: xhr.responseText || "Failed to upload APK" };
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(payload);
+        } else {
+          reject(new Error(payload?.message || `Failed to upload APK (${xhr.status})`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network error while uploading APK"));
+      xhr.onabort = () => reject(new Error("APK upload was cancelled"));
+      xhr.send(formData);
+    });
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -112,6 +154,8 @@ export default function ApkManagerPage() {
 
     try {
       setUploading(true);
+      setUploadProgress(0);
+      setUploadPhase("Preparing upload...");
       setError("");
       setSuccess("");
       const formData = new FormData();
@@ -121,12 +165,7 @@ export default function ApkManagerPage() {
       formData.append("releaseNotes", releaseNotes.trim());
       formData.append("mandatory", mandatory ? "true" : "false");
 
-      const res = await fetch("/api/admin/apk-releases", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || "Failed to upload APK");
+      await uploadApkWithProgress(formData);
 
       setSuccess("APK uploaded and activated.");
       setVersionName("");
@@ -134,6 +173,8 @@ export default function ApkManagerPage() {
       setReleaseNotes("");
       setMandatory(false);
       setApkFile(null);
+      setUploadProgress(0);
+      setUploadPhase("");
       const input = document.getElementById("apk-file-input") as HTMLInputElement | null;
       if (input) input.value = "";
       await loadReleases();
@@ -141,6 +182,7 @@ export default function ApkManagerPage() {
       setError(err?.message || "Failed to upload APK");
     } finally {
       setUploading(false);
+      setUploadPhase((phase) => (phase === "Upload received. Saving release..." ? "" : phase));
     }
   }
 
@@ -273,6 +315,30 @@ export default function ApkManagerPage() {
                     <Typography variant="body2" color="text.secondary">
                       {apkFile.name} · {formatBytes(apkFile.size)}
                     </Typography>
+                  )}
+                  {uploading && (
+                    <Box>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
+                        <Typography variant="body2" fontWeight={800}>
+                          {uploadPhase || "Uploading APK..."}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" fontWeight={800}>
+                          {uploadProgress}%
+                        </Typography>
+                      </Stack>
+                      <LinearProgress
+                        variant="determinate"
+                        value={uploadProgress}
+                        sx={{
+                          height: 8,
+                          borderRadius: 1,
+                          bgcolor: "#e2e8f0",
+                          "& .MuiLinearProgress-bar": {
+                            borderRadius: 1,
+                          },
+                        }}
+                      />
+                    </Box>
                   )}
                   <TextField
                     label="Version name"

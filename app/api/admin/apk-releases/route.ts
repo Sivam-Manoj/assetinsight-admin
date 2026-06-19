@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SERVER_URL } from "@/lib/api";
 import { proxyJsonWithAdminAuth } from "@/lib/adminProxy";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 function setAccessCookie(resp: NextResponse, token: string) {
   resp.cookies.set("cv_admin", token, {
     httpOnly: true,
@@ -15,7 +18,11 @@ function setAccessCookie(resp: NextResponse, token: string) {
 async function tryRefresh(request: NextRequest): Promise<string | null> {
   try {
     const url = new URL("/api/admin/refresh", request.url);
-    const res = await fetch(url, { method: "POST", cache: "no-store" });
+    const res = await fetch(url, {
+      method: "POST",
+      cache: "no-store",
+      headers: { cookie: request.headers.get("cookie") || "" },
+    });
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));
     return (data?.accessToken as string) || null;
@@ -24,14 +31,26 @@ async function tryRefresh(request: NextRequest): Promise<string | null> {
   }
 }
 
-async function forwardUpload(request: Request, token: string) {
-  const formData = await request.formData();
+async function forwardUpload(request: NextRequest, token: string) {
+  const contentType = request.headers.get("content-type");
+  if (!contentType?.includes("multipart/form-data")) {
+    return new Response(JSON.stringify({ message: "Multipart APK upload is required" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   return fetch(`${SERVER_URL}/api/admin/apk-releases`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": contentType,
+    },
+    body: request.body,
+    // Required by Node fetch when streaming a request body.
+    duplex: "half",
     cache: "no-store",
-  });
+  } as RequestInit & { duplex: "half" });
 }
 
 export async function GET(request: NextRequest) {
@@ -39,25 +58,22 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const token = request.cookies.get("cv_admin")?.value;
-  if (!token) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
+  const existingToken = request.cookies.get("cv_admin")?.value;
+  if (!existingToken) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
 
-  const retryRequest = request.clone();
-  let res = await forwardUpload(request, token);
-  if (res.status !== 401) {
-    const data = await res.json().catch(() => ({}));
-    return NextResponse.json(data, { status: res.status });
+  // Refresh before streaming the upload. Once the request body is forwarded, it
+  // cannot be replayed safely for a retry without buffering the whole APK.
+  const refreshedToken = await tryRefresh(request);
+  const token = refreshedToken || existingToken;
+  const res = await forwardUpload(request, token);
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { message: text || "Failed to upload APK" };
   }
-
-  const newToken = await tryRefresh(request);
-  if (!newToken) {
-    const data = await res.json().catch(() => ({ message: "Unauthorized" }));
-    return NextResponse.json(data, { status: 401 });
-  }
-
-  res = await forwardUpload(retryRequest, newToken);
-  const data = await res.json().catch(() => ({}));
   const response = NextResponse.json(data, { status: res.status });
-  setAccessCookie(response, newToken);
+  if (refreshedToken) setAccessCookie(response, refreshedToken);
   return response;
 }
