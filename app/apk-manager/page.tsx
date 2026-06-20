@@ -29,6 +29,7 @@ import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import AdminNavbarV2 from "@/app/components/common/AdminNavbarV2";
+import { SERVER_URL } from "@/lib/api";
 
 type ApkRelease = {
   id: string;
@@ -108,11 +109,12 @@ export default function ApkManagerPage() {
     setUploadPhase("");
   }
 
-  function uploadApkWithProgress(formData: FormData): Promise<any> {
+  function uploadApkWithProgress(formData: FormData, uploadUrl: string, uploadToken: string): Promise<any> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/admin/apk-releases");
+      xhr.open("POST", `${SERVER_URL}${uploadUrl}`);
       xhr.responseType = "text";
+      xhr.setRequestHeader("x-apk-upload-token", uploadToken);
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) {
@@ -145,6 +147,18 @@ export default function ApkManagerPage() {
     });
   }
 
+  async function getUploadToken(): Promise<{ uploadUrl: string; token: string }> {
+    const res = await fetch("/api/admin/apk-releases/upload-token", {
+      method: "POST",
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.token || !data?.uploadUrl) {
+      throw new Error(data?.message || "Failed to start APK upload");
+    }
+    return { token: data.token, uploadUrl: data.uploadUrl };
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!apkFile) {
@@ -158,6 +172,7 @@ export default function ApkManagerPage() {
       setUploadPhase("Preparing upload...");
       setError("");
       setSuccess("");
+      const uploadTicket = await getUploadToken();
       const formData = new FormData();
       formData.append("apk", apkFile);
       formData.append("versionName", versionName.trim());
@@ -165,7 +180,7 @@ export default function ApkManagerPage() {
       formData.append("releaseNotes", releaseNotes.trim());
       formData.append("mandatory", mandatory ? "true" : "false");
 
-      await uploadApkWithProgress(formData);
+      await uploadApkWithProgress(formData, uploadTicket.uploadUrl, uploadTicket.token);
 
       setSuccess("APK uploaded and activated.");
       setVersionName("");
