@@ -42,26 +42,34 @@ async function tryRefresh(request: NextRequest): Promise<string | null> {
   }
 }
 
-async function forwardUpload(request: NextRequest, token: string) {
+async function buildForwardFormData(request: NextRequest): Promise<FormData> {
   const contentType = request.headers.get("content-type");
   if (!contentType?.includes("multipart/form-data")) {
-    return new Response(JSON.stringify({ message: "Multipart APK upload is required" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
+    throw new Error("Multipart APK upload is required");
   }
 
+  const incoming = await request.formData();
+  const apk = incoming.get("apk");
+  if (!(apk instanceof File) || !apk.name) {
+    throw new Error("APK file is required");
+  }
+
+  const formData = new FormData();
+  formData.append("apk", apk, apk.name);
+  for (const field of ["versionName", "versionCode", "releaseNotes", "mandatory"]) {
+    const value = incoming.get(field);
+    formData.append(field, typeof value === "string" ? value : "");
+  }
+  return formData;
+}
+
+async function forwardUpload(formData: FormData, token: string) {
   return fetch(`${SERVER_URL}/api/admin/apk-releases`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": contentType,
-    },
-    body: request.body,
-    // Required by Node fetch when streaming a request body.
-    duplex: "half",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
     cache: "no-store",
-  } as RequestInit & { duplex: "half" });
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -73,11 +81,12 @@ export async function POST(request: NextRequest) {
     const existingToken = request.cookies.get("cv_admin")?.value;
     if (!existingToken) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
 
-    // Refresh before streaming the upload. Once the request body is forwarded,
-    // it cannot be replayed safely for a retry without buffering the whole APK.
+    // Refresh before reading and forwarding the upload so expired admin tokens
+    // do not force a second parse of the APK body.
     const refreshedToken = await tryRefresh(request);
     const token = refreshedToken || existingToken;
-    const res = await forwardUpload(request, token);
+    const formData = await buildForwardFormData(request);
+    const res = await forwardUpload(formData, token);
     const text = await res.text();
     let data: any = {};
     try {
