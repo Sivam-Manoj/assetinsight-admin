@@ -5,6 +5,17 @@ import { proxyJsonWithAdminAuth } from "@/lib/adminProxy";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function normalizeErrorMessage(text: string, fallback: string): string {
+  if (!text) return fallback;
+  const preMatch = text.match(/<pre>([\s\S]*?)<\/pre>/i);
+  const body = preMatch?.[1] || text;
+  return body
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500) || fallback;
+}
+
 function setAccessCookie(resp: NextResponse, token: string) {
   resp.cookies.set("cv_admin", token, {
     httpOnly: true,
@@ -58,22 +69,29 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const existingToken = request.cookies.get("cv_admin")?.value;
-  if (!existingToken) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
-
-  // Refresh before streaming the upload. Once the request body is forwarded, it
-  // cannot be replayed safely for a retry without buffering the whole APK.
-  const refreshedToken = await tryRefresh(request);
-  const token = refreshedToken || existingToken;
-  const res = await forwardUpload(request, token);
-  const text = await res.text();
-  let data: any = {};
   try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { message: text || "Failed to upload APK" };
+    const existingToken = request.cookies.get("cv_admin")?.value;
+    if (!existingToken) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
+
+    // Refresh before streaming the upload. Once the request body is forwarded,
+    // it cannot be replayed safely for a retry without buffering the whole APK.
+    const refreshedToken = await tryRefresh(request);
+    const token = refreshedToken || existingToken;
+    const res = await forwardUpload(request, token);
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { message: normalizeErrorMessage(text, "Failed to upload APK") };
+    }
+    const response = NextResponse.json(data, { status: res.status });
+    if (refreshedToken) setAccessCookie(response, refreshedToken);
+    return response;
+  } catch (error: any) {
+    return NextResponse.json(
+      { message: error?.message || "Failed to upload APK. Please try again." },
+      { status: 502 }
+    );
   }
-  const response = NextResponse.json(data, { status: res.status });
-  if (refreshedToken) setAccessCookie(response, refreshedToken);
-  return response;
 }
