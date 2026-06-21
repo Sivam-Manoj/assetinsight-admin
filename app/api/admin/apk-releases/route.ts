@@ -42,34 +42,29 @@ async function tryRefresh(request: NextRequest): Promise<string | null> {
   }
 }
 
-async function buildForwardFormData(request: NextRequest): Promise<FormData> {
+function getMultipartContentType(request: NextRequest): string {
   const contentType = request.headers.get("content-type");
   if (!contentType?.includes("multipart/form-data")) {
     throw new Error("Multipart APK upload is required");
   }
-
-  const incoming = await request.formData();
-  const apk = incoming.get("apk");
-  if (!(apk instanceof File) || !apk.name) {
-    throw new Error("APK file is required");
-  }
-
-  const formData = new FormData();
-  formData.append("apk", apk, apk.name);
-  for (const field of ["versionName", "versionCode", "releaseNotes", "mandatory"]) {
-    const value = incoming.get(field);
-    formData.append(field, typeof value === "string" ? value : "");
-  }
-  return formData;
+  return contentType;
 }
 
-async function forwardUpload(formData: FormData, token: string) {
+async function forwardUpload(request: NextRequest, token: string, contentType: string) {
+  if (!request.body) {
+    throw new Error("APK upload body is empty");
+  }
+
   return fetch(`${SERVER_URL}/api/admin/apk-releases`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "content-type": contentType,
+    },
+    body: request.body,
     cache: "no-store",
-  });
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
 }
 
 export async function GET(request: NextRequest) {
@@ -85,8 +80,8 @@ export async function POST(request: NextRequest) {
     // do not force a second parse of the APK body.
     const refreshedToken = await tryRefresh(request);
     const token = refreshedToken || existingToken;
-    const formData = await buildForwardFormData(request);
-    const res = await forwardUpload(formData, token);
+    const contentType = getMultipartContentType(request);
+    const res = await forwardUpload(request, token, contentType);
     const text = await res.text();
     let data: any = {};
     try {
