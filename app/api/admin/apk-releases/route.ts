@@ -51,7 +51,8 @@ function getMultipartContentType(request: NextRequest): string {
 }
 
 async function forwardUpload(request: NextRequest, token: string, contentType: string) {
-  if (!request.body) {
+  const body = Buffer.from(await request.arrayBuffer());
+  if (body.length === 0) {
     throw new Error("APK upload body is empty");
   }
 
@@ -60,11 +61,11 @@ async function forwardUpload(request: NextRequest, token: string, contentType: s
     headers: {
       Authorization: `Bearer ${token}`,
       "content-type": contentType,
+      "content-length": String(body.length),
     },
-    body: request.body,
+    body,
     cache: "no-store",
-    duplex: "half",
-  } as RequestInit & { duplex: "half" });
+  });
 }
 
 export async function GET(request: NextRequest) {
