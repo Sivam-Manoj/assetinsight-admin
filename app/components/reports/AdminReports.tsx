@@ -364,6 +364,7 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
             disabled={disabled}
             multiline
             minRows={2}
+            helperText='One line becomes one CR paragraph. Start a line with "Registration History:" to bold that heading.'
             fullWidth
           />
         </Stack>
@@ -564,6 +565,7 @@ function CrDisclaimersDialog({
                       disabled={saving}
                       multiline
                       minRows={2}
+                      helperText='One line becomes one CR paragraph. Start a line with "Registration History:" to bold that heading.'
                       fullWidth
                     />
                     <Button
