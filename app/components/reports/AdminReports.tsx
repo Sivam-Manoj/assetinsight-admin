@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -28,6 +28,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   FormControlLabel,
   Grid,
@@ -48,9 +49,18 @@ import {
   Typography,
 } from "@mui/material";
 import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CollectionsRoundedIcon from "@mui/icons-material/CollectionsRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import FormatBoldRoundedIcon from "@mui/icons-material/FormatBoldRounded";
+import FormatClearRoundedIcon from "@mui/icons-material/FormatClearRounded";
+import FormatItalicRoundedIcon from "@mui/icons-material/FormatItalicRounded";
+import FormatListBulletedRoundedIcon from "@mui/icons-material/FormatListBulletedRounded";
+import FormatListNumberedRoundedIcon from "@mui/icons-material/FormatListNumberedRounded";
+import HorizontalRuleRoundedIcon from "@mui/icons-material/HorizontalRuleRounded";
 import NoteAddRoundedIcon from "@mui/icons-material/NoteAddRounded";
+import NotesRoundedIcon from "@mui/icons-material/NotesRounded";
+import OpenInFullRoundedIcon from "@mui/icons-material/OpenInFullRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
@@ -162,20 +172,33 @@ const richNoteHelpText =
   "Use the toolbar for bold, italic, lists, paragraphs, and rules. Saved output becomes clean CR HTML.";
 
 const richEditorExtensions = [
-  StarterKit.configure({ heading: false, blockquote: false, codeBlock: false }),
+  StarterKit.configure({
+    heading: false,
+    blockquote: false,
+    codeBlock: false,
+    bulletList: { keepMarks: true },
+    orderedList: { keepMarks: true },
+  }),
 ];
 
-function RichCrNoteEditor({
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
+type RichCrNoteSurfaceProps = {
   value: string;
   disabled?: boolean;
   onChange: (value: string) => void;
-}) {
+  minHeight?: number;
+  autoFocus?: boolean;
+  onExpand?: () => void;
+};
+
+function RichCrNoteSurface({
+  value,
+  disabled,
+  onChange,
+  minHeight = 120,
+  autoFocus,
+  onExpand,
+}: RichCrNoteSurfaceProps) {
+  const [, setToolbarTick] = useState(0);
   const editor = useEditor({
     extensions: richEditorExtensions,
     content: value || "",
@@ -188,8 +211,27 @@ function RichCrNoteEditor({
 
   useEffect(() => {
     if (!editor) return;
+    const refreshToolbar = () => setToolbarTick((tick) => tick + 1);
+    editor.on("selectionUpdate", refreshToolbar);
+    editor.on("transaction", refreshToolbar);
+    editor.on("update", refreshToolbar);
+    return () => {
+      editor.off("selectionUpdate", refreshToolbar);
+      editor.off("transaction", refreshToolbar);
+      editor.off("update", refreshToolbar);
+    };
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) return;
     editor.setEditable(!disabled);
   }, [disabled, editor]);
+
+  useEffect(() => {
+    if (!editor || !autoFocus || disabled) return;
+    const timeout = window.setTimeout(() => editor.commands.focus("end"), 50);
+    return () => window.clearTimeout(timeout);
+  }, [autoFocus, disabled, editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -204,98 +246,242 @@ function RichCrNoteEditor({
     command();
   };
 
-  const toolbarButton = (buttonLabel: string, active: boolean, onClick: () => void) => (
-    <Button
-      key={buttonLabel}
-      size="small"
-      variant={active ? "contained" : "outlined"}
-      disabled={disabled || !editor}
-      onClick={onClick}
-      sx={{
-        minWidth: 0,
-        px: 1,
-        py: 0.35,
-        borderRadius: 1,
-        fontSize: "0.72rem",
-        fontWeight: 900,
-        textTransform: "none",
-      }}
-    >
-      {buttonLabel}
-    </Button>
+  const toolbarButton = (
+    buttonLabel: string,
+    icon: ReactNode,
+    active: boolean,
+    onClick: () => void
+  ) => (
+    <Tooltip key={buttonLabel} title={buttonLabel}>
+      <span>
+        <IconButton
+          size="small"
+          disabled={disabled || !editor}
+          onClick={onClick}
+          aria-label={buttonLabel}
+          sx={{
+            width: 34,
+            height: 34,
+            borderRadius: 1,
+            border: "1px solid",
+            borderColor: active ? "#7c3aed" : "#dbe3ef",
+            bgcolor: active ? "#ede9fe" : "#fff",
+            color: active ? "#5b21b6" : "#334155",
+            boxShadow: active ? "inset 0 0 0 1px rgba(124, 58, 237, 0.18)" : "none",
+            "&:hover": {
+              borderColor: "#8b5cf6",
+              bgcolor: active ? "#ddd6fe" : "#f8fafc",
+            },
+            "&.Mui-disabled": {
+              bgcolor: "#f8fafc",
+              color: "#94a3b8",
+            },
+          }}
+        >
+          {icon}
+        </IconButton>
+      </span>
+    </Tooltip>
   );
 
   return (
-    <Stack spacing={0.75}>
-      <Typography variant="caption" sx={{ color: "#475569", fontWeight: 800 }}>
-        {label}
-      </Typography>
-      <Box
+    <Box
+      sx={{
+        border: "1px solid #cbd5e1",
+        borderRadius: 1.5,
+        bgcolor: disabled ? "#f8fafc" : "#fff",
+        overflow: "hidden",
+        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+      }}
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={0.5}
+        useFlexGap
+        flexWrap="wrap"
         sx={{
-          border: "1px solid #cbd5e1",
-          borderRadius: 1.5,
-          bgcolor: disabled ? "#f8fafc" : "#fff",
-          overflow: "hidden",
+          p: 0.75,
+          borderBottom: "1px solid #e2e8f0",
+          bgcolor: "#f1f5f9",
         }}
       >
-        <Stack
-          direction="row"
-          spacing={0.5}
-          useFlexGap
-          flexWrap="wrap"
-          sx={{ p: 0.75, borderBottom: "1px solid #e2e8f0", bgcolor: "#f8fafc" }}
-        >
-          {toolbarButton("Bold", Boolean(editor?.isActive("bold")), () =>
-            run(() => editor!.chain().focus().toggleBold().run())
-          )}
-          {toolbarButton("Italic", Boolean(editor?.isActive("italic")), () =>
-            run(() => editor!.chain().focus().toggleItalic().run())
-          )}
-          {toolbarButton("Bullets", Boolean(editor?.isActive("bulletList")), () =>
-            run(() => editor!.chain().focus().toggleBulletList().run())
-          )}
-          {toolbarButton("Numbers", Boolean(editor?.isActive("orderedList")), () =>
-            run(() => editor!.chain().focus().toggleOrderedList().run())
-          )}
-          {toolbarButton("Paragraph", Boolean(editor?.isActive("paragraph")), () =>
-            run(() => editor!.chain().focus().setParagraph().run())
-          )}
-          {toolbarButton("HR", false, () =>
-            run(() => editor!.chain().focus().setHorizontalRule().run())
-          )}
-          {toolbarButton("Clear", false, () =>
-            run(() => editor!.chain().focus().unsetAllMarks().clearNodes().run())
-          )}
-        </Stack>
-        <Box
-          sx={{
-            minHeight: 104,
-            px: 1.25,
-            py: 1,
-            cursor: disabled ? "not-allowed" : "text",
-            "& .ProseMirror": {
-              minHeight: 86,
-              outline: "none",
-              color: "#0f172a",
-              fontSize: "0.9rem",
-              lineHeight: 1.45,
-            },
-            "& .ProseMirror p": { my: 0.5 },
-            "& .ProseMirror ul, & .ProseMirror ol": { pl: 2.5, my: 0.75 },
-            "& .ProseMirror li": { my: 0.25 },
-            "& .ProseMirror hr": { border: 0, borderTop: "1px solid #cbd5e1", my: 1 },
-          }}
-        >
-          <EditorContent editor={editor} />
-        </Box>
+        {toolbarButton("Bold", <FormatBoldRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bold")), () =>
+          run(() => editor!.chain().focus().toggleBold().run())
+        )}
+        {toolbarButton(
+          "Italic",
+          <FormatItalicRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive("italic")),
+          () => run(() => editor!.chain().focus().toggleItalic().run())
+        )}
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
+        {toolbarButton(
+          "Bullet list",
+          <FormatListBulletedRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive("bulletList")),
+          () => run(() => editor!.chain().focus().toggleBulletList().run())
+        )}
+        {toolbarButton(
+          "Numbered list",
+          <FormatListNumberedRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive("orderedList")),
+          () => run(() => editor!.chain().focus().toggleOrderedList().run())
+        )}
+        {toolbarButton("Paragraph", <NotesRoundedIcon fontSize="small" />, Boolean(editor?.isActive("paragraph")), () =>
+          run(() => editor!.chain().focus().setParagraph().run())
+        )}
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
+        {toolbarButton("Horizontal rule", <HorizontalRuleRoundedIcon fontSize="small" />, false, () =>
+          run(() => editor!.chain().focus().setHorizontalRule().run())
+        )}
+        {toolbarButton("Clear formatting", <FormatClearRoundedIcon fontSize="small" />, false, () =>
+          run(() => editor!.chain().focus().unsetAllMarks().clearNodes().run())
+        )}
+        {onExpand ? (
+          <>
+            <Box sx={{ flex: 1, minWidth: 8 }} />
+            {toolbarButton("Open large editor", <OpenInFullRoundedIcon fontSize="small" />, false, onExpand)}
+          </>
+        ) : null}
+      </Stack>
+      <Box
+        sx={{
+          minHeight,
+          px: 1.35,
+          py: 1.1,
+          cursor: disabled ? "not-allowed" : "text",
+          "& .ProseMirror": {
+            minHeight: Math.max(80, minHeight - 28),
+            outline: "none",
+            color: "#0f172a",
+            fontSize: "0.95rem",
+            lineHeight: 1.55,
+            whiteSpace: "pre-wrap",
+          },
+          "& .ProseMirror p": { margin: "0.35rem 0" },
+          "& .ProseMirror ul": {
+            listStyleType: "disc",
+            paddingLeft: "1.6rem",
+            margin: "0.55rem 0",
+          },
+          "& .ProseMirror ol": {
+            listStyleType: "decimal",
+            paddingLeft: "1.6rem",
+            margin: "0.55rem 0",
+          },
+          "& .ProseMirror li": {
+            display: "list-item",
+            margin: "0.25rem 0",
+          },
+          "& .ProseMirror li p": { margin: 0 },
+          "& .ProseMirror hr": {
+            border: 0,
+            borderTop: "2px solid #cbd5e1",
+            margin: "0.9rem 0",
+          },
+        }}
+      >
+        <EditorContent editor={editor} />
       </Box>
-      <Typography variant="caption" color="text.secondary">
-        {richNoteHelpText}
-      </Typography>
-    </Stack>
+    </Box>
   );
 }
 
+function RichCrNoteEditor({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [expandedValue, setExpandedValue] = useState(value || "");
+
+  const openExpanded = () => {
+    setExpandedValue(value || "");
+    setExpanded(true);
+  };
+
+  const saveExpanded = () => {
+    onChange(expandedValue);
+    setExpanded(false);
+  };
+
+  return (
+    <Stack spacing={0.75}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+        <Typography variant="caption" sx={{ color: "#475569", fontWeight: 900 }}>
+          {label}
+        </Typography>
+        <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 700 }}>
+          CR HTML editor
+        </Typography>
+      </Stack>
+      <RichCrNoteSurface
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        minHeight={124}
+        onExpand={openExpanded}
+      />
+      <Typography variant="caption" color="text.secondary">
+        {richNoteHelpText}
+      </Typography>
+
+      <Dialog
+        open={expanded}
+        onClose={() => setExpanded(false)}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            width: "min(1040px, calc(100vw - 32px))",
+            maxHeight: "calc(100vh - 48px)",
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1.25 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 950, letterSpacing: 0 }}>
+                {label}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Edit the CR note with Word-style formatting.
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setExpanded(false)} aria-label="Close editor" sx={{ border: "1px solid #e2e8f0" }}>
+              <CloseRoundedIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: "#f8fafc", p: 2 }}>
+          <RichCrNoteSurface
+            value={expandedValue}
+            disabled={disabled}
+            onChange={setExpandedValue}
+            minHeight={390}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 2, py: 1.5 }}>
+          <Button onClick={() => setExpanded(false)} variant="outlined" sx={{ borderRadius: 1.25 }}>
+            Cancel
+          </Button>
+          <Button onClick={saveExpanded} variant="contained" disabled={disabled} sx={{ borderRadius: 1.25, px: 2.5 }}>
+            Save note
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
+}
 type CrDisclaimersDialogProps = {
   open: boolean;
   loading: boolean;
