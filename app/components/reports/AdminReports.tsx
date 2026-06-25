@@ -1,6 +1,8 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import {
   type ColumnDef,
   flexRender,
@@ -16,6 +18,7 @@ import ReportPreviewModal, {
 } from "@/app/components/reports/ReportPreviewModal";
 import {
   Alert,
+  Box,
   Button,
   Card,
   CardContent,
@@ -154,6 +157,144 @@ const fallbackCrDisclaimerOptions: CrDisclaimerOption[] = [
   { key: "rollingStockOnsite", label: "Rolling Stock - Damage Disclaimer - Onsite" },
   { key: "rollingStockOffsite", label: "Rolling Stock - Damage Disclaimer - Offsite" },
 ];
+
+const richNoteHelpText =
+  "Use the toolbar for bold, italic, lists, paragraphs, and rules. Saved output becomes clean CR HTML.";
+
+const richEditorExtensions = [
+  StarterKit.configure({ heading: false, blockquote: false, codeBlock: false }),
+];
+
+function RichCrNoteEditor({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const editor = useEditor({
+    extensions: richEditorExtensions,
+    content: value || "",
+    editable: !disabled,
+    immediatelyRender: false,
+    onUpdate: ({ editor: activeEditor }) => {
+      onChange(activeEditor.isEmpty ? "" : activeEditor.getHTML());
+    },
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!disabled);
+  }, [disabled, editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const nextValue = value || "";
+    if (nextValue !== editor.getHTML()) {
+      editor.commands.setContent(nextValue, { emitUpdate: false });
+    }
+  }, [editor, value]);
+
+  const run = (command: () => boolean) => {
+    if (!editor || disabled) return;
+    command();
+  };
+
+  const toolbarButton = (buttonLabel: string, active: boolean, onClick: () => void) => (
+    <Button
+      key={buttonLabel}
+      size="small"
+      variant={active ? "contained" : "outlined"}
+      disabled={disabled || !editor}
+      onClick={onClick}
+      sx={{
+        minWidth: 0,
+        px: 1,
+        py: 0.35,
+        borderRadius: 1,
+        fontSize: "0.72rem",
+        fontWeight: 900,
+        textTransform: "none",
+      }}
+    >
+      {buttonLabel}
+    </Button>
+  );
+
+  return (
+    <Stack spacing={0.75}>
+      <Typography variant="caption" sx={{ color: "#475569", fontWeight: 800 }}>
+        {label}
+      </Typography>
+      <Box
+        sx={{
+          border: "1px solid #cbd5e1",
+          borderRadius: 1.5,
+          bgcolor: disabled ? "#f8fafc" : "#fff",
+          overflow: "hidden",
+        }}
+      >
+        <Stack
+          direction="row"
+          spacing={0.5}
+          useFlexGap
+          flexWrap="wrap"
+          sx={{ p: 0.75, borderBottom: "1px solid #e2e8f0", bgcolor: "#f8fafc" }}
+        >
+          {toolbarButton("Bold", Boolean(editor?.isActive("bold")), () =>
+            run(() => editor!.chain().focus().toggleBold().run())
+          )}
+          {toolbarButton("Italic", Boolean(editor?.isActive("italic")), () =>
+            run(() => editor!.chain().focus().toggleItalic().run())
+          )}
+          {toolbarButton("Bullets", Boolean(editor?.isActive("bulletList")), () =>
+            run(() => editor!.chain().focus().toggleBulletList().run())
+          )}
+          {toolbarButton("Numbers", Boolean(editor?.isActive("orderedList")), () =>
+            run(() => editor!.chain().focus().toggleOrderedList().run())
+          )}
+          {toolbarButton("Paragraph", Boolean(editor?.isActive("paragraph")), () =>
+            run(() => editor!.chain().focus().setParagraph().run())
+          )}
+          {toolbarButton("HR", false, () =>
+            run(() => editor!.chain().focus().setHorizontalRule().run())
+          )}
+          {toolbarButton("Clear", false, () =>
+            run(() => editor!.chain().focus().unsetAllMarks().clearNodes().run())
+          )}
+        </Stack>
+        <Box
+          sx={{
+            minHeight: 104,
+            px: 1.25,
+            py: 1,
+            cursor: disabled ? "not-allowed" : "text",
+            "& .ProseMirror": {
+              minHeight: 86,
+              outline: "none",
+              color: "#0f172a",
+              fontSize: "0.9rem",
+              lineHeight: 1.45,
+            },
+            "& .ProseMirror p": { my: 0.5 },
+            "& .ProseMirror ul, & .ProseMirror ol": { pl: 2.5, my: 0.75 },
+            "& .ProseMirror li": { my: 0.25 },
+            "& .ProseMirror hr": { border: 0, borderTop: "1px solid #cbd5e1", my: 1 },
+          }}
+        >
+          <EditorContent editor={editor} />
+        </Box>
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        {richNoteHelpText}
+      </Typography>
+    </Stack>
+  );
+}
 
 type CrDisclaimersDialogProps = {
   open: boolean;
@@ -356,16 +497,11 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
               </Grid>
             ))}
           </Grid>
-          <TextField
-            size="small"
+          <RichCrNoteEditor
             label="Custom note"
             value={lot.settings.customText}
-            onChange={(event) => update({ customText: event.target.value })}
+            onChange={(value) => update({ customText: value })}
             disabled={disabled}
-            multiline
-            minRows={2}
-            helperText='One line becomes one CR paragraph. Start a line with "Registration History:" to bold that heading.'
-            fullWidth
           />
         </Stack>
       </CardContent>
@@ -557,16 +693,11 @@ function CrDisclaimersDialog({
                     ))}
                   </Grid>
                   <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "flex-start" }}>
-                    <TextField
-                      size="small"
+                    <RichCrNoteEditor
                       label="Bulk custom note"
                       value={bulkSettings.customText}
-                      onChange={(event) => updateBulkSettings({ customText: event.target.value })}
+                      onChange={(value) => updateBulkSettings({ customText: value })}
                       disabled={saving}
-                      multiline
-                      minRows={2}
-                      helperText='One line becomes one CR paragraph. Start a line with "Registration History:" to bold that heading.'
-                      fullWidth
                     />
                     <Button
                       variant="contained"
