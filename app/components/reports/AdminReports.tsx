@@ -3,6 +3,8 @@
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import TextAlign from "@tiptap/extension-text-align";
+import Underline from "@tiptap/extension-underline";
 import {
   type ColumnDef,
   flexRender,
@@ -52,18 +54,26 @@ import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CollectionsRoundedIcon from "@mui/icons-material/CollectionsRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import FormatAlignCenterRoundedIcon from "@mui/icons-material/FormatAlignCenterRounded";
+import FormatAlignJustifyRoundedIcon from "@mui/icons-material/FormatAlignJustifyRounded";
+import FormatAlignLeftRoundedIcon from "@mui/icons-material/FormatAlignLeftRounded";
+import FormatAlignRightRoundedIcon from "@mui/icons-material/FormatAlignRightRounded";
 import FormatBoldRoundedIcon from "@mui/icons-material/FormatBoldRounded";
 import FormatClearRoundedIcon from "@mui/icons-material/FormatClearRounded";
 import FormatItalicRoundedIcon from "@mui/icons-material/FormatItalicRounded";
 import FormatListBulletedRoundedIcon from "@mui/icons-material/FormatListBulletedRounded";
 import FormatListNumberedRoundedIcon from "@mui/icons-material/FormatListNumberedRounded";
+import FormatUnderlinedRoundedIcon from "@mui/icons-material/FormatUnderlinedRounded";
 import HorizontalRuleRoundedIcon from "@mui/icons-material/HorizontalRuleRounded";
 import NoteAddRoundedIcon from "@mui/icons-material/NoteAddRounded";
 import NotesRoundedIcon from "@mui/icons-material/NotesRounded";
 import OpenInFullRoundedIcon from "@mui/icons-material/OpenInFullRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
+import StrikethroughSRoundedIcon from "@mui/icons-material/StrikethroughSRounded";
 import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
+import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 
 type ReportItem = {
@@ -173,11 +183,17 @@ const richNoteHelpText =
 
 const richEditorExtensions = [
   StarterKit.configure({
-    heading: false,
+    heading: { levels: [1, 2, 3] },
     blockquote: false,
     codeBlock: false,
     bulletList: { keepMarks: true },
     orderedList: { keepMarks: true },
+  }),
+  Underline,
+  TextAlign.configure({
+    types: ["heading", "paragraph"],
+    alignments: ["left", "center", "right", "justify"],
+    defaultAlignment: "left",
   }),
 ];
 
@@ -250,13 +266,14 @@ function RichCrNoteSurface({
     buttonLabel: string,
     icon: ReactNode,
     active: boolean,
-    onClick: () => void
+    onClick: () => void,
+    forceDisabled = false
   ) => (
     <Tooltip key={buttonLabel} title={buttonLabel}>
       <span>
         <IconButton
           size="small"
-          disabled={disabled || !editor}
+          disabled={disabled || !editor || forceDisabled}
           onClick={onClick}
           aria-label={buttonLabel}
           sx={{
@@ -284,6 +301,23 @@ function RichCrNoteSurface({
     </Tooltip>
   );
 
+  const blockValue = editor?.isActive("heading", { level: 1 })
+    ? "heading1"
+    : editor?.isActive("heading", { level: 2 })
+      ? "heading2"
+      : editor?.isActive("heading", { level: 3 })
+        ? "heading3"
+        : "paragraph";
+
+  const setBlockValue = (nextValue: string) => {
+    if (!editor || disabled) return;
+    const chain = editor.chain().focus();
+    if (nextValue === "heading1") chain.toggleHeading({ level: 1 }).run();
+    else if (nextValue === "heading2") chain.toggleHeading({ level: 2 }).run();
+    else if (nextValue === "heading3") chain.toggleHeading({ level: 3 }).run();
+    else chain.setParagraph().run();
+  };
+
   return (
     <Box
       sx={{
@@ -306,6 +340,36 @@ function RichCrNoteSurface({
           bgcolor: "#f1f5f9",
         }}
       >
+        <FormControl size="small" sx={{ minWidth: 142 }}>
+          <Select
+            value={blockValue}
+            disabled={disabled || !editor}
+            onChange={(event) => setBlockValue(String(event.target.value))}
+            sx={{
+              height: 34,
+              borderRadius: 1,
+              bgcolor: "#fff",
+              fontSize: "0.82rem",
+              fontWeight: 800,
+              "& .MuiSelect-select": { py: 0.75 },
+            }}
+          >
+            <MenuItem value="paragraph">Paragraph</MenuItem>
+            <MenuItem value="heading1">Title</MenuItem>
+            <MenuItem value="heading2">Heading</MenuItem>
+            <MenuItem value="heading3">Subheading</MenuItem>
+          </Select>
+        </FormControl>
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
+        {toolbarButton("Undo", <UndoRoundedIcon fontSize="small" />, false, () =>
+          run(() => editor!.chain().focus().undo().run()),
+          !editor?.can().undo()
+        )}
+        {toolbarButton("Redo", <RedoRoundedIcon fontSize="small" />, false, () =>
+          run(() => editor!.chain().focus().redo().run()),
+          !editor?.can().redo()
+        )}
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
         {toolbarButton("Bold", <FormatBoldRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bold")), () =>
           run(() => editor!.chain().focus().toggleBold().run())
         )}
@@ -314,6 +378,18 @@ function RichCrNoteSurface({
           <FormatItalicRoundedIcon fontSize="small" />,
           Boolean(editor?.isActive("italic")),
           () => run(() => editor!.chain().focus().toggleItalic().run())
+        )}
+        {toolbarButton(
+          "Underline",
+          <FormatUnderlinedRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive("underline")),
+          () => run(() => editor!.chain().focus().toggleUnderline().run())
+        )}
+        {toolbarButton(
+          "Strikethrough",
+          <StrikethroughSRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive("strike")),
+          () => run(() => editor!.chain().focus().toggleStrike().run())
         )}
         <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
         {toolbarButton(
@@ -330,6 +406,31 @@ function RichCrNoteSurface({
         )}
         {toolbarButton("Paragraph", <NotesRoundedIcon fontSize="small" />, Boolean(editor?.isActive("paragraph")), () =>
           run(() => editor!.chain().focus().setParagraph().run())
+        )}
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
+        {toolbarButton(
+          "Align left",
+          <FormatAlignLeftRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive({ textAlign: "left" })),
+          () => run(() => editor!.chain().focus().setTextAlign("left").run())
+        )}
+        {toolbarButton(
+          "Align center",
+          <FormatAlignCenterRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive({ textAlign: "center" })),
+          () => run(() => editor!.chain().focus().setTextAlign("center").run())
+        )}
+        {toolbarButton(
+          "Align right",
+          <FormatAlignRightRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive({ textAlign: "right" })),
+          () => run(() => editor!.chain().focus().setTextAlign("right").run())
+        )}
+        {toolbarButton(
+          "Justify",
+          <FormatAlignJustifyRoundedIcon fontSize="small" />,
+          Boolean(editor?.isActive({ textAlign: "justify" })),
+          () => run(() => editor!.chain().focus().setTextAlign("justify").run())
         )}
         <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
         {toolbarButton("Horizontal rule", <HorizontalRuleRoundedIcon fontSize="small" />, false, () =>
@@ -360,6 +461,24 @@ function RichCrNoteSurface({
             whiteSpace: "pre-wrap",
           },
           "& .ProseMirror p": { margin: "0.35rem 0" },
+          "& .ProseMirror h1": {
+            fontSize: "1.35rem",
+            lineHeight: 1.25,
+            margin: "0.55rem 0 0.35rem",
+            fontWeight: 950,
+          },
+          "& .ProseMirror h2": {
+            fontSize: "1.12rem",
+            lineHeight: 1.3,
+            margin: "0.5rem 0 0.3rem",
+            fontWeight: 900,
+          },
+          "& .ProseMirror h3": {
+            fontSize: "1rem",
+            lineHeight: 1.35,
+            margin: "0.45rem 0 0.25rem",
+            fontWeight: 850,
+          },
           "& .ProseMirror ul": {
             listStyleType: "disc",
             paddingLeft: "1.6rem",
@@ -441,8 +560,8 @@ function RichCrNoteEditor({
         PaperProps={{
           sx: {
             borderRadius: 2,
-            width: "min(1040px, calc(100vw - 32px))",
-            maxHeight: "calc(100vh - 48px)",
+            width: "min(1240px, calc(100vw - 28px))",
+            maxHeight: "calc(100vh - 28px)",
           },
         }}
       >
@@ -466,7 +585,7 @@ function RichCrNoteEditor({
             value={expandedValue}
             disabled={disabled}
             onChange={setExpandedValue}
-            minHeight={390}
+            minHeight={520}
             autoFocus
           />
         </DialogContent>
