@@ -277,7 +277,7 @@ export default function AdminNavbar() {
               />
               <NavLink
                 href="/approvals"
-                label="Pending Approvals"
+                label="Released Appraisals"
                 icon={
                   <svg
                     width="16"
@@ -477,7 +477,7 @@ export default function AdminNavbar() {
                 />
                 <NavLink
                   href="/approvals"
-                  label="Pending Approvals"
+                  label="Released Appraisals"
                   onClick={() => setMenuOpen(false)}
                   icon={
                     <svg

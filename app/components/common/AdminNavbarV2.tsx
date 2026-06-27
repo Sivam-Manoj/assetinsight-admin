@@ -116,7 +116,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         { href: "/crm", label: "CRM", icon: <SupportAgentRoundedIcon fontSize="small" /> },
         { href: "/spec-sheet", label: "CR Management", icon: <ViewListRoundedIcon fontSize="small" /> },
         { href: "/revenue-radar", label: "Revenue Radar", icon: <QueryStatsRoundedIcon fontSize="small" /> },
-        { href: "/approvals", label: "Pending Approval", icon: <CheckCircleRoundedIcon fontSize="small" /> },
+        { href: "/approvals", label: "Released Appraisals", icon: <CheckCircleRoundedIcon fontSize="small" /> },
         { href: "/apk-manager", label: "APK Manager", icon: <SystemUpdateAltRoundedIcon fontSize="small" /> },
         ...(role === "superadmin"
           ? [{ href: "/admins", label: "Admins", icon: <ManageAccountsRoundedIcon fontSize="small" /> }]

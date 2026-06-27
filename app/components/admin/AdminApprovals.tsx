@@ -19,7 +19,10 @@ type ReportItem = {
   contract_no?: string;
   fileType?: "pdf" | "spec_pdf" | "cr_docx" | "docx" | "xlsx" | "images" | "zip" | "asset-preview" | "realestate-preview" | "lotlisting-preview";
   approvalStatus?: "pending" | "approved" | "rejected";
+  release_status?: "pending_release" | "released";
   approval_assigned_to?: { _id?: string; email?: string; username?: string; companyName?: string; role?: string } | null;
+  released_at?: string | null;
+  downloadable?: boolean;
   report?: string;
   preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   isAssetReport?: boolean;
@@ -60,12 +63,12 @@ export default function AdminApprovals() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/reports/pending?page=${p}&limit=${limit}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/reports?reportType=Asset&approvalStatus=approved&releaseStatus=released&page=${p}&limit=${limit}`, { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || "Failed to load pending reports");
+      if (!res.ok) throw new Error(json?.message || "Failed to load released appraisals");
       setData(json as ApiResponse);
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to load pending reports";
+      const message = e instanceof Error ? e.message : "Failed to load released appraisals";
       setError(message);
     } finally {
       setLoading(false);
@@ -80,7 +83,7 @@ export default function AdminApprovals() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [targetId, setTargetId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [mode, setMode] = useState<"approve" | "reject">("approve");
+  const [mode] = useState<"approve" | "reject">("approve");
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
 
@@ -131,11 +134,6 @@ export default function AdminApprovals() {
     // Value already includes currency code (e.g., "CAD 123,456" or "USD 123,456")
     // Display as-is without reformatting
     return value || "N/A";
-  }
-
-  function approverLabel(value?: ReportItem["approval_assigned_to"]) {
-    if (!value) return "Legacy / unassigned";
-    return value.username || value.companyName || value.email || "Assigned manager";
   }
 
   function getPreviewTargetId(group: Group) {
@@ -222,6 +220,9 @@ export default function AdminApprovals() {
     isLotListing?: boolean;
     files_regenerating?: boolean;
     assignedApprover?: { _id?: string; email?: string; username?: string; companyName?: string; role?: string } | null;
+    release_status?: "pending_release" | "released";
+    released_at?: string | null;
+    downloadable?: boolean;
   };
 
   const groups = useMemo<Group[]>(() => {
@@ -256,6 +257,9 @@ export default function AdminApprovals() {
           isLotListing: r.isLotListing,
           files_regenerating: r.files_regenerating,
           assignedApprover: r.approval_assigned_to || null,
+          release_status: r.release_status || "released",
+          released_at: r.released_at || null,
+          downloadable: r.downloadable !== false,
         };
         map.set(key, g);
       }
@@ -308,11 +312,11 @@ export default function AdminApprovals() {
         <section className="admin-glass-surface rounded-3xl p-4 md:p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-xl md:text-2xl font-semibold text-gray-900">Pending Approval</h1>
-              <p className="text-gray-600">Review pending reports and approve or reject them. Users will be notified by email.</p>
+              <h1 className="text-xl md:text-2xl font-semibold text-gray-900">Released Appraisals</h1>
+              <p className="text-gray-600">Review released Asset appraisals and download the final generated files.</p>
             </div>
-            <div className="rounded-xl border border-rose-200 bg-white/70 px-4 py-2 shadow-sm">
-              <div className="text-xs text-gray-600">Awaiting Review</div>
+            <div className="rounded-xl border border-emerald-200 bg-white/70 px-4 py-2 shadow-sm">
+              <div className="text-xs text-gray-600">Released</div>
               <div className="text-lg font-semibold text-gray-900">{data?.total ?? 0}</div>
             </div>
           </div>
@@ -333,7 +337,7 @@ export default function AdminApprovals() {
                       <th className="py-2 pr-4">Contract</th>
                       <th className="py-2 pr-4">User</th>
                       <th className="py-2 pr-4">FMV</th>
-                      <th className="py-2 pr-4">Created</th>
+                      <th className="py-2 pr-4">Released</th>
                       <th className="py-2 pr-4">Actions</th>
                     </tr>
                   </thead>
@@ -346,26 +350,10 @@ export default function AdminApprovals() {
                         <td className="py-2 pr-4 text-gray-700">{g.contract_no || "-"}</td>
                         <td className="py-2 pr-4 text-gray-700">
                           <div>{g.userEmail || "-"}</div>
-                          <div className="mt-1 text-xs text-gray-500">
-                            Approver: {approverLabel(g.assignedApprover)}
-                          </div>
                         </td>
                         <td className="py-2 pr-4">{formatFMV(g.fairMarketValue)}</td>
                         <td className="py-2 pr-4 text-gray-700">
-                          {(() => {
-                            const created = new Date(g.createdAt).getTime();
-                            const updated = g.updatedAt ? new Date(g.updatedAt).getTime() : 0;
-                            const latestDate = updated > created ? new Date(g.updatedAt!) : new Date(g.createdAt);
-                            const isEdited = updated > created;
-                            return (
-                              <span className="flex items-center gap-1">
-                                {latestDate.toLocaleString()}
-                                {isEdited && (
-                                  <span className="text-xs text-amber-600 font-medium">(edited)</span>
-                                )}
-                              </span>
-                            );
-                          })()}
+                          {g.released_at ? new Date(g.released_at).toLocaleString() : new Date(g.createdAt).toLocaleString()}
                         </td>
                         <td className="py-2 pr-4">
                           <div className="flex items-center gap-2">
@@ -429,8 +417,7 @@ export default function AdminApprovals() {
                                 <a href={g.variants.images ? `/api/admin/reports/${g.variants.images._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ${g.variants.images ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>
                               </>
                             )}
-                            <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setMode('approve'); setConfirmOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 active:bg-emerald-100 shadow-sm hover:shadow transition-all">Approve</button>
-                            <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setRejectOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-red-300 text-red-700 bg-white hover:bg-red-50 active:bg-red-100 shadow-sm hover:shadow transition-all">Reject</button>
+                            <span className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Released</span>
                           </div>
                         </td>
                       </tr>
@@ -445,7 +432,6 @@ export default function AdminApprovals() {
                   <div key={g.key} className="rounded-xl border border-rose-200 bg-white/90 backdrop-blur p-4 shadow-md">
                     <div className="font-semibold text-gray-900">{g.title}</div>
                     <div className="text-sm text-gray-600">{g.userEmail || "-"}</div>
-                    <div className="text-xs text-gray-500 mt-1">Approver: {approverLabel(g.assignedApprover)}</div>
                     <div className="text-xs text-gray-600 mt-1"><span className="text-gray-500">Contract: </span>{g.contract_no || "-"}</div>
                     <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
                       <div>
@@ -453,8 +439,8 @@ export default function AdminApprovals() {
                         <div className="font-medium text-gray-900">{formatFMV(g.fairMarketValue)}</div>
                       </div>
                       <div>
-                        <div className="text-gray-500">Created</div>
-                        <div className="font-medium text-gray-900">{new Date(g.createdAt).toLocaleString()}</div>
+                        <div className="text-gray-500">Released</div>
+                        <div className="font-medium text-gray-900">{g.released_at ? new Date(g.released_at).toLocaleString() : new Date(g.createdAt).toLocaleString()}</div>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
@@ -495,8 +481,7 @@ export default function AdminApprovals() {
                           <a href={g.variants.images ? `/api/admin/reports/${g.variants.images._id}/download` : undefined} className={`cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm ${g.variants.images ? 'bg-blue-600 text-white hover:bg-blue-500 hover:shadow' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Images</a>
                         </>
                       )}
-                      <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setMode('approve'); setConfirmOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 active:bg-emerald-100 shadow-sm hover:shadow transition-all">Approve</button>
-                      <button onClick={() => { setTargetId((g.isAssetReport || g.isRealEstateReport || g.isLotListing) ? g.key : (g.variants.pdf?._id || g.variants.docx?._id || g.variants.xlsx?._id || g.variants.images?._id || null)); setRejectOpen(true); }} className="cursor-pointer px-3 py-1.5 rounded-xl border border-red-300 text-red-700 bg-white hover:bg-red-50 active:bg-red-100 shadow-sm hover:shadow transition-all">Reject</button>
+                      <span className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Released</span>
                     </div>
                   </div>
                 ))}
@@ -504,7 +489,7 @@ export default function AdminApprovals() {
 
               {/* Pagination */}
               <div className="mt-4 flex items-center justify-between">
-                <div className="text-sm text-gray-600">{data ? <>Showing {data.items?.length || 0} of {data.total} pending</> : null}</div>
+                <div className="text-sm text-gray-600">{data ? <>Showing {data.items?.length || 0} of {data.total} released appraisals</> : null}</div>
                 <div className="flex items-center gap-2">
                   <button className="cursor-pointer px-3 py-1.5 rounded-xl border border-rose-300 text-rose-700 bg-white hover:bg-rose-50 active:bg-rose-100 shadow-sm hover:shadow transition-all disabled:opacity-50" onClick={() => { const p = Math.max(1, page - 1); setPage(p); load(p); }} disabled={page <= 1}>Prev</button>
                   <span className="text-sm text-gray-700 tabular-nums">Page {page} of {totalPages}</span>

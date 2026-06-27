@@ -142,10 +142,20 @@ type CrDisclaimerSettings = {
   rollingStockOnsite: boolean;
   rollingStockOffsite: boolean;
   customText: string;
+  unreserved: boolean;
+  closingDate: string | null;
+  bidIncrement: 5 | 25 | 100 | 1000 | null;
+  openingBid: 5 | 25 | 100 | 1000 | null;
 };
 
+type CrDisclaimerFlagKey =
+  | "smallsOnsite"
+  | "smallsOffsite"
+  | "rollingStockOnsite"
+  | "rollingStockOffsite";
+
 type CrDisclaimerOption = {
-  key: keyof Omit<CrDisclaimerSettings, "customText">;
+  key: CrDisclaimerFlagKey;
   label: string;
 };
 
@@ -169,7 +179,13 @@ const emptyCrDisclaimers: CrDisclaimerSettings = {
   rollingStockOnsite: false,
   rollingStockOffsite: false,
   customText: "",
+  unreserved: false,
+  closingDate: null,
+  bidIncrement: null,
+  openingBid: null,
 };
+
+const auctionBidOptions = [5, 25, 100, 1000] as const;
 
 const fallbackCrDisclaimerOptions: CrDisclaimerOption[] = [
   { key: "smallsOnsite", label: "Smalls - Notice on Every Lot - Onsite" },
@@ -627,7 +643,124 @@ function getCrSettingsActiveCount(settings: CrDisclaimerSettings) {
     Number(Boolean(settings.smallsOffsite)) +
     Number(Boolean(settings.rollingStockOnsite)) +
     Number(Boolean(settings.rollingStockOffsite)) +
-    Number(Boolean(settings.customText?.trim()));
+    Number(Boolean(settings.customText?.trim())) +
+    Number(Boolean(settings.unreserved)) +
+    Number(Boolean(settings.closingDate)) +
+    Number(Boolean(settings.bidIncrement)) +
+    Number(Boolean(settings.openingBid));
+}
+
+function parseAuctionBidValue(value: unknown): CrDisclaimerSettings["bidIncrement"] {
+  const numeric = Number(String(value ?? "").replace(/[$,\s]/g, ""));
+  return auctionBidOptions.includes(numeric as (typeof auctionBidOptions)[number])
+    ? (numeric as CrDisclaimerSettings["bidIncrement"])
+    : null;
+}
+
+function CrAuctionControls({
+  settings,
+  disabled,
+  onChange,
+}: {
+  settings: CrDisclaimerSettings;
+  disabled?: boolean;
+  onChange: (patch: Partial<CrDisclaimerSettings>) => void;
+}) {
+  const selectSx = {
+    "& .MuiSelect-select": { py: 1.05 },
+    "& .MuiInputBase-root": { borderRadius: 2 },
+  };
+
+  return (
+    <Box sx={{ border: "1px solid #dbeafe", bgcolor: "#f8fbff", borderRadius: 2, p: 1.25 }}>
+      <Stack spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Chip size="small" label="Auction import" sx={{ fontWeight: 900, bgcolor: "#dbeafe", color: "#1e3a8a" }} />
+          <Typography variant="caption" color="text.secondary">
+            Applies to Excel Description, Close Date, Bid Increment, and Opening Bid.
+          </Typography>
+        </Stack>
+        <Grid container spacing={1}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <FormControlLabel
+              sx={{
+                m: 0,
+                minHeight: 40,
+                px: 1,
+                width: "100%",
+                border: "1px solid #cbd5e1",
+                borderRadius: 2,
+                bgcolor: settings.unreserved ? "#fff7ed" : "#fff",
+                "& .MuiFormControlLabel-label": { fontWeight: 800, fontSize: "0.82rem" },
+              }}
+              control={
+                <Checkbox
+                  size="small"
+                  disabled={disabled}
+                  checked={Boolean(settings.unreserved)}
+                  onChange={(event) => onChange({ unreserved: event.target.checked })}
+                />
+              }
+              label="Unreserved"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField
+              fullWidth
+              size="small"
+              type="date"
+              label="Closing Time"
+              value={settings.closingDate || ""}
+              disabled={disabled}
+              InputLabelProps={{ shrink: true }}
+              onChange={(event) => onChange({ closingDate: event.target.value || null })}
+              sx={{ "& .MuiInputBase-root": { borderRadius: 2, bgcolor: "#fff" } }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <FormControl fullWidth size="small" sx={selectSx}>
+              <InputLabel id="cr-bid-increment-label">Bid Increment</InputLabel>
+              <Select
+                labelId="cr-bid-increment-label"
+                label="Bid Increment"
+                value={settings.bidIncrement ?? ""}
+                disabled={disabled}
+                onChange={(event) => onChange({ bidIncrement: parseAuctionBidValue(event.target.value) })}
+                sx={{ bgcolor: "#fff" }}
+              >
+                <MenuItem value="">Blank</MenuItem>
+                {auctionBidOptions.map((value) => (
+                  <MenuItem key={`bid-${value}`} value={value}>
+                    ${value.toLocaleString()}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <FormControl fullWidth size="small" sx={selectSx}>
+              <InputLabel id="cr-opening-bid-label">Opening Bid</InputLabel>
+              <Select
+                labelId="cr-opening-bid-label"
+                label="Opening Bid"
+                value={settings.openingBid ?? ""}
+                disabled={disabled}
+                onChange={(event) => onChange({ openingBid: parseAuctionBidValue(event.target.value) })}
+                sx={{ bgcolor: "#fff" }}
+              >
+                <MenuItem value="">Blank</MenuItem>
+                {auctionBidOptions.map((value) => (
+                  <MenuItem key={`opening-${value}`} value={value}>
+                    ${value.toLocaleString()}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+      </Stack>
+    </Box>
+  );
 }
 
 const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
@@ -802,6 +935,7 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
               </Grid>
             ))}
           </Grid>
+          <CrAuctionControls settings={lot.settings} disabled={disabled} onChange={update} />
           <RichCrNoteEditor
             label="Custom note"
             value={lot.settings.customText}
@@ -997,6 +1131,11 @@ function CrDisclaimersDialog({
                       </Grid>
                     ))}
                   </Grid>
+                  <CrAuctionControls
+                    settings={bulkSettings}
+                    disabled={saving}
+                    onChange={updateBulkSettings}
+                  />
                   <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "flex-start" }}>
                     <RichCrNoteEditor
                       label="Bulk custom note"

@@ -19,7 +19,7 @@ export default async function Page() {
     .catch(() => ({} as unknown as { user?: { role?: string } }));
   const role = data?.user?.role;
   
-  // Admin and superadmin can access pending approvals
+  // Admin and superadmin can access released appraisal records.
   if (role !== "superadmin" && role !== "admin") redirect("/reports");
 
   return (
