@@ -661,6 +661,171 @@ function parseAuctionBidValue(value: unknown): CrDisclaimerSettings["bidIncremen
     : null;
 }
 
+function formatClosingDateLabel(dateValue: string | null, timeValue: string | null, periodValue: "AM" | "PM" | null) {
+  const date = String(dateValue || "").trim();
+  const time = String(timeValue || "").trim();
+  const period = periodValue ? ` ${periodValue}` : "";
+  if (!date && !time) return "";
+  const dateLabel = date
+    ? (() => {
+        const parts = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        return parts ? `${Number(parts[2])}/${Number(parts[3])}/${parts[1]}` : date;
+      })()
+    : "";
+  return [dateLabel, time ? `${time}${period}` : ""].filter(Boolean).join(" ");
+}
+
+function normalizeClosingTimeDraft(value: string) {
+  const text = value.trim();
+  if (!text) return "";
+  const match = text.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2] ?? 0);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 1 || hour > 12 || minute < 0 || minute > 59) {
+    return null;
+  }
+  return `${hour}:${String(minute).padStart(2, "0")}`;
+}
+
+function ClosingDateTimePicker({
+  settings,
+  disabled,
+  onChange,
+}: {
+  settings: CrDisclaimerSettings;
+  disabled?: boolean;
+  onChange: (patch: Partial<CrDisclaimerSettings>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState("");
+  const [draftTime, setDraftTime] = useState("");
+  const [draftPeriod, setDraftPeriod] = useState<"AM" | "PM">("AM");
+  const [error, setError] = useState("");
+
+  const displayValue = formatClosingDateLabel(settings.closingDate, settings.closingTime, settings.closingTimePeriod);
+
+  const openPicker = () => {
+    if (disabled) return;
+    setDraftDate(settings.closingDate || "");
+    setDraftTime(settings.closingTime || "");
+    setDraftPeriod(settings.closingTimePeriod || "AM");
+    setError("");
+    setOpen(true);
+  };
+
+  const clearPicker = () => {
+    onChange({ closingDate: null, closingTime: null, closingTimePeriod: null });
+    setOpen(false);
+  };
+
+  const applyPicker = () => {
+    const normalizedTime = normalizeClosingTimeDraft(draftTime);
+    if (normalizedTime === null) {
+      setError("Enter a valid 12-hour time, for example 2:30.");
+      return;
+    }
+    onChange({
+      closingDate: draftDate || null,
+      closingTime: normalizedTime || null,
+      closingTimePeriod: normalizedTime ? draftPeriod : null,
+    });
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <TextField
+        fullWidth
+        size="small"
+        label="Closing Date & Time"
+        value={displayValue}
+        placeholder="Set close date and time"
+        disabled={disabled}
+        onClick={openPicker}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openPicker();
+          }
+        }}
+        inputProps={{ readOnly: true }}
+        InputLabelProps={{ shrink: true }}
+        sx={{
+          "& .MuiInputBase-root": {
+            borderRadius: 2,
+            bgcolor: "#fff",
+            cursor: disabled ? "default" : "pointer",
+          },
+          "& input": { cursor: disabled ? "default" : "pointer" },
+        }}
+      />
+      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 900 }}>
+            Closing Date & Time
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            This exports into the Excel Close Date column.
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+            {error ? <Alert severity="error">{error}</Alert> : null}
+            <TextField
+              fullWidth
+              type="date"
+              label="Date"
+              value={draftDate}
+              InputLabelProps={{ shrink: true }}
+              onChange={(event) => setDraftDate(event.target.value)}
+            />
+            <Grid container spacing={1}>
+              <Grid size={{ xs: 7 }}>
+                <TextField
+                  fullWidth
+                  label="Time"
+                  value={draftTime}
+                  placeholder="2:30"
+                  inputProps={{ inputMode: "numeric" }}
+                  onChange={(event) => {
+                    setDraftTime(event.target.value);
+                    setError("");
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 5 }}>
+                <FormControl fullWidth>
+                  <InputLabel id="cr-closing-picker-period-label">AM/PM</InputLabel>
+                  <Select
+                    labelId="cr-closing-picker-period-label"
+                    label="AM/PM"
+                    value={draftPeriod}
+                    onChange={(event) => setDraftPeriod(event.target.value === "PM" ? "PM" : "AM")}
+                  >
+                    <MenuItem value="AM">AM</MenuItem>
+                    <MenuItem value="PM">PM</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button color="inherit" onClick={clearPicker}>
+            Clear
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={applyPicker}>
+            Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
 function CrAuctionControls({
   settings,
   disabled,
@@ -708,55 +873,8 @@ function CrAuctionControls({
               label="Unreserved"
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="Closing Date"
-              value={settings.closingDate || ""}
-              disabled={disabled}
-              InputLabelProps={{ shrink: true }}
-              onChange={(event) => onChange({ closingDate: event.target.value || null })}
-              sx={{ "& .MuiInputBase-root": { borderRadius: 2, bgcolor: "#fff" } }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 3, md: 1.5 }}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Time"
-              value={settings.closingTime || ""}
-              placeholder="12:00"
-              disabled={disabled}
-              onChange={(event) => onChange({ closingTime: event.target.value || null })}
-              inputProps={{ inputMode: "numeric" }}
-              sx={{ "& .MuiInputBase-root": { borderRadius: 2, bgcolor: "#fff" } }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 3, md: 1.5 }}>
-            <FormControl fullWidth size="small" sx={selectSx}>
-              <InputLabel id="cr-closing-period-label">AM/PM</InputLabel>
-              <Select
-                labelId="cr-closing-period-label"
-                label="AM/PM"
-                value={settings.closingTimePeriod ?? ""}
-                disabled={disabled}
-                onChange={(event) =>
-                  onChange({
-                    closingTimePeriod:
-                      event.target.value === "AM" || event.target.value === "PM"
-                        ? event.target.value
-                        : null,
-                  })
-                }
-                sx={{ bgcolor: "#fff" }}
-              >
-                <MenuItem value="">Blank</MenuItem>
-                <MenuItem value="AM">AM</MenuItem>
-                <MenuItem value="PM">PM</MenuItem>
-              </Select>
-            </FormControl>
+          <Grid size={{ xs: 12, sm: 6, md: 5.5 }}>
+            <ClosingDateTimePicker settings={settings} disabled={disabled} onChange={onChange} />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 2.25 }}>
             <FormControl fullWidth size="small" sx={selectSx}>
