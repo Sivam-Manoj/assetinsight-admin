@@ -144,6 +144,8 @@ type CrDisclaimerSettings = {
   customText: string;
   unreserved: boolean;
   closingDate: string | null;
+  closingTime: string | null;
+  closingTimePeriod: "AM" | "PM" | null;
   bidIncrement: 5 | 25 | 100 | 1000 | null;
   openingBid: 5 | 25 | 100 | 1000 | null;
 };
@@ -181,6 +183,8 @@ const emptyCrDisclaimers: CrDisclaimerSettings = {
   customText: "",
   unreserved: false,
   closingDate: null,
+  closingTime: null,
+  closingTimePeriod: null,
   bidIncrement: null,
   openingBid: null,
 };
@@ -645,7 +649,7 @@ function getCrSettingsActiveCount(settings: CrDisclaimerSettings) {
     Number(Boolean(settings.rollingStockOffsite)) +
     Number(Boolean(settings.customText?.trim())) +
     Number(Boolean(settings.unreserved)) +
-    Number(Boolean(settings.closingDate)) +
+    Number(Boolean(settings.closingDate || settings.closingTime)) +
     Number(Boolean(settings.bidIncrement)) +
     Number(Boolean(settings.openingBid));
 }
@@ -681,7 +685,7 @@ function CrAuctionControls({
           </Typography>
         </Stack>
         <Grid container spacing={1}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <FormControlLabel
               sx={{
                 m: 0,
@@ -704,12 +708,12 @@ function CrAuctionControls({
               label="Unreserved"
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
             <TextField
               fullWidth
               size="small"
               type="date"
-              label="Closing Time"
+              label="Closing Date"
               value={settings.closingDate || ""}
               disabled={disabled}
               InputLabelProps={{ shrink: true }}
@@ -717,7 +721,44 @@ function CrAuctionControls({
               sx={{ "& .MuiInputBase-root": { borderRadius: 2, bgcolor: "#fff" } }}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 3, md: 1.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Time"
+              value={settings.closingTime || ""}
+              placeholder="12:00"
+              disabled={disabled}
+              onChange={(event) => onChange({ closingTime: event.target.value || null })}
+              inputProps={{ inputMode: "numeric" }}
+              sx={{ "& .MuiInputBase-root": { borderRadius: 2, bgcolor: "#fff" } }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 3, md: 1.5 }}>
+            <FormControl fullWidth size="small" sx={selectSx}>
+              <InputLabel id="cr-closing-period-label">AM/PM</InputLabel>
+              <Select
+                labelId="cr-closing-period-label"
+                label="AM/PM"
+                value={settings.closingTimePeriod ?? ""}
+                disabled={disabled}
+                onChange={(event) =>
+                  onChange({
+                    closingTimePeriod:
+                      event.target.value === "AM" || event.target.value === "PM"
+                        ? event.target.value
+                        : null,
+                  })
+                }
+                sx={{ bgcolor: "#fff" }}
+              >
+                <MenuItem value="">Blank</MenuItem>
+                <MenuItem value="AM">AM</MenuItem>
+                <MenuItem value="PM">PM</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 2.25 }}>
             <FormControl fullWidth size="small" sx={selectSx}>
               <InputLabel id="cr-bid-increment-label">Bid Increment</InputLabel>
               <Select
@@ -737,7 +778,7 @@ function CrAuctionControls({
               </Select>
             </FormControl>
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 2.25 }}>
             <FormControl fullWidth size="small" sx={selectSx}>
               <InputLabel id="cr-opening-bid-label">Opening Bid</InputLabel>
               <Select
