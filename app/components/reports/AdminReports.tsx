@@ -190,6 +190,8 @@ const emptyCrDisclaimers: CrDisclaimerSettings = {
 };
 
 const auctionBidOptions = [5, 25, 100, 1000] as const;
+const closingHourOptions = Array.from({ length: 12 }, (_, index) => String(index + 1));
+const closingMinuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
 
 const fallbackCrDisclaimerOptions: CrDisclaimerOption[] = [
   { key: "smallsOnsite", label: "Smalls - Notice on Every Lot - Onsite" },
@@ -675,17 +677,15 @@ function formatClosingDateLabel(dateValue: string | null, timeValue: string | nu
   return [dateLabel, time ? `${time}${period}` : ""].filter(Boolean).join(" ");
 }
 
-function normalizeClosingTimeDraft(value: string) {
-  const text = value.trim();
-  if (!text) return "";
-  const match = text.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
-  if (!match) return null;
+function splitClosingTime(value: string | null) {
+  const match = String(value || "").trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+  if (!match) return { hour: "", minute: "00" };
   const hour = Number(match[1]);
   const minute = Number(match[2] ?? 0);
-  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 1 || hour > 12 || minute < 0 || minute > 59) {
-    return null;
+  if (!Number.isInteger(hour) || hour < 1 || hour > 12 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
+    return { hour: "", minute: "00" };
   }
-  return `${hour}:${String(minute).padStart(2, "0")}`;
+  return { hour: String(hour), minute: String(minute).padStart(2, "0") };
 }
 
 function ClosingDateTimePicker({
@@ -699,18 +699,19 @@ function ClosingDateTimePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [draftDate, setDraftDate] = useState("");
-  const [draftTime, setDraftTime] = useState("");
+  const [draftHour, setDraftHour] = useState("");
+  const [draftMinute, setDraftMinute] = useState("00");
   const [draftPeriod, setDraftPeriod] = useState<"AM" | "PM">("AM");
-  const [error, setError] = useState("");
 
   const displayValue = formatClosingDateLabel(settings.closingDate, settings.closingTime, settings.closingTimePeriod);
 
   const openPicker = () => {
     if (disabled) return;
+    const timeParts = splitClosingTime(settings.closingTime);
     setDraftDate(settings.closingDate || "");
-    setDraftTime(settings.closingTime || "");
+    setDraftHour(timeParts.hour);
+    setDraftMinute(timeParts.minute);
     setDraftPeriod(settings.closingTimePeriod || "AM");
-    setError("");
     setOpen(true);
   };
 
@@ -720,11 +721,7 @@ function ClosingDateTimePicker({
   };
 
   const applyPicker = () => {
-    const normalizedTime = normalizeClosingTimeDraft(draftTime);
-    if (normalizedTime === null) {
-      setError("Enter a valid 12-hour time, for example 2:30.");
-      return;
-    }
+    const normalizedTime = draftHour ? `${draftHour}:${draftMinute}` : null;
     onChange({
       closingDate: draftDate || null,
       closingTime: normalizedTime || null,
@@ -771,7 +768,6 @@ function ClosingDateTimePicker({
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            {error ? <Alert severity="error">{error}</Alert> : null}
             <TextField
               fullWidth
               type="date"
@@ -781,21 +777,43 @@ function ClosingDateTimePicker({
               onChange={(event) => setDraftDate(event.target.value)}
             />
             <Grid container spacing={1}>
-              <Grid size={{ xs: 7 }}>
-                <TextField
-                  fullWidth
-                  label="Time"
-                  value={draftTime}
-                  placeholder="2:30"
-                  inputProps={{ inputMode: "numeric" }}
-                  onChange={(event) => {
-                    setDraftTime(event.target.value);
-                    setError("");
-                  }}
-                />
-              </Grid>
-              <Grid size={{ xs: 5 }}>
+              <Grid size={{ xs: 4 }}>
                 <FormControl fullWidth>
+                  <InputLabel id="cr-closing-picker-hour-label">Hour</InputLabel>
+                  <Select
+                    labelId="cr-closing-picker-hour-label"
+                    label="Hour"
+                    value={draftHour}
+                    onChange={(event) => setDraftHour(String(event.target.value || ""))}
+                  >
+                    <MenuItem value="">Blank</MenuItem>
+                    {closingHourOptions.map((hour) => (
+                      <MenuItem key={`closing-hour-${hour}`} value={hour}>
+                        {hour}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 4 }}>
+                <FormControl fullWidth disabled={!draftHour}>
+                  <InputLabel id="cr-closing-picker-minute-label">Minute</InputLabel>
+                  <Select
+                    labelId="cr-closing-picker-minute-label"
+                    label="Minute"
+                    value={draftMinute}
+                    onChange={(event) => setDraftMinute(String(event.target.value || "00"))}
+                  >
+                    {closingMinuteOptions.map((minute) => (
+                      <MenuItem key={`closing-minute-${minute}`} value={minute}>
+                        {minute}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 4 }}>
+                <FormControl fullWidth disabled={!draftHour}>
                   <InputLabel id="cr-closing-picker-period-label">AM/PM</InputLabel>
                   <Select
                     labelId="cr-closing-picker-period-label"
