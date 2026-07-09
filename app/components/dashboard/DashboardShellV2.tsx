@@ -6,8 +6,6 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
-import PaidRoundedIcon from "@mui/icons-material/PaidRounded";
-import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import WarehouseRoundedIcon from "@mui/icons-material/WarehouseRounded";
 import {
   alpha,
@@ -17,7 +15,6 @@ import {
   CardContent,
   Chip,
   Container,
-  Divider,
   Grid,
   LinearProgress,
   Stack,
@@ -39,47 +36,6 @@ type StatsState = {
   totalAdmins: number;
   totalReports: number;
   byType: { Asset: number; LotListing: number; RealEstate: number; Salvage: number };
-} | null;
-
-type OpenAICreditsStatus = "ok" | "low" | "depleted" | "unavailable";
-
-type OpenAICreditsState = {
-  budgetUsd: number | null;
-  spentUsd: number | null;
-  localLedgerSpentUsd: number;
-  officialOpenAISpentUsd: number | null;
-  remainingUsd: number | null;
-  creditMultiplier: number;
-  budgetCredits: number | null;
-  spentCredits: number | null;
-  remainingCredits: number | null;
-  inputTokens: number;
-  cachedInputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  requestCount: number;
-  webSearchCalls: number;
-  unpricedCount: number;
-  fallbackEstimateCount: number;
-  lastOpenAICallAt: string | null;
-  modelBreakdown: Array<{
-    model: string;
-    requests: number;
-    spentUsd: number;
-    creditsDeducted: number;
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    webSearchCalls: number;
-    unpricedCount: number;
-  }>;
-  warnings: string[];
-  status: OpenAICreditsStatus;
-  asOf: string;
-  periodStart: string;
-  periodEnd: string;
-  source: string;
-  message: string;
 } | null;
 
 type SpecWebSearchState = {
@@ -128,39 +84,13 @@ const reportCards: Array<{
   { key: "Salvage", label: "Salvage Reports", icon: <CheckCircleRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
 ];
 
-const creditStatusMeta: Record<OpenAICreditsStatus, { label: string; color: string; bg: string }> = {
-  ok: { label: "Healthy", color: "#16a34a", bg: "#dcfce7" },
-  low: { label: "Low", color: "#d97706", bg: "#fef3c7" },
-  depleted: { label: "Depleted", color: "#dc2626", bg: "#fee2e2" },
-  unavailable: { label: "Unavailable", color: "#64748b", bg: "#e2e8f0" },
-};
-
 const numberFormatter = new Intl.NumberFormat("en-US");
-const creditFormatter = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 2,
-});
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-function formatCredits(value: number | null | undefined, fallback = "--") {
-  return typeof value === "number" ? creditFormatter.format(value) : fallback;
-}
-
 function formatMoney(value: number | null | undefined, fallback = "--") {
   return typeof value === "number" ? moneyFormatter.format(value) : fallback;
-}
-
-function formatCreditsFromUsd(value: number | null | undefined, multiplier: number | null | undefined) {
-  if (typeof value !== "number" || typeof multiplier !== "number") return "--";
-  return creditFormatter.format(value * multiplier);
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatDashboardDate(value: Date) {
@@ -219,9 +149,6 @@ export default function DashboardShellV2() {
   const [me, setMe] = useState<MeState>(null);
   const [stats, setStats] = useState<StatsState>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [credits, setCredits] = useState<OpenAICreditsState>(null);
-  const [creditsLoading, setCreditsLoading] = useState(true);
-  const [creditsError, setCreditsError] = useState<string | null>(null);
   const [specWebSearch, setSpecWebSearch] = useState<SpecWebSearchState>(null);
   const [specWebSearchLoading, setSpecWebSearchLoading] = useState(true);
   const [specWebSearchSaving, setSpecWebSearchSaving] = useState(false);
@@ -268,33 +195,6 @@ export default function DashboardShellV2() {
       }
     })();
   }, []);
-
-  const loadOpenAICredits = useCallback(async (refresh = false) => {
-    try {
-      setCreditsLoading(true);
-      setCreditsError(null);
-      const res = await fetch(`/api/admin/openai-credits${refresh ? "?refresh=1" : ""}`, {
-        cache: "no-store",
-      });
-      const data = (await res.json().catch(() => ({}))) as { message?: string };
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to load credits");
-      }
-      setCredits(data as NonNullable<OpenAICreditsState>);
-    } catch (e) {
-      setCreditsError(e instanceof Error ? e.message : "Failed to load credits");
-    } finally {
-      setCreditsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadOpenAICredits();
-    const id = window.setInterval(() => {
-      loadOpenAICredits();
-    }, 60_000);
-    return () => window.clearInterval(id);
-  }, [loadOpenAICredits]);
 
   const loadSpecWebSearch = useCallback(async () => {
     try {
@@ -418,12 +318,6 @@ export default function DashboardShellV2() {
     return "Good evening";
   }, [now]);
 
-  const creditMeta = creditStatusMeta[credits?.status || "unavailable"];
-  const creditSpentPercent = useMemo(() => {
-    if (!credits || !credits.budgetCredits || credits.spentCredits === null) return 0;
-    return Math.min(100, Math.max(0, (credits.spentCredits / credits.budgetCredits) * 100));
-  }, [credits]);
-
   const allMetricCards = useMemo<MetricCard[]>(() => {
     const base = [
       ...statCards.map((card) => ({
@@ -521,7 +415,7 @@ export default function DashboardShellV2() {
                       {greeting}{me ? `, ${me.username || me.email}` : ""}
                     </Typography>
                     <Typography variant="body1" color="text.secondary" sx={{ mt: 1, maxWidth: 760, fontWeight: 500 }}>
-                      Reports, approvals, users, CRM and software credits in one dense control surface.
+                    Reports, approvals, users, CRM and operational settings in one dense control surface.
                     </Typography>
                   </Box>
 
@@ -603,114 +497,13 @@ export default function DashboardShellV2() {
             <Card sx={{ ...surfaceSx, ...compactHoverSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.25 }, height: "100%" }}>
                 <Stack spacing={1.35} sx={{ height: "100%" }}>
-                  <Stack direction="row" spacing={1.5} alignItems="flex-start" justifyContent="space-between">
-                    <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
-                      <Box
-                        sx={{
-                          width: 48,
-                          height: 48,
-                          borderRadius: "999px",
-                          display: "grid",
-                          placeItems: "center",
-                          bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#16a34a", 0.18) : "#dcfce7"),
-                          color: "#16a34a",
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: "999px",
-                            display: "grid",
-                            placeItems: "center",
-                            bgcolor: "#16a34a",
-                            color: "#fff",
-                            boxShadow: `0 10px 22px ${alpha("#16a34a", 0.28)}`,
-                          }}
-                        >
-                          <PaidRoundedIcon />
-                        </Box>
-                      </Box>
-                      <Box minWidth={0}>
-                        <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.08 }}>
-                          Software Credits
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", fontWeight: 650 }}>
-                          Compact usage monitor
-                        </Typography>
-                      </Box>
-                    </Stack>
-
-                    <Stack spacing={0.75} alignItems="flex-end">
-                      <Chip
-                        size="small"
-                        label={creditMeta.label}
-                        sx={{
-                          height: 28,
-                          px: 0.75,
-                          borderRadius: "8px",
-                          bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(creditMeta.color, 0.15) : creditMeta.bg),
-                          color: creditMeta.color,
-                          border: `1px solid ${alpha(creditMeta.color, 0.24)}`,
-                          fontSize: 12,
-                          fontWeight: 850,
-                        }}
-                      />
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<RefreshRoundedIcon />}
-                        onClick={() => loadOpenAICredits(true)}
-                        disabled={creditsLoading}
-                        sx={{
-                          minHeight: 30,
-                          borderRadius: "8px",
-                          px: 1,
-                          fontSize: 12,
-                          color: "text.primary",
-                          borderColor: (theme) =>
-                            theme.palette.mode === "dark" ? alpha("#93a9c8", 0.28) : alpha("#94a3b8", 0.45),
-                          bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#0f172a", 0.25) : "#fff"),
-                        }}
-                      >
-                        Refresh
-                      </Button>
-                    </Stack>
-                  </Stack>
-
                   <Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 650 }}>
-                      Remaining
+                    <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.08 }}>
+                      Operations Settings
                     </Typography>
-                    <Typography
-                      variant="h4"
-                      sx={{ mt: 0.25, fontWeight: 950, lineHeight: 1, fontSize: { xs: 30, md: 34 } }}
-                      suppressHydrationWarning
-                    >
-                      {creditsLoading && !credits ? "..." : formatCredits(credits?.remainingCredits, "Set budget")}
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", fontWeight: 650 }}>
+                      Controls for report generation behavior.
                     </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={creditSpentPercent}
-                      sx={{
-                        mt: 1.25,
-                        height: 6,
-                        borderRadius: 999,
-                        bgcolor: alpha("#16a34a", 0.16),
-                        "& .MuiLinearProgress-bar": {
-                          borderRadius: 999,
-                          bgcolor: "#16a34a",
-                        },
-                      }}
-                    />
-                    <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Spent {formatCredits(credits?.spentCredits)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Budget {formatCredits(credits?.budgetCredits, "Set budget")}
-                      </Typography>
-                    </Stack>
                   </Box>
 
                   <Box
@@ -846,83 +639,6 @@ export default function DashboardShellV2() {
                       )}
                     </Stack>
                   </Box>
-
-                  <Box
-                    sx={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 1,
-                      alignItems: "stretch",
-                    }}
-                  >
-                    <Stack spacing={0.85}>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Used
-                        </Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
-                          {formatCreditsFromUsd(credits?.localLedgerSpentUsd, credits?.creditMultiplier)}
-                        </Typography>
-                      </Box>
-                      <Divider />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Requests
-                        </Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
-                          {credits ? numberFormatter.format(credits.requestCount) : "--"}
-                        </Typography>
-                      </Box>
-                    </Stack>
-
-                    <Stack
-                      spacing={0.85}
-                      sx={{
-                        pl: 1.25,
-                        borderLeft: "1px solid",
-                        borderColor: "divider",
-                      }}
-                    >
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Software model
-                        </Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
-                          {credits?.modelBreakdown?.length
-                            ? `${formatCredits(credits.modelBreakdown.reduce((sum, item) => sum + item.creditsDeducted, 0))} cr`
-                            : "--"}
-                        </Typography>
-                      </Box>
-                      <Divider />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Web searches
-                        </Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.1 }}>
-                          {credits ? numberFormatter.format(credits.webSearchCalls) : "--"}
-                        </Typography>
-                      </Box>
-                    </Stack>
-
-                    <Stack
-                      spacing={1}
-                      sx={{
-                        gridColumn: "1 / -1",
-                        pt: 1,
-                        borderTop: "1px solid",
-                        borderColor: "divider",
-                      }}
-                    >
-                      <Typography variant="caption" color="text.secondary">
-                        Last call {formatDateTime(credits?.lastOpenAICallAt)} - updated {formatDateTime(credits?.asOf)}
-                      </Typography>
-                      {creditsError || credits?.warnings?.length ? (
-                        <Typography variant="caption" sx={{ color: creditMeta.color, fontWeight: 850 }}>
-                          {creditsError || credits?.warnings?.[0]}
-                        </Typography>
-                      ) : null}
-                    </Stack>
-                  </Box>
                 </Stack>
               </CardContent>
             </Card>
@@ -933,6 +649,7 @@ export default function DashboardShellV2() {
           </Grid>
         </Grid>
       </Container>
+
     </Box>
   );
 }
