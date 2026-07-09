@@ -58,6 +58,7 @@ type AssetApprovalThresholdState = {
 
 type WeeklyCreditRecharge = {
   id: string;
+  source: "initial_balance" | "auto_recharge";
   ordinal: number;
   amountCredits: number;
   thresholdCredits: number;
@@ -893,7 +894,9 @@ export default function DashboardShellV2() {
                   <Stack direction="row" justifyContent="space-between" spacing={1.5} alignItems="center">
                     <Box>
                       <Typography variant="body2" sx={{ fontWeight: 900 }}>
-                        Auto recharge #{recharge.ordinal}
+                        {recharge.source === "initial_balance"
+                          ? "Initial weekly credits"
+                          : `Auto recharge #${recharge.ordinal}`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {formatShortDateTime(recharge.createdAt)} · balance {formatMoney(recharge.balanceBefore)} to{" "}
