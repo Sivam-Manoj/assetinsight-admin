@@ -6,6 +6,8 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
+import PaidRoundedIcon from "@mui/icons-material/PaidRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import WarehouseRoundedIcon from "@mui/icons-material/WarehouseRounded";
 import {
   alpha,
@@ -15,6 +17,11 @@ import {
   CardContent,
   Chip,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   Grid,
   LinearProgress,
   Stack,
@@ -47,6 +54,34 @@ type AssetApprovalThresholdState = {
   threshold: number;
   defaultThreshold: number;
   message?: string;
+} | null;
+
+type WeeklyCreditRecharge = {
+  id: string;
+  ordinal: number;
+  amountCredits: number;
+  thresholdCredits: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  createdAt: string;
+};
+
+type WeeklyCreditsState = {
+  weekStart: string;
+  weekEnd: string;
+  openAIUsageUsd: number;
+  deductionMultiplier: number;
+  deductedCredits: number;
+  addedCredits: number;
+  remainingCredits: number;
+  thresholdCredits: number;
+  rechargeAmount: number;
+  rechargeTotal: number;
+  usageSourceAvailable: boolean;
+  status: "synced" | "unavailable" | "error";
+  warnings: string[];
+  syncedAt: string;
+  recharges: WeeklyCreditRecharge[];
 } | null;
 
 type MetricCard = {
@@ -98,6 +133,31 @@ function formatDashboardDate(value: Date) {
   const dayMonth = value.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
   const time = value.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${weekday} ${dayMonth} - ${time}`;
+}
+
+function formatShortDateTime(value?: string) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatWeekRange(start?: string, end?: string) {
+  if (!start || !end) return "Current week";
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return "Current week";
+  }
+  return `${startDate.toLocaleDateString([], { month: "short", day: "2-digit" })} - ${endDate.toLocaleDateString([], {
+    month: "short",
+    day: "2-digit",
+  })}`;
 }
 
 function getNextMinuteDelay() {
@@ -158,6 +218,11 @@ export default function DashboardShellV2() {
   const [approvalThresholdLoading, setApprovalThresholdLoading] = useState(true);
   const [approvalThresholdSaving, setApprovalThresholdSaving] = useState(false);
   const [approvalThresholdError, setApprovalThresholdError] = useState<string | null>(null);
+  const [weeklyCredits, setWeeklyCredits] = useState<WeeklyCreditsState>(null);
+  const [weeklyCreditsLoading, setWeeklyCreditsLoading] = useState(true);
+  const [weeklyCreditsRefreshing, setWeeklyCreditsRefreshing] = useState(false);
+  const [weeklyCreditsError, setWeeklyCreditsError] = useState<string | null>(null);
+  const [rechargesOpen, setRechargesOpen] = useState(false);
 
   useEffect(() => {
     let intervalId: number | undefined;
@@ -271,6 +336,41 @@ export default function DashboardShellV2() {
   useEffect(() => {
     loadApprovalThreshold();
   }, [loadApprovalThreshold]);
+
+  const loadWeeklyCredits = useCallback(async (sync = false) => {
+    try {
+      if (sync) {
+        setWeeklyCreditsRefreshing(true);
+      } else {
+        setWeeklyCreditsLoading(true);
+      }
+      setWeeklyCreditsError(null);
+      const res = await fetch(
+        sync ? "/api/admin/openai-weekly-credits/sync" : "/api/admin/openai-weekly-credits",
+        {
+          method: sync ? "POST" : "GET",
+          cache: "no-store",
+        }
+      );
+      const payload = (await res.json().catch(() => ({}))) as {
+        data?: WeeklyCreditsState;
+        message?: string;
+      };
+      if (!res.ok || !payload.data) {
+        throw new Error(payload.message || "Failed to load weekly OpenAI credits");
+      }
+      setWeeklyCredits(payload.data);
+    } catch (e) {
+      setWeeklyCreditsError(e instanceof Error ? e.message : "Failed to load weekly OpenAI credits");
+    } finally {
+      setWeeklyCreditsLoading(false);
+      setWeeklyCreditsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWeeklyCredits();
+  }, [loadWeeklyCredits]);
 
   const saveApprovalThreshold = useCallback(async () => {
     const threshold = Number.parseFloat(approvalThresholdInput.replace(/,/g, ""));
@@ -510,6 +610,134 @@ export default function DashboardShellV2() {
                     sx={{
                       border: "1px solid",
                       borderColor: (theme) =>
+                        theme.palette.mode === "dark" ? alpha("#16a34a", 0.2) : alpha("#16a34a", 0.22),
+                      borderRadius: "10px",
+                      p: { xs: 1, sm: 1.15 },
+                      bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#052e16", 0.18) : alpha("#f0fdf4", 0.72)),
+                    }}
+                  >
+                    <Stack spacing={1}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                        <Stack direction="row" spacing={1} alignItems="center" minWidth={0}>
+                          <Box
+                            sx={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: "10px",
+                              display: "grid",
+                              placeItems: "center",
+                              color: "#15803d",
+                              bgcolor: alpha("#16a34a", 0.14),
+                              flexShrink: 0,
+                            }}
+                          >
+                            <PaidRoundedIcon sx={{ fontSize: 22 }} />
+                          </Box>
+                          <Box minWidth={0}>
+                            <Typography variant="body1" sx={{ fontWeight: 950 }} noWrap>
+                              Weekly OpenAI credits
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                              {formatWeekRange(weeklyCredits?.weekStart, weeklyCredits?.weekEnd)}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                        <Stack direction="row" spacing={0.75} alignItems="center" flexShrink={0}>
+                          <Chip
+                            size="small"
+                            label={weeklyCredits?.status === "synced" ? "Synced" : weeklyCredits?.status === "error" ? "Error" : "Unavailable"}
+                            sx={{
+                              height: 24,
+                              bgcolor:
+                                weeklyCredits?.status === "synced" ? alpha("#16a34a", 0.14) : alpha("#f59e0b", 0.14),
+                              color: weeklyCredits?.status === "synced" ? "#15803d" : "#b45309",
+                              fontWeight: 850,
+                            }}
+                          />
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => void loadWeeklyCredits(true)}
+                            disabled={weeklyCreditsLoading || weeklyCreditsRefreshing}
+                            sx={{
+                              minWidth: 36,
+                              height: 32,
+                              px: 0.75,
+                              borderRadius: "8px",
+                            }}
+                          >
+                            <RefreshRoundedIcon sx={{ fontSize: 18 }} />
+                          </Button>
+                        </Stack>
+                      </Stack>
+
+                      <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" useFlexGap>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
+                            Remaining
+                          </Typography>
+                          <Typography variant="h4" sx={{ fontWeight: 950, lineHeight: 1 }}>
+                            {weeklyCreditsLoading ? "..." : formatMoney(weeklyCredits?.remainingCredits, "0")}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
+                            Usage
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                            ${formatMoney(weeklyCredits?.openAIUsageUsd, "0")}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
+                            Deducted
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                            {formatMoney(weeklyCredits?.deductedCredits, "0")} cr
+                          </Typography>
+                        </Box>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => setRechargesOpen(true)}
+                          sx={{ ml: "auto", fontWeight: 900, borderRadius: "8px" }}
+                        >
+                          +{formatMoney(weeklyCredits?.rechargeTotal, "0")} this week
+                        </Button>
+                      </Stack>
+
+                      <LinearProgress
+                        variant="determinate"
+                        value={
+                          weeklyCredits
+                            ? Math.max(0, Math.min(100, (weeklyCredits.remainingCredits / Math.max(weeklyCredits.rechargeAmount, 1)) * 100))
+                            : 0
+                        }
+                        sx={{
+                          height: 5,
+                          borderRadius: 999,
+                          bgcolor: alpha("#16a34a", 0.12),
+                          "& .MuiLinearProgress-bar": { borderRadius: 999, bgcolor: "#16a34a" },
+                        }}
+                      />
+
+                      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
+                        Usage is deducted automatically. Auto-adds {weeklyCredits?.rechargeAmount || 200} credits below{" "}
+                        {weeklyCredits?.thresholdCredits || 20}. Last sync {formatShortDateTime(weeklyCredits?.syncedAt)}.
+                      </Typography>
+
+                      {(weeklyCreditsError || weeklyCredits?.warnings?.length) ? (
+                        <Typography variant="caption" sx={{ color: "#b45309", fontWeight: 750, lineHeight: 1.35 }}>
+                          {weeklyCreditsError || weeklyCredits?.warnings?.[0]}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      border: "1px solid",
+                      borderColor: (theme) =>
                         theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
                       borderRadius: "10px",
                       p: { xs: 1, sm: 1.15 },
@@ -650,6 +878,87 @@ export default function DashboardShellV2() {
         </Grid>
       </Container>
 
+      <Dialog
+        open={rechargesOpen}
+        onClose={() => setRechargesOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: "12px" } }}
+      >
+        <DialogTitle sx={{ fontWeight: 950 }}>
+          Weekly Recharges
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {formatWeekRange(weeklyCredits?.weekStart, weeklyCredits?.weekEnd)}
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.25}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 750 }}>
+                Total added this week
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 950 }}>
+                {formatMoney(weeklyCredits?.rechargeTotal, "0")} credits
+              </Typography>
+            </Stack>
+            <Divider />
+            {weeklyCredits?.recharges?.length ? (
+              weeklyCredits.recharges.map((recharge) => (
+                <Box
+                  key={recharge.id}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: (theme) =>
+                      theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
+                    borderRadius: "10px",
+                    p: 1.25,
+                  }}
+                >
+                  <Stack direction="row" justifyContent="space-between" spacing={1.5} alignItems="center">
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                        Auto recharge #{recharge.ordinal}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatShortDateTime(recharge.createdAt)} · balance {formatMoney(recharge.balanceBefore)} to{" "}
+                        {formatMoney(recharge.balanceAfter)}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={`+${formatMoney(recharge.amountCredits)} cr`}
+                      sx={{
+                        bgcolor: alpha("#16a34a", 0.14),
+                        color: "#15803d",
+                        fontWeight: 900,
+                        flexShrink: 0,
+                      }}
+                    />
+                  </Stack>
+                </Box>
+              ))
+            ) : (
+              <Box
+                sx={{
+                  border: "1px dashed",
+                  borderColor: alpha("#94a3b8", 0.42),
+                  borderRadius: "10px",
+                  p: 2,
+                  textAlign: "center",
+                }}
+              >
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+                  No automatic recharges have been added this week.
+                </Typography>
+              </Box>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 1.5 }}>
+          <Button onClick={() => setRechargesOpen(false)} variant="contained" sx={{ borderRadius: "8px", fontWeight: 900 }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -38,6 +38,12 @@ function isUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
 
+const hiddenReportDataKeys = new Set(["conditionreportspecsdeleted"]);
+
+function shouldHideReportDataKey(key: string) {
+  return hiddenReportDataKeys.has(key.replace(/[^a-z0-9]/gi, "").toLowerCase());
+}
+
 function renderValue(value: unknown, depth = 0): ReactNode {
   if (value === null || value === undefined || value === "") {
     return <span className="text-sm text-gray-400">-</span>;
@@ -85,7 +91,9 @@ function renderValue(value: unknown, depth = 0): ReactNode {
   }
 
   if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
+    const entries = Object.entries(value as Record<string, unknown>).filter(
+      ([key]) => !shouldHideReportDataKey(key)
+    );
     if (entries.length === 0) return <span className="text-sm text-gray-400">No data</span>;
 
     return (
