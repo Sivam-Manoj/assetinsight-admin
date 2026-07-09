@@ -221,7 +221,6 @@ export default function DashboardShellV2() {
   const [weeklyCredits, setWeeklyCredits] = useState<WeeklyCreditsState>(null);
   const [weeklyCreditsLoading, setWeeklyCreditsLoading] = useState(true);
   const [weeklyCreditsRefreshing, setWeeklyCreditsRefreshing] = useState(false);
-  const [weeklyCreditsError, setWeeklyCreditsError] = useState<string | null>(null);
   const [rechargesOpen, setRechargesOpen] = useState(false);
 
   useEffect(() => {
@@ -344,7 +343,6 @@ export default function DashboardShellV2() {
       } else {
         setWeeklyCreditsLoading(true);
       }
-      setWeeklyCreditsError(null);
       const res = await fetch(
         sync ? "/api/admin/openai-weekly-credits/sync" : "/api/admin/openai-weekly-credits",
         {
@@ -361,7 +359,7 @@ export default function DashboardShellV2() {
       }
       setWeeklyCredits(payload.data);
     } catch (e) {
-      setWeeklyCreditsError(e instanceof Error ? e.message : "Failed to load weekly OpenAI credits");
+      console.error(e instanceof Error ? e.message : "Failed to load weekly OpenAI credits");
     } finally {
       setWeeklyCreditsLoading(false);
       setWeeklyCreditsRefreshing(false);
@@ -680,22 +678,6 @@ export default function DashboardShellV2() {
                             {weeklyCreditsLoading ? "..." : formatMoney(weeklyCredits?.remainingCredits, "0")}
                           </Typography>
                         </Box>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
-                            Usage
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
-                            ${formatMoney(weeklyCredits?.openAIUsageUsd, "0")}
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
-                            Deducted
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
-                            {formatMoney(weeklyCredits?.deductedCredits, "0")} cr
-                          </Typography>
-                        </Box>
                         <Button
                           size="small"
                           variant="text"
@@ -725,12 +707,6 @@ export default function DashboardShellV2() {
                         Usage is deducted automatically. Auto-adds {weeklyCredits?.rechargeAmount || 200} credits below{" "}
                         {weeklyCredits?.thresholdCredits || 20}. Last sync {formatShortDateTime(weeklyCredits?.syncedAt)}.
                       </Typography>
-
-                      {(weeklyCreditsError || weeklyCredits?.warnings?.length) ? (
-                        <Typography variant="caption" sx={{ color: "#b45309", fontWeight: 750, lineHeight: 1.35 }}>
-                          {weeklyCreditsError || weeklyCredits?.warnings?.[0]}
-                        </Typography>
-                      ) : null}
                     </Stack>
                   </Box>
 
