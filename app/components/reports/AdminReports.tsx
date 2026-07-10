@@ -73,6 +73,7 @@ import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import StrikethroughSRoundedIcon from "@mui/icons-material/StrikethroughSRounded";
 import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
+import TableRowsRoundedIcon from "@mui/icons-material/TableRowsRounded";
 import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 
@@ -101,9 +102,6 @@ type ReportItem = {
   property_type?: string;
   language?: string;
   adminArchivedAt?: string | null;
-  likelyRetry?: boolean;
-  likelyRetryGroup?: string;
-  likelyRetryCount?: number;
 };
 
 type ApiResponse = {
@@ -133,8 +131,6 @@ type ReportGroup = {
   released_at?: string | null;
   downloadable?: boolean;
   adminArchivedAt?: string | null;
-  likelyRetry?: boolean;
-  likelyRetryCount?: number;
 };
 
 type ReportFileLink = {
@@ -1455,6 +1451,65 @@ function getPreviewTargetId(group: ReportGroup) {
   );
 }
 
+function groupReportItems(items: ReportItem[]): ReportGroup[] {
+  const map = new Map<string, ReportGroup>();
+  for (const r of items) {
+    const key = String(r.report || r._id);
+    let group = map.get(key);
+    if (!group) {
+      const base =
+        r.reportType === "RealEstate"
+          ? "Real Estate"
+          : r.reportType === "Salvage"
+            ? "Salvage"
+            : r.reportType === "LotListing"
+              ? "Lot Listing"
+              : "Asset";
+      group = {
+        key,
+        title: r.contract_no
+          ? `${base} - ${r.contract_no}${r.lot_number_summary ? ` - ${r.lot_number_summary}` : ""}`
+          : r.address || base,
+        contract_no: r.contract_no,
+        lotNumberSummary: r.lot_number_summary,
+        reportType: r.reportType,
+        createdAt: r.createdAt,
+        fairMarketValue: r.fairMarketValue,
+        userEmail: r.user?.email || undefined,
+        variants: {},
+        isAssetReport: r.reportType === "Asset",
+        isRealEstateReport: r.reportType === "RealEstate" || r.isRealEstateReport,
+        isLotListingReport: r.reportType === "LotListing" || r.isLotListingReport || (r as any).isLotListing,
+        preview_files: r.preview_files,
+        crDisclaimerCount: Number(r.crDisclaimerCount || 0),
+        release_status: r.release_status || "released",
+        release_assigned_to: r.release_assigned_to || null,
+        released_at: r.released_at || null,
+        downloadable: r.downloadable !== false,
+        adminArchivedAt: r.adminArchivedAt || null,
+      };
+      map.set(key, group);
+    } else if (group.release_status !== "pending_release" && r.release_status === "pending_release") {
+      group.release_status = "pending_release";
+      group.release_assigned_to = r.release_assigned_to || null;
+      group.released_at = r.released_at || null;
+      group.downloadable = false;
+    }
+
+    if (new Date(r.createdAt).getTime() > new Date(group.createdAt).getTime()) group.createdAt = r.createdAt;
+    const fileType = String(r.fileType || r.filename.split(".").pop() || "").toLowerCase();
+    if (fileType === "pdf") group.variants.pdf = r;
+    else if (fileType === "spec_pdf") group.variants.specPdf = r;
+    else if (fileType === "cr_docx") group.variants.crDocx = r;
+    else if (fileType === "docx") group.variants.docx = r;
+    else if (fileType === "xlsx") group.variants.xlsx = r;
+    else if (fileType === "images" || fileType === "zip") group.variants.images = r;
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
 function buildFileLinks(group: ReportGroup): ReportFileLink[] {
   if (group.isLotListingReport) {
     return [
@@ -1579,9 +1634,11 @@ export default function AdminReports() {
   const [pageSizeMode, setPageSizeMode] = useState<"20" | "50" | "100" | "all" | "custom">("20");
   const [customPageSizeInput, setCustomPageSizeInput] = useState("150");
   const [archiveMode, setArchiveMode] = useState<"active" | "archived">("active");
-  const [likelyRetriesOnly, setLikelyRetriesOnly] = useState(false);
-  const [selectedRetryIds, setSelectedRetryIds] = useState<Set<string>>(new Set());
-  const [bulkArchiving, setBulkArchiving] = useState(false);
+  const [sameContractOpen, setSameContractOpen] = useState(false);
+  const [sameContractLoading, setSameContractLoading] = useState(false);
+  const [sameContractError, setSameContractError] = useState<string | null>(null);
+  const [sameContractNumber, setSameContractNumber] = useState("");
+  const [sameContractGroups, setSameContractGroups] = useState<ReportGroup[]>([]);
 
   // Data
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -1634,11 +1691,10 @@ export default function AdminReports() {
     if (to) p.set("to", to);
     if (debouncedUserEmail) p.set("userEmail", debouncedUserEmail);
     if (archiveMode === "archived") p.set("archived", "true");
-    if (likelyRetriesOnly) p.set("likelyRetries", "true");
     p.set("page", String(pagination.pageIndex + 1));
     p.set("limit", String(pagination.pageSize));
     return p.toString();
-  }, [debouncedQ, reportType, from, to, debouncedUserEmail, archiveMode, likelyRetriesOnly, pagination.pageIndex, pagination.pageSize]);
+  }, [debouncedQ, reportType, from, to, debouncedUserEmail, archiveMode, pagination.pageIndex, pagination.pageSize]);
 
   async function load() {
     setLoading(true);
@@ -1650,7 +1706,6 @@ export default function AdminReports() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || "Failed to load reports");
       setData(json as ApiResponse);
-      setSelectedRetryIds(new Set());
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed to load reports";
       setError(message);
@@ -1916,82 +1971,30 @@ export default function AdminReports() {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }
 
-  const groups = useMemo<ReportGroup[]>(() => {
-    const map = new Map<string, ReportGroup>();
-    const items = (data?.items || []) as ReportItem[];
-    for (const r of items) {
-      const key = String((r.report as string | undefined) || r._id);
-      let g = map.get(key);
-      if (!g) {
-        const base = r.reportType === "RealEstate" ? "Real Estate" : r.reportType === "Salvage" ? "Salvage" : r.reportType === "LotListing" ? "Lot Listing" : "Asset";
-        const title = r.contract_no
-          ? `${base} - ${r.contract_no}${r.lot_number_summary ? ` - ${r.lot_number_summary}` : ""}`
-          : (r.address || base);
-        g = {
-          key,
-          title,
-          contract_no: r.contract_no,
-          lotNumberSummary: r.lot_number_summary,
-          reportType: r.reportType,
-          createdAt: r.createdAt,
-          fairMarketValue: r.fairMarketValue,
-          userEmail: r.user?.email || undefined,
-          variants: {},
-          isAssetReport: r.reportType === 'Asset',
-          isRealEstateReport: r.reportType === 'RealEstate' || (r as any).isRealEstateReport,
-          isLotListingReport: r.reportType === 'LotListing' || (r as any).isLotListingReport || (r as any).isLotListing,
-          preview_files: (r as any).preview_files,
-          crDisclaimerCount: Number((r as any).crDisclaimerCount || 0),
-          release_status: r.release_status || "released",
-          release_assigned_to: r.release_assigned_to || null,
-          released_at: r.released_at || null,
-          downloadable: r.downloadable !== false,
-          adminArchivedAt: r.adminArchivedAt || null,
-          likelyRetry: r.likelyRetry === true,
-          likelyRetryCount: Number(r.likelyRetryCount || 0),
-        };
-        map.set(key, g);
-      } else {
-        if (g.release_status !== "pending_release" && r.release_status === "pending_release") {
-          g.release_status = "pending_release";
-          g.release_assigned_to = r.release_assigned_to || null;
-          g.released_at = r.released_at || null;
-          g.downloadable = false;
-        }
-      }
-      if (new Date(r.createdAt).getTime() > new Date(g.createdAt).getTime()) g.createdAt = r.createdAt;
-      const ft = ((r.fileType || r.filename.split(".").pop() || "") as string).toLowerCase();
-      if (ft === "pdf") g.variants.pdf = r;
-      else if (ft === "spec_pdf") g.variants.specPdf = r;
-      else if (ft === "cr_docx") g.variants.crDocx = r;
-      else if (ft === "docx") g.variants.docx = r;
-      else if (ft === "xlsx") g.variants.xlsx = r;
-      else if (ft === "images" || ft === "zip") g.variants.images = r;
-    }
-    // Sort by newest first regardless of report type
-    return Array.from(map.values()).sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  }, [data]);
+  const groups = useMemo<ReportGroup[]>(() => groupReportItems((data?.items || []) as ReportItem[]), [data]);
 
-  async function archiveSelectedRetries() {
-    const ids = Array.from(selectedRetryIds);
-    if (ids.length === 0) return;
-    if (!window.confirm(`Archive ${ids.length} selected retry candidate(s)?`)) return;
-    setBulkArchiving(true);
+  async function openSameContractReports(group: ReportGroup) {
+    if (!group.contract_no) return;
+    setSameContractNumber(group.contract_no);
+    setSameContractGroups([]);
+    setSameContractError(null);
+    setSameContractOpen(true);
+    setSameContractLoading(true);
     try {
-      for (const id of ids) {
-        const response = await fetch(`/api/admin/reports/${id}/archive`, { method: "PATCH" });
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body?.message || "Failed to archive selected reports");
-        }
-      }
-      await load();
-    } catch (archiveError) {
-      setError(archiveError instanceof Error ? archiveError.message : "Failed to archive selected reports");
+      const params = new URLSearchParams({
+        contractNo: group.contract_no,
+        approvalStatus: "approved",
+        page: "1",
+        limit: "200",
+      });
+      const response = await fetch(`/api/admin/reports?${params.toString()}&_t=${Date.now()}`, { cache: "no-store" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.message || "Failed to load reports for this contract");
+      setSameContractGroups(groupReportItems(Array.isArray(body?.items) ? body.items : []));
+    } catch (sameContractError) {
+      setSameContractError(sameContractError instanceof Error ? sameContractError.message : "Failed to load same-contract reports");
     } finally {
-      setBulkArchiving(false);
+      setSameContractLoading(false);
     }
   }
 
@@ -2036,6 +2039,28 @@ export default function AdminReports() {
             </Button>
           </span>
         </Tooltip>
+
+        {(group.isAssetReport || group.isLotListingReport) && group.contract_no ? (
+          <Tooltip title="View every report using this contract number">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<TableRowsRoundedIcon />}
+                sx={{
+                  ...actionButtonSx,
+                  borderColor: "#94a3b8",
+                  color: "#334155",
+                  bgcolor: "#fff",
+                  "&:hover": { borderColor: "#64748b", bgcolor: "#f8fafc" },
+                }}
+                onClick={() => void openSameContractReports(group)}
+              >
+                Same contract
+              </Button>
+            </span>
+          </Tooltip>
+        ) : null}
 
         {buildFileLinks(group).map((link) => {
           const linkKey = link.label.toLowerCase();
@@ -2220,21 +2245,6 @@ export default function AdminReports() {
         header: "Report",
         cell: ({ row }) => (
           <Stack direction="row" spacing={0.75} alignItems="flex-start" minWidth={0} sx={{ maxWidth: 260 }}>
-            {likelyRetriesOnly ? (
-              <Checkbox
-                size="small"
-                checked={selectedRetryIds.has(row.original.key)}
-                onChange={(_, checked) => {
-                  setSelectedRetryIds((current) => {
-                    const next = new Set(current);
-                    if (checked) next.add(row.original.key); else next.delete(row.original.key);
-                    return next;
-                  });
-                }}
-                inputProps={{ "aria-label": `Select ${row.original.title}` }}
-                sx={{ p: 0.25 }}
-              />
-            ) : null}
             <Stack spacing={0.25} minWidth={0}>
             <Typography
               variant="body2"
@@ -2250,9 +2260,6 @@ export default function AdminReports() {
             >
               {row.original.title}
             </Typography>
-            {row.original.likelyRetry ? (
-              <Chip size="small" color="warning" variant="outlined" label={`${row.original.likelyRetryCount} same-contract attempts`} sx={{ alignSelf: "flex-start", height: 20 }} />
-            ) : null}
             <Typography variant="caption" color="text.secondary" noWrap>
               Contract: {row.original.contract_no || "-"}
             </Typography>
@@ -2355,7 +2362,6 @@ export default function AdminReports() {
                   color="primary"
                   onClick={() => {
                     setArchiveMode("active");
-                    setLikelyRetriesOnly(false);
                     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
                   }}
                 >
@@ -2366,35 +2372,11 @@ export default function AdminReports() {
                   color="secondary"
                   onClick={() => {
                     setArchiveMode("archived");
-                    setLikelyRetriesOnly(false);
                     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
                   }}
                 >
                   Archived
                 </Button>
-                <Button
-                  variant={likelyRetriesOnly ? "contained" : "outlined"}
-                  color="warning"
-                  disabled={archiveMode === "archived"}
-                  onClick={() => {
-                    setLikelyRetriesOnly((value) => !value);
-                    setSelectedRetryIds(new Set());
-                    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                  }}
-                >
-                  Likely retries
-                </Button>
-                {likelyRetriesOnly && selectedRetryIds.size > 0 ? (
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    disabled={bulkArchiving}
-                    startIcon={<ArchiveRoundedIcon />}
-                    onClick={() => void archiveSelectedRetries()}
-                  >
-                    {bulkArchiving ? "Archiving..." : `Archive selected (${selectedRetryIds.size})`}
-                  </Button>
-                ) : null}
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
@@ -2672,26 +2654,9 @@ export default function AdminReports() {
                           <Stack spacing={1.5}>
                             <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
                               <Stack direction="row" spacing={0.75} minWidth={0}>
-                                {likelyRetriesOnly ? (
-                                  <Checkbox
-                                    size="small"
-                                    checked={selectedRetryIds.has(g.key)}
-                                    onChange={(_, checked) => {
-                                      setSelectedRetryIds((current) => {
-                                        const next = new Set(current);
-                                        if (checked) next.add(g.key); else next.delete(g.key);
-                                        return next;
-                                      });
-                                    }}
-                                    sx={{ p: 0.25, alignSelf: "flex-start" }}
-                                  />
-                                ) : null}
                               <Stack spacing={0.5} minWidth={0}>
                                 <Typography variant="subtitle2" sx={{ wordBreak: "break-word" }}>{g.title}</Typography>
                                 <Typography variant="body2" color="text.secondary">Contract: {g.contract_no || "-"}</Typography>
-                                {g.likelyRetry ? (
-                                  <Chip size="small" color="warning" variant="outlined" label={`${g.likelyRetryCount} same-contract attempts`} sx={{ alignSelf: "flex-start" }} />
-                                ) : null}
                               </Stack>
                               </Stack>
                               <Chip size="small" variant="outlined" color="secondary" label={getReportTypeLabel(g.reportType)} />
@@ -2752,6 +2717,86 @@ export default function AdminReports() {
           )}
         </section>
       </main>
+      <Dialog
+        open={sameContractOpen}
+        onClose={() => setSameContractOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, maxHeight: "88vh" } }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                Reports for contract {sameContractNumber}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {sameContractGroups.length} report{sameContractGroups.length === 1 ? "" : "s"}. Each row has its own files and lot data.
+              </Typography>
+            </Box>
+            <IconButton aria-label="Close" onClick={() => setSameContractOpen(false)}>
+              <CloseRoundedIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: { xs: 1, sm: 2 } }}>
+          {sameContractError ? <Alert severity="error" sx={{ mb: 2 }}>{sameContractError}</Alert> : null}
+          {sameContractLoading ? (
+            <Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>Loading contract reports...</Typography>
+          ) : sameContractGroups.length ? (
+            <TableContainer sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}>
+              <Table size="small" sx={{ minWidth: 840 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Report</TableCell>
+                    <TableCell>Lots</TableCell>
+                    <TableCell>Created By</TableCell>
+                    <TableCell>Created</TableCell>
+                    <TableCell>Files</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {sameContractGroups.map((report) => (
+                    <TableRow key={report.key} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 800 }}>{report.title}</Typography>
+                        <Typography variant="caption" color="text.secondary">ID {report.key.slice(-8)}</Typography>
+                      </TableCell>
+                      <TableCell>{report.lotNumberSummary || "-"}</TableCell>
+                      <TableCell>{report.userEmail || "-"}</TableCell>
+                      <TableCell>{new Date(report.createdAt).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                          {buildFileLinks(report).filter((file) => file.href).map((file) => (
+                            <Button
+                              key={`${report.key}-${file.label}`}
+                              size="small"
+                              variant="outlined"
+                              startIcon={getFileActionIcon(file.label)}
+                              href={file.href}
+                              {...(file.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" })}
+                              sx={{ ...actionButtonSx, height: 28, fontSize: "0.68rem" }}
+                            >
+                              {file.label}
+                            </Button>
+                          ))}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>
+              No approved reports were found for this contract.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, py: 1.5 }}>
+          <Button onClick={() => setSameContractOpen(false)} variant="contained">Close</Button>
+        </DialogActions>
+      </Dialog>
       <ConfirmModal
         open={confirmOpen}
         title="Delete this report?"
