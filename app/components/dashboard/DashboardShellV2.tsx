@@ -85,8 +85,6 @@ type WeeklyCreditsState = {
   rechargeTotal: number;
   requestCount: number;
   webSearchCount: number;
-  maxWeeklyAutoRecharges: number;
-  autoRechargeCount: number;
   usageSourceAvailable: boolean;
   status: "synced" | "unavailable" | "error";
   warnings: string[];
@@ -365,11 +363,11 @@ export default function DashboardShellV2() {
         message?: string;
       };
       if (!res.ok || !payload.data) {
-        throw new Error(payload.message || "Failed to load weekly OpenAI credits");
+        throw new Error(payload.message || "Failed to load weekly credits");
       }
       setWeeklyCredits(payload.data);
     } catch (e) {
-      console.error(e instanceof Error ? e.message : "Failed to load weekly OpenAI credits");
+      console.error(e instanceof Error ? e.message : "Failed to load weekly credits");
     } finally {
       setWeeklyCreditsLoading(false);
       setWeeklyCreditsRefreshing(false);
@@ -643,7 +641,7 @@ export default function DashboardShellV2() {
                           </Box>
                           <Box minWidth={0}>
                             <Typography variant="body1" sx={{ fontWeight: 950 }} noWrap>
-                              Weekly OpenAI credits
+                              Weekly Credits
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                               {formatWeekRange(weeklyCredits?.weekStart, weeklyCredits?.weekEnd)}
@@ -694,7 +692,7 @@ export default function DashboardShellV2() {
                           onClick={() => setRechargesOpen(true)}
                           sx={{ ml: "auto", fontWeight: 900, borderRadius: "8px" }}
                         >
-                          {weeklyCredits?.autoRechargeCount || 0}/{weeklyCredits?.maxWeeklyAutoRecharges || 2} recharges
+                          View renewals
                         </Button>
                       </Stack>
 
@@ -750,8 +748,7 @@ export default function DashboardShellV2() {
                       />
 
                       <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
-                        Adds up to{" "}
-                        {weeklyCredits?.maxWeeklyAutoRecharges || 2} weekly recharges below {weeklyCredits?.thresholdCredits || 20}. Last sync{" "}
+                        Renews when the balance falls below {weeklyCredits?.thresholdCredits || 20}. Last sync{" "}
                         {formatShortDateTime(weeklyCredits?.syncedAt)}.
                       </Typography>
                     </Stack>
