@@ -111,10 +111,10 @@ const statCards: Array<{
   color: string;
   iconBg: string;
 }> = [
-  { key: "totalUsers", label: "Users", icon: <GroupRoundedIcon />, color: "#2563eb", iconBg: "#dbeafe" },
-  { key: "totalAdmins", label: "Admins", icon: <ManageAccountsRoundedIcon />, color: "#6d28d9", iconBg: "#ede9fe" },
-  { key: "totalReports", label: "Total Reports", icon: <AssessmentRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
-];
+    { key: "totalUsers", label: "Users", icon: <GroupRoundedIcon />, color: "#2563eb", iconBg: "#dbeafe" },
+    { key: "totalAdmins", label: "Admins", icon: <ManageAccountsRoundedIcon />, color: "#6d28d9", iconBg: "#ede9fe" },
+    { key: "totalReports", label: "Total Reports", icon: <AssessmentRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
+  ];
 
 const reportCards: Array<{
   key: "Asset" | "LotListing" | "RealEstate" | "Salvage";
@@ -123,11 +123,11 @@ const reportCards: Array<{
   color: string;
   iconBg: string;
 }> = [
-  { key: "Asset", label: "Asset Reports", icon: <WarehouseRoundedIcon />, color: "#2563eb", iconBg: "#dbeafe" },
-  { key: "LotListing", label: "Lot Listing Reports", icon: <AssessmentRoundedIcon />, color: "#7c3aed", iconBg: "#ede9fe" },
-  { key: "RealEstate", label: "Real Estate Reports", icon: <DashboardRoundedIcon />, color: "#16a34a", iconBg: "#dcfce7" },
-  { key: "Salvage", label: "Salvage Reports", icon: <CheckCircleRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
-];
+    { key: "Asset", label: "Asset Reports", icon: <WarehouseRoundedIcon />, color: "#2563eb", iconBg: "#dbeafe" },
+    { key: "LotListing", label: "Lot Listing Reports", icon: <AssessmentRoundedIcon />, color: "#7c3aed", iconBg: "#ede9fe" },
+    { key: "RealEstate", label: "Real Estate Reports", icon: <DashboardRoundedIcon />, color: "#16a34a", iconBg: "#dcfce7" },
+    { key: "Salvage", label: "Salvage Reports", icon: <CheckCircleRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
+  ];
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -253,7 +253,7 @@ export default function DashboardShellV2() {
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
         setMe(data?.user || null);
-      } catch {}
+      } catch { }
     })();
   }, []);
 
@@ -523,7 +523,7 @@ export default function DashboardShellV2() {
                       {greeting}{me ? `, ${me.username || me.email}` : ""}
                     </Typography>
                     <Typography variant="body1" color="text.secondary" sx={{ mt: 1, maxWidth: 760, fontWeight: 500 }}>
-                    Reports, approvals, users, CRM and operational settings in one dense control surface.
+                      Reports, approvals, users, CRM and operational settings in one dense control surface.
                     </Typography>
                   </Box>
 
@@ -728,17 +728,17 @@ export default function DashboardShellV2() {
                         value={
                           weeklyCredits
                             ? Math.max(
-                                0,
-                                Math.min(
-                                  100,
-                                  (weeklyCredits.remainingCredits /
-                                    Math.max(
-                                      weeklyCredits.totalAvailableCredits || weeklyCredits.rechargeAmount,
-                                      1
-                                    )) *
-                                    100
-                                )
+                              0,
+                              Math.min(
+                                100,
+                                (weeklyCredits.remainingCredits /
+                                  Math.max(
+                                    weeklyCredits.totalAvailableCredits || weeklyCredits.rechargeAmount,
+                                    1
+                                  )) *
+                                100
                               )
+                            )
                             : 0
                         }
                         sx={{
@@ -750,7 +750,7 @@ export default function DashboardShellV2() {
                       />
 
                       <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
-                        Official OpenAI cost is deducted at {weeklyCredits?.deductionMultiplier || 4}x. Adds up to{" "}
+                        Adds up to{" "}
                         {weeklyCredits?.maxWeeklyAutoRecharges || 2} weekly recharges below {weeklyCredits?.thresholdCredits || 20}. Last sync{" "}
                         {formatShortDateTime(weeklyCredits?.syncedAt)}.
                       </Typography>
@@ -1022,16 +1022,16 @@ export default function DashboardShellV2() {
                       const dateLabel = Number.isNaN(createdAt.getTime())
                         ? "--"
                         : createdAt.toLocaleDateString([], {
-                            month: "short",
-                            day: "2-digit",
-                            year: "numeric",
-                          });
+                          month: "short",
+                          day: "2-digit",
+                          year: "numeric",
+                        });
                       const timeLabel = Number.isNaN(createdAt.getTime())
                         ? "--"
                         : createdAt.toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          });
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        });
                       return (
                         <Box component="tr" key={recharge.id}>
                           <Box component="td" sx={{ fontWeight: 850 }}>
