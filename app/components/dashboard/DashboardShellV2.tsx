@@ -68,12 +68,17 @@ type WeeklyCreditRecharge = {
 };
 
 type WeeklyCreditsState = {
+  periodStart?: string;
+  periodEnd?: string;
   weekStart: string;
   weekEnd: string;
   openAIUsageUsd: number;
   deductionMultiplier: number;
+  initialCredits?: number;
   deductedCredits: number;
   addedCredits: number;
+  autoRechargeTotal?: number;
+  totalAvailableCredits?: number;
   remainingCredits: number;
   thresholdCredits: number;
   rechargeAmount: number;
@@ -685,7 +690,7 @@ export default function DashboardShellV2() {
                           onClick={() => setRechargesOpen(true)}
                           sx={{ ml: "auto", fontWeight: 900, borderRadius: "8px" }}
                         >
-                          +{formatMoney(weeklyCredits?.rechargeTotal, "0")} this week
+                          +{formatMoney(weeklyCredits?.autoRechargeTotal ?? weeklyCredits?.rechargeTotal, "0")} auto recharged
                         </Button>
                       </Stack>
 
@@ -693,7 +698,18 @@ export default function DashboardShellV2() {
                         variant="determinate"
                         value={
                           weeklyCredits
-                            ? Math.max(0, Math.min(100, (weeklyCredits.remainingCredits / Math.max(weeklyCredits.rechargeAmount, 1)) * 100))
+                            ? Math.max(
+                                0,
+                                Math.min(
+                                  100,
+                                  (weeklyCredits.remainingCredits /
+                                    Math.max(
+                                      weeklyCredits.totalAvailableCredits || weeklyCredits.rechargeAmount,
+                                      1
+                                    )) *
+                                    100
+                                )
+                              )
                             : 0
                         }
                         sx={{
@@ -858,63 +874,154 @@ export default function DashboardShellV2() {
       <Dialog
         open={rechargesOpen}
         onClose={() => setRechargesOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: "12px" } }}
       >
         <DialogTitle sx={{ fontWeight: 950 }}>
           Weekly Recharges
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {formatWeekRange(weeklyCredits?.weekStart, weeklyCredits?.weekEnd)}
+            {formatShortDateTime(weeklyCredits?.periodStart || weeklyCredits?.weekStart)} -{" "}
+            {formatShortDateTime(weeklyCredits?.periodEnd || weeklyCredits?.weekEnd)}
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.25}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 750 }}>
-                Total added this week
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                {formatMoney(weeklyCredits?.rechargeTotal, "0")} credits
-              </Typography>
-            </Stack>
-            <Divider />
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" },
+                gap: 1,
+              }}
+            >
+              <Box
+                sx={{
+                  border: "1px solid",
+                  borderColor: alpha("#94a3b8", 0.25),
+                  borderRadius: "10px",
+                  p: 1.25,
+                  bgcolor: alpha("#f8fafc", 0.75),
+                }}
+              >
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
+                  Initial Weekly Credit
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                  {formatMoney(weeklyCredits?.initialCredits, "0")} cr
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  border: "1px solid",
+                  borderColor: alpha("#16a34a", 0.22),
+                  borderRadius: "10px",
+                  p: 1.25,
+                  bgcolor: alpha("#dcfce7", 0.45),
+                }}
+              >
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
+                  Auto Recharged
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 950, color: "#15803d" }}>
+                  {formatMoney(weeklyCredits?.autoRechargeTotal ?? weeklyCredits?.rechargeTotal, "0")} cr
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  border: "1px solid",
+                  borderColor: alpha("#2563eb", 0.2),
+                  borderRadius: "10px",
+                  p: 1.25,
+                  bgcolor: alpha("#dbeafe", 0.45),
+                }}
+              >
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
+                  Remaining
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 950, color: "#1d4ed8" }}>
+                  {formatMoney(weeklyCredits?.remainingCredits, "0")} cr
+                </Typography>
+              </Box>
+            </Box>
             {weeklyCredits?.recharges?.length ? (
-              weeklyCredits.recharges.map((recharge) => (
+              <Box sx={{ overflowX: "auto" }}>
                 <Box
-                  key={recharge.id}
+                  component="table"
                   sx={{
+                    width: "100%",
+                    minWidth: 680,
+                    borderCollapse: "separate",
+                    borderSpacing: 0,
+                    overflow: "hidden",
                     border: "1px solid",
-                    borderColor: (theme) =>
-                      theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
+                    borderColor: alpha("#94a3b8", 0.28),
                     borderRadius: "10px",
-                    p: 1.25,
+                    "& th": {
+                      bgcolor: alpha("#e2e8f0", 0.55),
+                      color: "#334155",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      textAlign: "left",
+                      px: 1.25,
+                      py: 1,
+                      whiteSpace: "nowrap",
+                    },
+                    "& td": {
+                      borderTop: "1px solid",
+                      borderColor: alpha("#94a3b8", 0.18),
+                      fontSize: 13,
+                      px: 1.25,
+                      py: 1,
+                      whiteSpace: "nowrap",
+                    },
                   }}
                 >
-                  <Stack direction="row" justifyContent="space-between" spacing={1.5} alignItems="center">
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 900 }}>
-                        {recharge.source === "initial_balance"
-                          ? "Initial weekly credits"
-                          : `Auto recharge #${recharge.ordinal}`}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatShortDateTime(recharge.createdAt)} · balance {formatMoney(recharge.balanceBefore)} to{" "}
-                        {formatMoney(recharge.balanceAfter)}
-                      </Typography>
+                  <Box component="thead">
+                    <Box component="tr">
+                      <Box component="th">#</Box>
+                      <Box component="th">Date</Box>
+                      <Box component="th">Time</Box>
+                      <Box component="th">Balance Before</Box>
+                      <Box component="th">Added</Box>
+                      <Box component="th">Balance After</Box>
                     </Box>
-                    <Chip
-                      label={`+${formatMoney(recharge.amountCredits)} cr`}
-                      sx={{
-                        bgcolor: alpha("#16a34a", 0.14),
-                        color: "#15803d",
-                        fontWeight: 900,
-                        flexShrink: 0,
-                      }}
-                    />
-                  </Stack>
+                  </Box>
+                  <Box component="tbody">
+                    {weeklyCredits.recharges.map((recharge, index) => {
+                      const createdAt = new Date(recharge.createdAt);
+                      const dateLabel = Number.isNaN(createdAt.getTime())
+                        ? "--"
+                        : createdAt.toLocaleDateString([], {
+                            month: "short",
+                            day: "2-digit",
+                            year: "numeric",
+                          });
+                      const timeLabel = Number.isNaN(createdAt.getTime())
+                        ? "--"
+                        : createdAt.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          });
+                      return (
+                        <Box component="tr" key={recharge.id}>
+                          <Box component="td" sx={{ fontWeight: 850 }}>
+                            {index + 1}
+                          </Box>
+                          <Box component="td">{dateLabel}</Box>
+                          <Box component="td">{timeLabel}</Box>
+                          <Box component="td">{formatMoney(recharge.balanceBefore)} cr</Box>
+                          <Box component="td" sx={{ color: "#15803d", fontWeight: 900 }}>
+                            +{formatMoney(recharge.amountCredits)} cr
+                          </Box>
+                          <Box component="td" sx={{ fontWeight: 850 }}>
+                            {formatMoney(recharge.balanceAfter)} cr
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Box>
                 </Box>
-              ))
+              </Box>
             ) : (
               <Box
                 sx={{
@@ -930,6 +1037,15 @@ export default function DashboardShellV2() {
                 </Typography>
               </Box>
             )}
+            <Divider />
+            <Stack direction="row" justifyContent="space-between" spacing={1.5} alignItems="center">
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 750 }}>
+                Total auto-recharged this week
+              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                {formatMoney(weeklyCredits?.autoRechargeTotal ?? weeklyCredits?.rechargeTotal, "0")} credits
+              </Typography>
+            </Stack>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 1.5 }}>

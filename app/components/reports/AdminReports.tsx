@@ -93,6 +93,7 @@ type ReportItem = {
   downloadable?: boolean;
   report?: string;
   contract_no?: string;
+  lot_number_summary?: string;
   preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   crDisclaimerCount?: number;
   isRealEstateReport?: boolean;
@@ -100,6 +101,9 @@ type ReportItem = {
   property_type?: string;
   language?: string;
   adminArchivedAt?: string | null;
+  likelyRetry?: boolean;
+  likelyRetryGroup?: string;
+  likelyRetryCount?: number;
 };
 
 type ApiResponse = {
@@ -113,6 +117,7 @@ type ReportGroup = {
   key: string;
   title: string;
   contract_no?: string;
+  lotNumberSummary?: string;
   reportType: string;
   createdAt: string;
   fairMarketValue: string;
@@ -128,6 +133,8 @@ type ReportGroup = {
   released_at?: string | null;
   downloadable?: boolean;
   adminArchivedAt?: string | null;
+  likelyRetry?: boolean;
+  likelyRetryCount?: number;
 };
 
 type ReportFileLink = {
@@ -1572,6 +1579,9 @@ export default function AdminReports() {
   const [pageSizeMode, setPageSizeMode] = useState<"20" | "50" | "100" | "all" | "custom">("20");
   const [customPageSizeInput, setCustomPageSizeInput] = useState("150");
   const [archiveMode, setArchiveMode] = useState<"active" | "archived">("active");
+  const [likelyRetriesOnly, setLikelyRetriesOnly] = useState(false);
+  const [selectedRetryIds, setSelectedRetryIds] = useState<Set<string>>(new Set());
+  const [bulkArchiving, setBulkArchiving] = useState(false);
 
   // Data
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -1624,10 +1634,11 @@ export default function AdminReports() {
     if (to) p.set("to", to);
     if (debouncedUserEmail) p.set("userEmail", debouncedUserEmail);
     if (archiveMode === "archived") p.set("archived", "true");
+    if (likelyRetriesOnly) p.set("likelyRetries", "true");
     p.set("page", String(pagination.pageIndex + 1));
     p.set("limit", String(pagination.pageSize));
     return p.toString();
-  }, [debouncedQ, reportType, from, to, debouncedUserEmail, archiveMode, pagination.pageIndex, pagination.pageSize]);
+  }, [debouncedQ, reportType, from, to, debouncedUserEmail, archiveMode, likelyRetriesOnly, pagination.pageIndex, pagination.pageSize]);
 
   async function load() {
     setLoading(true);
@@ -1639,6 +1650,7 @@ export default function AdminReports() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || "Failed to load reports");
       setData(json as ApiResponse);
+      setSelectedRetryIds(new Set());
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed to load reports";
       setError(message);
@@ -1912,11 +1924,14 @@ export default function AdminReports() {
       let g = map.get(key);
       if (!g) {
         const base = r.reportType === "RealEstate" ? "Real Estate" : r.reportType === "Salvage" ? "Salvage" : r.reportType === "LotListing" ? "Lot Listing" : "Asset";
-        const title = r.contract_no ? `${base} - ${r.contract_no}` : (r.address || base);
+        const title = r.contract_no
+          ? `${base} - ${r.contract_no}${r.lot_number_summary ? ` - ${r.lot_number_summary}` : ""}`
+          : (r.address || base);
         g = {
           key,
           title,
           contract_no: r.contract_no,
+          lotNumberSummary: r.lot_number_summary,
           reportType: r.reportType,
           createdAt: r.createdAt,
           fairMarketValue: r.fairMarketValue,
@@ -1932,6 +1947,8 @@ export default function AdminReports() {
           released_at: r.released_at || null,
           downloadable: r.downloadable !== false,
           adminArchivedAt: r.adminArchivedAt || null,
+          likelyRetry: r.likelyRetry === true,
+          likelyRetryCount: Number(r.likelyRetryCount || 0),
         };
         map.set(key, g);
       } else {
@@ -1956,6 +1973,27 @@ export default function AdminReports() {
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [data]);
+
+  async function archiveSelectedRetries() {
+    const ids = Array.from(selectedRetryIds);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Archive ${ids.length} selected retry candidate(s)?`)) return;
+    setBulkArchiving(true);
+    try {
+      for (const id of ids) {
+        const response = await fetch(`/api/admin/reports/${id}/archive`, { method: "PATCH" });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.message || "Failed to archive selected reports");
+        }
+      }
+      await load();
+    } catch (archiveError) {
+      setError(archiveError instanceof Error ? archiveError.message : "Failed to archive selected reports");
+    } finally {
+      setBulkArchiving(false);
+    }
+  }
 
   function renderReportActions(group: ReportGroup) {
     const previewId = getPreviewTargetId(group);
@@ -2181,7 +2219,23 @@ export default function AdminReports() {
         accessorKey: "title",
         header: "Report",
         cell: ({ row }) => (
-          <Stack spacing={0.25} minWidth={0} sx={{ maxWidth: 240 }}>
+          <Stack direction="row" spacing={0.75} alignItems="flex-start" minWidth={0} sx={{ maxWidth: 260 }}>
+            {likelyRetriesOnly ? (
+              <Checkbox
+                size="small"
+                checked={selectedRetryIds.has(row.original.key)}
+                onChange={(_, checked) => {
+                  setSelectedRetryIds((current) => {
+                    const next = new Set(current);
+                    if (checked) next.add(row.original.key); else next.delete(row.original.key);
+                    return next;
+                  });
+                }}
+                inputProps={{ "aria-label": `Select ${row.original.title}` }}
+                sx={{ p: 0.25 }}
+              />
+            ) : null}
+            <Stack spacing={0.25} minWidth={0}>
             <Typography
               variant="body2"
               sx={{
@@ -2196,9 +2250,13 @@ export default function AdminReports() {
             >
               {row.original.title}
             </Typography>
+            {row.original.likelyRetry ? (
+              <Chip size="small" color="warning" variant="outlined" label={`${row.original.likelyRetryCount} same-contract attempts`} sx={{ alignSelf: "flex-start", height: 20 }} />
+            ) : null}
             <Typography variant="caption" color="text.secondary" noWrap>
               Contract: {row.original.contract_no || "-"}
             </Typography>
+            </Stack>
           </Stack>
         ),
       },
@@ -2297,6 +2355,7 @@ export default function AdminReports() {
                   color="primary"
                   onClick={() => {
                     setArchiveMode("active");
+                    setLikelyRetriesOnly(false);
                     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
                   }}
                 >
@@ -2307,11 +2366,35 @@ export default function AdminReports() {
                   color="secondary"
                   onClick={() => {
                     setArchiveMode("archived");
+                    setLikelyRetriesOnly(false);
                     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
                   }}
                 >
                   Archived
                 </Button>
+                <Button
+                  variant={likelyRetriesOnly ? "contained" : "outlined"}
+                  color="warning"
+                  disabled={archiveMode === "archived"}
+                  onClick={() => {
+                    setLikelyRetriesOnly((value) => !value);
+                    setSelectedRetryIds(new Set());
+                    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+                  }}
+                >
+                  Likely retries
+                </Button>
+                {likelyRetriesOnly && selectedRetryIds.size > 0 ? (
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    disabled={bulkArchiving}
+                    startIcon={<ArchiveRoundedIcon />}
+                    onClick={() => void archiveSelectedRetries()}
+                  >
+                    {bulkArchiving ? "Archiving..." : `Archive selected (${selectedRetryIds.size})`}
+                  </Button>
+                ) : null}
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
@@ -2588,9 +2671,28 @@ export default function AdminReports() {
                         <CardContent>
                           <Stack spacing={1.5}>
                             <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
+                              <Stack direction="row" spacing={0.75} minWidth={0}>
+                                {likelyRetriesOnly ? (
+                                  <Checkbox
+                                    size="small"
+                                    checked={selectedRetryIds.has(g.key)}
+                                    onChange={(_, checked) => {
+                                      setSelectedRetryIds((current) => {
+                                        const next = new Set(current);
+                                        if (checked) next.add(g.key); else next.delete(g.key);
+                                        return next;
+                                      });
+                                    }}
+                                    sx={{ p: 0.25, alignSelf: "flex-start" }}
+                                  />
+                                ) : null}
                               <Stack spacing={0.5} minWidth={0}>
                                 <Typography variant="subtitle2" sx={{ wordBreak: "break-word" }}>{g.title}</Typography>
                                 <Typography variant="body2" color="text.secondary">Contract: {g.contract_no || "-"}</Typography>
+                                {g.likelyRetry ? (
+                                  <Chip size="small" color="warning" variant="outlined" label={`${g.likelyRetryCount} same-contract attempts`} sx={{ alignSelf: "flex-start" }} />
+                                ) : null}
+                              </Stack>
                               </Stack>
                               <Chip size="small" variant="outlined" color="secondary" label={getReportTypeLabel(g.reportType)} />
                             </Stack>
