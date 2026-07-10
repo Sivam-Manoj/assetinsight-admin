@@ -83,6 +83,10 @@ type WeeklyCreditsState = {
   thresholdCredits: number;
   rechargeAmount: number;
   rechargeTotal: number;
+  requestCount: number;
+  webSearchCount: number;
+  maxWeeklyAutoRecharges: number;
+  autoRechargeCount: number;
   usageSourceAvailable: boolean;
   status: "synced" | "unavailable" | "error";
   warnings: string[];
@@ -690,9 +694,34 @@ export default function DashboardShellV2() {
                           onClick={() => setRechargesOpen(true)}
                           sx={{ ml: "auto", fontWeight: 900, borderRadius: "8px" }}
                         >
-                          +{formatMoney(weeklyCredits?.autoRechargeTotal ?? weeklyCredits?.rechargeTotal, "0")} auto recharged
+                          {weeklyCredits?.autoRechargeCount || 0}/{weeklyCredits?.maxWeeklyAutoRecharges || 2} recharges
                         </Button>
                       </Stack>
+
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                          gap: 0.75,
+                        }}
+                      >
+                        <Box sx={{ px: 1, py: 0.75, borderRadius: "8px", bgcolor: alpha("#2563eb", 0.08) }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
+                            Requests
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.15 }}>
+                            {numberFormatter.format(weeklyCredits?.requestCount || 0)}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ px: 1, py: 0.75, borderRadius: "8px", bgcolor: alpha("#7c3aed", 0.08) }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
+                            Web searches
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.15 }}>
+                            {numberFormatter.format(weeklyCredits?.webSearchCount || 0)}
+                          </Typography>
+                        </Box>
+                      </Box>
 
                       <LinearProgress
                         variant="determinate"
@@ -721,8 +750,9 @@ export default function DashboardShellV2() {
                       />
 
                       <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
-                        Usage is deducted automatically. Auto-adds {weeklyCredits?.rechargeAmount || 200} credits below{" "}
-                        {weeklyCredits?.thresholdCredits || 20}. Last sync {formatShortDateTime(weeklyCredits?.syncedAt)}.
+                        Official OpenAI cost is deducted at {weeklyCredits?.deductionMultiplier || 4}x. Adds up to{" "}
+                        {weeklyCredits?.maxWeeklyAutoRecharges || 2} weekly recharges below {weeklyCredits?.thresholdCredits || 20}. Last sync{" "}
+                        {formatShortDateTime(weeklyCredits?.syncedAt)}.
                       </Typography>
                     </Stack>
                   </Box>
