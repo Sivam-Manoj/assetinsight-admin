@@ -1998,7 +1998,7 @@ export default function AdminReports() {
     }
   }
 
-  function renderReportActions(group: ReportGroup) {
+  function renderReportActions(group: ReportGroup, options: { wrap?: boolean } = {}) {
     const previewId = getPreviewTargetId(group);
     const archiveLabel = archiveMode === "archived" ? "Restore" : "Done";
     const archiveTooltip =
@@ -2007,7 +2007,7 @@ export default function AdminReports() {
     return (
       <Stack
         direction="row"
-        flexWrap="nowrap"
+        flexWrap={options.wrap ? "wrap" : "nowrap"}
         useFlexGap
         spacing={0.38}
         sx={{
@@ -2016,6 +2016,7 @@ export default function AdminReports() {
           width: "100%",
           maxWidth: "100%",
           overflow: "visible",
+          rowGap: options.wrap ? 0.75 : 0,
           "& > span": { flexShrink: 0 },
         }}
       >
@@ -2056,7 +2057,7 @@ export default function AdminReports() {
                 }}
                 onClick={() => void openSameContractReports(group)}
               >
-                Same contract
+                Same
               </Button>
             </span>
           </Tooltip>
@@ -2123,7 +2124,7 @@ export default function AdminReports() {
                 }}
                 onClick={() => void openCrDisclaimers(group)}
               >
-                CR Notes
+                Notes
                 {getCrCount(group) > 0 ? (
                   <Chip
                     size="small"
@@ -2323,9 +2324,9 @@ export default function AdminReports() {
 
   return (
     <div className="admin-page-shell">
-      <main className="w-full max-w-[1680px] mx-auto space-y-6">
+      <main className="w-full max-w-none mx-auto space-y-4">
         {/* Hero Summary */}
-        <section className="admin-glass-surface rounded-3xl p-5 md:p-6">
+        <section className="admin-glass-surface rounded-xl p-4 md:p-5">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
@@ -2353,7 +2354,7 @@ export default function AdminReports() {
         </section>
 
         {/* Filters */}
-        <section className="admin-glass-surface rounded-3xl p-4 md:p-6">
+        <section className="admin-glass-surface rounded-xl p-4 md:p-5">
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -2530,7 +2531,7 @@ export default function AdminReports() {
         </section>
 
         {/* List */}
-        <section className="admin-glass-surface rounded-3xl p-4 md:p-6">
+        <section className="admin-glass-surface rounded-xl p-3 md:p-4">
           {loading ? (
             <Typography color="text.secondary">Loading...</Typography>
           ) : error ? (
@@ -2543,20 +2544,19 @@ export default function AdminReports() {
                 </Alert>
               ) : null}
               {/* Table on md+ */}
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography variant="h6" fontWeight={700}>{archiveMode === "archived" ? "Archived Reports" : "Approved Reports"}</Typography>
+              <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1 }}>
                 <Chip size="small" color="secondary" variant="outlined" label={`${rows.length} visible`} />
               </Stack>
-              <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
+              <TableContainer sx={{ display: { xs: "none", lg: "block" }, overflow: "visible" }}>
                 <Table
                   size="small"
                   sx={{
                     tableLayout: "fixed",
                     width: "100%",
                     "& .MuiTableCell-root": {
-                      px: 1.5,
-                      py: 1.25,
-                      fontSize: "0.8rem",
+                      px: 0.75,
+                      py: 1,
+                      fontSize: "0.76rem",
                       verticalAlign: "middle",
                     },
                   }}
@@ -2573,15 +2573,15 @@ export default function AdminReports() {
                               whiteSpace: "nowrap",
                               width:
                                 header.column.id === "title"
-                                  ? "20%"
+                                  ? "18%"
                                   : header.column.id === "fairMarketValue"
-                                  ? "8%"
+                                  ? "7%"
                                   : header.column.id === "reportType"
-                                  ? "8%"
+                                  ? "7%"
                                   : header.column.id === "createdAt"
-                                  ? "13%"
+                                  ? "12%"
                                   : header.column.id === "actions"
-                                  ? "51%"
+                                  ? "56%"
                                   : "auto",
                             }}
                           >
@@ -2617,7 +2617,7 @@ export default function AdminReports() {
                               key={cell.id}
                               align="left"
                               sx={{
-                                overflow: "hidden",
+                                overflow: cell.column.id === "actions" ? "visible" : "hidden",
                               }}
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -2637,7 +2637,7 @@ export default function AdminReports() {
               </TableContainer>
 
               {/* Cards on mobile */}
-              <Stack spacing={2} sx={{ display: { xs: "flex", md: "none" } }}>
+              <Stack spacing={1.5} sx={{ display: { xs: "flex", lg: "none" } }}>
                 {rows.length ? (
                   rows.map((row) => {
                     const g = row.original;
@@ -2648,6 +2648,7 @@ export default function AdminReports() {
                         sx={{
                           contentVisibility: "auto",
                           containIntrinsicSize: "260px",
+                          borderRadius: 2,
                         }}
                       >
                         <CardContent>
@@ -2677,7 +2678,7 @@ export default function AdminReports() {
                                 <Typography variant="body2">{g.userEmail || "-"}</Typography>
                               </Grid>
                             </Grid>
-                            {renderReportActions(g)}
+                            {renderReportActions(g, { wrap: true })}
                           </Stack>
                         </CardContent>
                       </Card>
