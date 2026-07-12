@@ -55,6 +55,7 @@ html[data-theme="dark"] {
 html,
 body {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -63,7 +64,7 @@ body {
 }
 
 .admin-page-shell {
-  min-height: calc(100vh - 40px);
+  min-height: 100vh;
   padding: 1.5rem;
   background: var(--admin-bg);
 }
@@ -140,7 +141,7 @@ html[data-theme="dark"] .admin-page-shell .shadow-rose-200 {
 }
 
 .desktop-admin-page {
-  min-height: calc(100vh - 40px);
+  min-height: 100vh;
   background: var(--admin-bg);
   color: var(--admin-text);
 }
@@ -187,7 +188,7 @@ html[data-theme="dark"] .admin-page-shell .shadow-rose-200 {
 }
 
 .desktop-reports-table tbody tr {
-  height: 84px;
+  min-height: 84px;
 }
 
 @media (max-width: 1023px) {

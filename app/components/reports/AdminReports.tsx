@@ -1962,15 +1962,15 @@ export default function AdminReports() {
 
   const desktopTileSx = {
     minWidth: 0,
-    width: 68,
-    height: 48,
-    px: 0.5,
-    py: 0.5,
+    width: 47,
+    height: 44,
+    px: 0.25,
+    py: 0.3,
     borderRadius: 0,
     borderColor: "divider",
     bgcolor: "background.paper",
     color: "text.primary",
-    fontSize: "0.52rem",
+    fontSize: "0.48rem",
     fontWeight: 550,
     lineHeight: 1.05,
     flexDirection: "column",
@@ -1984,7 +1984,7 @@ export default function AdminReports() {
   function renderDesktopFiles(group: ReportGroup) {
     const previewId = getPreviewTargetId(group);
     return (
-      <Stack direction="row" spacing={0.5} alignItems="center">
+      <Stack direction="row" spacing={0.4} useFlexGap flexWrap="wrap" alignItems="center" sx={{ maxWidth: "100%", rowGap: 0.5 }}>
         <Button variant="outlined" startIcon={<VisibilityRoundedIcon />} sx={desktopTileSx} onClick={() => previewId && void openPreview(previewId, group.title)}>
           Data
         </Button>
@@ -2011,23 +2011,30 @@ export default function AdminReports() {
 
   function renderDesktopRowActions(group: ReportGroup) {
     const desktopActionSx = {
-      minHeight: 36,
+      width: 48,
+      minWidth: 48,
+      height: 44,
       borderRadius: 0,
       borderColor: "divider",
       bgcolor: "background.paper",
       color: "text.primary",
-      px: 1,
-      fontSize: "0.58rem",
+      px: 0.35,
+      py: 0.3,
+      fontSize: "0.5rem",
       fontWeight: 550,
-      whiteSpace: "nowrap",
+      lineHeight: 1.05,
+      whiteSpace: "normal",
+      textAlign: "center",
+      flexDirection: "column",
+      gap: 0.25,
       "&:hover": { borderColor: "#9b9da0", bgcolor: "action.hover" },
-      "& .MuiButton-startIcon": { mr: 0.5 },
+      "& .MuiButton-startIcon": { m: 0 },
       "& .MuiSvgIcon-root": { fontSize: "0.95rem" },
     } as const;
     return (
-      <Stack direction="row" spacing={0.5} alignItems="center">
+      <Stack direction="row" spacing={0.4} useFlexGap flexWrap="wrap" alignItems="center" sx={{ maxWidth: "100%", rowGap: 0.5 }}>
         {group.contract_no ? (
-          <Button variant="outlined" startIcon={<TableRowsRoundedIcon />} sx={desktopActionSx} onClick={() => void openSameContractReports(group)}>
+          <Button variant="outlined" startIcon={<TableRowsRoundedIcon />} sx={{ ...desktopActionSx, width: 58, minWidth: 58 }} onClick={() => void openSameContractReports(group)}>
             Same Contract
           </Button>
         ) : null}
@@ -2050,9 +2057,14 @@ export default function AdminReports() {
         >
           {archiveMode === "archived" ? "Restore" : "Archive"}
         </Button>
-        <IconButton aria-label="Delete report" size="small" onClick={() => openDelete(group.key)} sx={{ width: 36, height: 36, border: "1px solid #efb6ba", borderRadius: 0, color: "#df111b" }}>
-          <DeleteOutlineRoundedIcon sx={{ fontSize: 17 }} />
-        </IconButton>
+        <Button
+          variant="outlined"
+          startIcon={<DeleteOutlineRoundedIcon />}
+          onClick={() => openDelete(group.key)}
+          sx={{ ...desktopActionSx, width: 44, minWidth: 44, borderColor: "#efb6ba", color: "#df111b" }}
+        >
+          Delete
+        </Button>
       </Stack>
     );
   }
@@ -2175,7 +2187,7 @@ export default function AdminReports() {
 
   return (
     <div className="admin-page-shell desktop-admin-page">
-      <main className="w-full max-w-none mx-auto space-y-3">
+      <main className="w-full min-w-0 max-w-none mx-auto space-y-3 overflow-x-hidden">
         <header className="mb-5">
           <div className="flex items-center gap-2">
             <h1 className="desktop-page-title">{archiveMode === "archived" ? "Archived Reports" : "Approved Reports"}</h1>
@@ -2187,7 +2199,7 @@ export default function AdminReports() {
         </header>
 
         <section className="desktop-flat-panel p-3">
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 150px", xl: "minmax(260px,1fr) 130px 160px 12px 160px 175px 128px auto auto" }, gap: 1, alignItems: "center" }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "minmax(220px, 2fr) 130px minmax(150px, 1fr) minmax(150px, 1fr)", xl: "minmax(220px,1fr) 130px 150px 12px 150px minmax(140px,0.75fr) 128px auto auto" }, gap: 1, alignItems: "center" }}>
             <TextField
               fullWidth
               size="small"
@@ -2235,14 +2247,14 @@ export default function AdminReports() {
                 </Alert>
               ) : null}
               {/* Table on md+ */}
-              <TableContainer sx={{ display: { xs: "none", lg: "block" }, overflowX: "auto" }}>
+              <TableContainer sx={{ display: { xs: "none", xl: "block" }, maxWidth: "100%", overflowX: "hidden" }}>
                 <Table
                   className="desktop-reports-table"
                   size="small"
                   sx={{
                     tableLayout: "fixed",
                     width: "100%",
-                    minWidth: 1480,
+                    minWidth: 0,
                     "& .MuiTableCell-root": {
                       px: 1.5,
                       py: 1,
@@ -2269,19 +2281,19 @@ export default function AdminReports() {
                               whiteSpace: "nowrap",
                               width:
                                 header.column.id === "title"
-                                  ? "24%"
+                                  ? "20%"
                                   : header.column.id === "lotsFmv"
-                                  ? "8%"
+                                  ? "7%"
                                   : header.column.id === "reportType"
-                                  ? "8%"
+                                  ? "7%"
                                   : header.column.id === "createdAt"
-                                  ? "12%"
+                                  ? "11%"
                                   : header.column.id === "status"
-                                  ? "10%"
+                                  ? "9%"
                                   : header.column.id === "files"
                                   ? "25%"
                                   : header.column.id === "actions"
-                                  ? "23%"
+                                  ? "21%"
                                   : "auto",
                             }}
                           >
@@ -2310,7 +2322,7 @@ export default function AdminReports() {
                           sx={{
                             contentVisibility: "auto",
                             containIntrinsicSize: "84px",
-                            height: 84,
+                            minHeight: 84,
                           }}
                         >
                           {row.getVisibleCells().map((cell) => (
@@ -2318,7 +2330,7 @@ export default function AdminReports() {
                               key={cell.id}
                               align="left"
                               sx={{
-                                overflow: cell.column.id === "actions" || cell.column.id === "files" ? "visible" : "hidden",
+                                overflow: "hidden",
                               }}
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -2338,7 +2350,7 @@ export default function AdminReports() {
               </TableContainer>
 
               {/* Cards on mobile */}
-              <Stack spacing={1.5} sx={{ display: { xs: "flex", lg: "none" }, p: 2 }}>
+              <Stack spacing={1.5} sx={{ display: { xs: "flex", xl: "none" }, p: { xs: 1.25, sm: 2 } }}>
                 {rows.length ? (
                   rows.map((row) => {
                     const g = row.original;

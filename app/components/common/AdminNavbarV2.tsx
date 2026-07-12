@@ -41,7 +41,6 @@ import ThemeModeToggle from "@/app/components/common/ThemeModeToggle";
 
 const SIDEBAR_WIDTH = 208;
 const MOBILE_DRAWER_WIDTH = 280;
-const DESKTOP_TITLEBAR_HEIGHT = 40;
 const MOBILE_TITLEBAR_HEIGHT = 56;
 
 type NavItem = {
@@ -150,7 +149,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
 
   const sidebarContent = (mobile = false) => (
     <Box sx={{ display: "flex", height: "100%", flexDirection: "column", bgcolor: "#111211", color: "#fff" }}>
-      <Box sx={{ display: "flex", minHeight: 112, alignItems: "center", justifyContent: "space-between", px: 3 }}>
+      <Box sx={{ display: "flex", minHeight: 84, alignItems: "center", justifyContent: "space-between", px: 2.5 }}>
         <Link href={homeHref} aria-label="Asset Insight home" style={{ display: "flex", alignItems: "center" }}>
           <Box sx={{ position: "relative", width: 128, height: 58 }}>
             <Image
@@ -170,7 +169,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         ) : null}
       </Box>
 
-      <List component="nav" aria-label="Admin navigation" sx={{ flex: 1, overflowY: "auto", px: 1, py: 2 }}>
+      <List component="nav" aria-label="Admin navigation" sx={{ flex: 1, overflow: "hidden", px: 1, py: 1 }}>
         {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -180,12 +179,12 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
               href={href}
               selected={active}
               sx={{
-                minHeight: 44,
-                mb: 0.5,
+                minHeight: 36,
+                mb: 0.25,
                 gap: 1.5,
                 borderRadius: "3px",
                 px: 1.5,
-                py: 1,
+                py: 0.65,
                 color: active ? "#fff" : "#d0d0d0",
                 bgcolor: active ? "#df111b" : "transparent",
                 "&.Mui-selected": { bgcolor: "#df111b", color: "#fff" },
@@ -196,7 +195,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
               <ListItemIcon sx={{ minWidth: 22, color: "inherit" }}>
                 <Icon size={19} strokeWidth={2} />
               </ListItemIcon>
-              <ListItemText primary={label} primaryTypographyProps={{ fontSize: 14, fontWeight: active ? 650 : 500, noWrap: true }} />
+              <ListItemText primary={label} primaryTypographyProps={{ fontSize: 13.5, fontWeight: active ? 650 : 500, noWrap: true }} />
             </ListItemButton>
           );
         })}
@@ -233,17 +232,16 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
           position: "fixed",
           inset: "0 0 auto 0",
           zIndex: (currentTheme) => currentTheme.zIndex.drawer + 2,
-          display: "flex",
-          height: { xs: MOBILE_TITLEBAR_HEIGHT, lg: DESKTOP_TITLEBAR_HEIGHT },
+          display: { xs: "flex", lg: "none" },
+          height: MOBILE_TITLEBAR_HEIGHT,
           alignItems: "center",
           borderBottom: "1px solid #454745",
           bgcolor: "#0c0d0c",
           color: "#fff",
-          px: { xs: 1, lg: 2 },
+          px: 1,
         }}
       >
-        <Typography sx={{ display: { xs: "none", lg: "block" }, fontSize: 13, fontWeight: 600 }}>Asset Insight</Typography>
-        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ display: { xs: "flex", lg: "none" }, width: "100%" }}>
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ width: "100%" }}>
           <IconButton aria-label="Open navigation menu" onClick={() => setMobileOpen(true)} sx={{ color: "#fff" }}>
             <Menu size={21} />
           </IconButton>
@@ -252,7 +250,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         </Stack>
       </Box>
 
-      <Box component="aside" sx={{ display: { xs: "none", lg: "block" }, position: "fixed", top: DESKTOP_TITLEBAR_HEIGHT, bottom: 0, left: 0, zIndex: (currentTheme) => currentTheme.zIndex.drawer, width: SIDEBAR_WIDTH, borderRight: "1px solid #303230" }}>
+      <Box component="aside" sx={{ display: { xs: "none", lg: "block" }, position: "fixed", top: 0, bottom: 0, left: 0, zIndex: (currentTheme) => currentTheme.zIndex.drawer, width: SIDEBAR_WIDTH, borderRight: "1px solid #303230", overflow: "hidden" }}>
         {sidebarContent()}
       </Box>
       <Drawer
@@ -265,7 +263,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         {sidebarContent(true)}
       </Drawer>
 
-      <Box component="main" sx={{ ml: { xs: 0, lg: `${SIDEBAR_WIDTH}px` }, pt: { xs: `${MOBILE_TITLEBAR_HEIGHT}px`, lg: `${DESKTOP_TITLEBAR_HEIGHT}px` }, minHeight: "100vh", overflow: "auto" }}>
+      <Box component="main" sx={{ ml: { xs: 0, lg: `${SIDEBAR_WIDTH}px` }, pt: { xs: `${MOBILE_TITLEBAR_HEIGHT}px`, lg: 0 }, minWidth: 0, maxWidth: "100%", minHeight: "100vh", overflowX: "hidden" }}>
         {children}
       </Box>
 
