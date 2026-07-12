@@ -1,87 +1,91 @@
 "use client";
 
-import AssessmentRoundedIcon from "@mui/icons-material/AssessmentRounded";
-import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
-import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
-import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
-import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
-import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
-import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
-import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
-import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
-import SupportAgentRoundedIcon from "@mui/icons-material/SupportAgentRounded";
-import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
+import {
+  BarChart3,
+  CheckCircle2,
+  FileCheck2,
+  Grid2X2,
+  Headphones,
+  KeyRound,
+  ListChecks,
+  LogOut,
+  Menu,
+  Search,
+  Shield,
+  Smartphone,
+  Users,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Box,
-  Button,
-  Chip,
-  Divider,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Drawer,
   IconButton,
+  InputAdornment,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
   Stack,
-  Toolbar,
-  useMediaQuery,
-  useTheme,
+  TextField,
+  Typography,
 } from "@mui/material";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
 import ThemeModeToggle from "@/app/components/common/ThemeModeToggle";
 
-const SIDEBAR_WIDTH = 272;
-const SIDEBAR_COLLAPSED_WIDTH = 92;
+const SIDEBAR_WIDTH = 208;
 const MOBILE_DRAWER_WIDTH = 280;
-const MOBILE_TOPBAR_HEIGHT = 64;
+const DESKTOP_TITLEBAR_HEIGHT = 40;
+const MOBILE_TITLEBAR_HEIGHT = 56;
 
 type NavItem = {
   href: string;
   label: string;
-  icon: ReactNode;
+  icon: LucideIcon;
 };
+
+type AdminProfile = {
+  role?: string;
+  email?: string;
+  username?: string;
+  companyName?: string;
+} | null;
 
 export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const theme = useTheme();
-  const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
-  const [role, setRole] = useState<string | null>(null);
+  const [profile, setProfile] = useState<AdminProfile>(null);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
 
   useEffect(() => {
     let mounted = true;
 
     (async () => {
       try {
-        let res = await fetch("/api/admin/me", { cache: "no-store" });
-        if (res.status === 401) {
-          const refresh = await fetch("/api/admin/refresh", {
-            method: "POST",
-            cache: "no-store",
-          });
-          if (refresh.ok) {
-            res = await fetch("/api/admin/me", { cache: "no-store" });
-          }
+        let response = await fetch("/api/admin/me", { cache: "no-store" });
+        if (response.status === 401) {
+          const refresh = await fetch("/api/admin/refresh", { method: "POST", cache: "no-store" });
+          if (refresh.ok) response = await fetch("/api/admin/me", { cache: "no-store" });
         }
-        if (!res.ok || !mounted) return;
-        const data = await res.json().catch(() => ({}));
-        if (!mounted) return;
-        setRole(data?.user?.role || null);
-      } catch {}
+        if (!response.ok || !mounted) return;
+        const payload = await response.json().catch(() => ({}));
+        if (mounted) setProfile(payload?.user || null);
+      } catch {
+        // Route protection handles an expired session.
+      }
     })();
 
     const intervalId = window.setInterval(() => {
-      fetch("/api/admin/refresh", { method: "POST", cache: "no-store" }).catch(() => {});
+      fetch("/api/admin/refresh", { method: "POST", cache: "no-store" }).catch(() => undefined);
     }, 20 * 60 * 1000);
 
     return () => {
@@ -90,43 +94,48 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
     };
   }, []);
 
-  const roleLabel =
-    role === "superadmin"
-      ? "Super Admin"
-      : role === "admin"
-        ? "Admin"
-        : role === "user"
-          ? "User"
-          : "Loading";
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
+
+  const role = profile?.role || null;
+  const roleLabel = role === "superadmin" ? "superadmin" : role === "admin" ? "admin" : role === "user" ? "user" : "loading";
+  const displayName = profile?.username || profile?.companyName || profile?.email || "Administrator";
   const homeHref = role === "superadmin" || role === "admin" ? "/dashboard" : "/reports";
 
   const items = useMemo<NavItem[]>(() => {
-    if (role === "user") {
-      return [
-        { href: "/reports", label: "Approved Reports", icon: <AssessmentRoundedIcon fontSize="small" /> },
-      ];
-    }
+    if (role === "user") return [{ href: "/reports", label: "Approved Reports", icon: FileCheck2 }];
+    if (role !== "superadmin" && role !== "admin") return [];
 
-    if (role === "superadmin" || role === "admin") {
-      return [
-        { href: "/dashboard", label: "Dashboard", icon: <DashboardRoundedIcon fontSize="small" /> },
-        { href: "/reports", label: "Approved Reports", icon: <AssessmentRoundedIcon fontSize="small" /> },
-        { href: "/users", label: "Users", icon: <GroupsRoundedIcon fontSize="small" /> },
-        { href: "/crm", label: "CRM", icon: <SupportAgentRoundedIcon fontSize="small" /> },
-        { href: "/spec-sheet", label: "CR Management", icon: <ViewListRoundedIcon fontSize="small" /> },
-        { href: "/revenue-radar", label: "Revenue Radar", icon: <QueryStatsRoundedIcon fontSize="small" /> },
-        { href: "/approvals", label: "Released Appraisals", icon: <CheckCircleRoundedIcon fontSize="small" /> },
-        { href: "/apk-manager", label: "APK Manager", icon: <SystemUpdateAltRoundedIcon fontSize="small" /> },
-        ...(role === "superadmin"
-          ? [{ href: "/admins", label: "Admins", icon: <ManageAccountsRoundedIcon fontSize="small" /> }]
-          : []),
-        { href: "/api", label: "API", icon: <KeyRoundedIcon fontSize="small" /> },
-      ];
-    }
-
-    return [];
+    return [
+      { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
+      { href: "/reports", label: "Approved Reports", icon: FileCheck2 },
+      { href: "/users", label: "Users", icon: Users },
+      ...(role === "superadmin" ? [{ href: "/admins", label: "Admins", icon: Shield }] : []),
+      { href: "/crm", label: "CRM", icon: Headphones },
+      { href: "/spec-sheet", label: "CR Management", icon: ListChecks },
+      { href: "/revenue-radar", label: "Revenue Radar", icon: BarChart3 },
+      { href: "/approvals", label: "Released Appraisals", icon: CheckCircle2 },
+      { href: "/apk-manager", label: "APK Manager", icon: Smartphone },
+      { href: "/api", label: "API", icon: KeyRound },
+    ];
   }, [role]);
+
+  const filteredItems = useMemo(() => {
+    const normalized = searchValue.trim().toLowerCase();
+    return normalized ? items.filter((item) => item.label.toLowerCase().includes(normalized)) : items;
+  }, [items, searchValue]);
 
   async function onLogout() {
     try {
@@ -139,323 +148,149 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
     }
   }
 
-  const desktopNavWidth = desktopCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
-
-  // Close mobile drawer on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
-  const navItemsSx = (active: boolean, collapsed: boolean) => ({
-    borderRadius: 1.5,
-    mb: 0.75,
-    px: collapsed ? 1 : 1.5,
-    py: 1,
-    minHeight: 44,
-    justifyContent: collapsed ? "center" : "flex-start",
-    transition: "background-color 140ms ease, border-color 140ms ease, color 140ms ease",
-    border: "1px solid",
-    borderColor: active ? "primary.main" : "transparent",
-    bgcolor: active ? "action.selected" : "transparent",
-    boxShadow: active
-      ? "inset 0 1px 0 rgba(255,255,255,0.1)"
-      : "none",
-    "&:hover": {
-      bgcolor: active ? "action.selected" : "action.hover",
-      boxShadow: "none",
-    },
-  });
-
-  const sidebarContent = (collapsed: boolean) => (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        py: 2,
-        px: 1.5,
-      }}
-    >
-      {/* Brand */}
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: collapsed ? "center" : "space-between",
-          gap: 1,
-          px: collapsed ? 0.5 : 1.5,
-          py: 1.5,
-          mb: 1,
-        }}
-      >
-        <Box
-          component={Link}
-          href={homeHref}
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: collapsed ? "center" : "flex-start",
-            flexGrow: 1,
-            minWidth: 0,
-            borderRadius: 1.5,
-            textDecoration: "none",
-            transition: "background 200ms",
-            "&:hover": { bgcolor: "action.hover" },
-          }}
-        >
-          <Image
-            src="/logo.png"
-            alt="Logo"
-            width={collapsed ? 52 : 140}
-            height={collapsed ? 52 : 60}
-            style={{ objectFit: "contain" }}
-            priority
-          />
-        </Box>
-        {isDesktop && (
-          <IconButton
-            onClick={() => setDesktopCollapsed((prev) => !prev)}
-            size="small"
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              bgcolor: "background.paper",
-              boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
-              ml: collapsed ? 0 : 1,
-            }}
-          >
-            {collapsed ? <ChevronRightRoundedIcon fontSize="small" /> : <ChevronLeftRoundedIcon fontSize="small" />}
+  const sidebarContent = (mobile = false) => (
+    <Box sx={{ display: "flex", height: "100%", flexDirection: "column", bgcolor: "#111211", color: "#fff" }}>
+      <Box sx={{ display: "flex", minHeight: 112, alignItems: "center", justifyContent: "space-between", px: 3 }}>
+        <Link href={homeHref} aria-label="Asset Insight home" style={{ display: "flex", alignItems: "center" }}>
+          <Box sx={{ position: "relative", width: 128, height: 58 }}>
+            <Image
+              src="/logo.png"
+              alt="Asset Insight"
+              fill
+              sizes="128px"
+              priority
+              style={{ objectFit: "contain", filter: "invert(1) hue-rotate(180deg) brightness(1.08)" }}
+            />
+          </Box>
+        </Link>
+        {mobile ? (
+          <IconButton aria-label="Close navigation" onClick={() => setMobileOpen(false)} sx={{ color: "#d7d7d7" }}>
+            <X size={20} />
           </IconButton>
-        )}
-        {!isDesktop && (
-          <IconButton
-            onClick={() => setMobileOpen(false)}
-            size="small"
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              bgcolor: "background.paper",
-              boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
-            }}
-          >
-            <CloseRoundedIcon fontSize="small" />
-          </IconButton>
-        )}
+        ) : null}
       </Box>
 
-      <Divider sx={{ mx: 1, mb: 1 }} />
-
-      {/* Nav items */}
-      <List sx={{ flex: 1, py: 0, px: 0.5 }}>
-        {items.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+      <List component="nav" aria-label="Admin navigation" sx={{ flex: 1, overflowY: "auto", px: 1, py: 2 }}>
+        {items.map(({ href, label, icon: Icon }) => {
+          const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <ListItemButton
-              key={item.href}
+              key={href}
               component={Link}
-              href={item.href}
+              href={href}
               selected={active}
-              sx={navItemsSx(active, collapsed)}
+              sx={{
+                minHeight: 44,
+                mb: 0.5,
+                gap: 1.5,
+                borderRadius: "3px",
+                px: 1.5,
+                py: 1,
+                color: active ? "#fff" : "#d0d0d0",
+                bgcolor: active ? "#df111b" : "transparent",
+                "&.Mui-selected": { bgcolor: "#df111b", color: "#fff" },
+                "&.Mui-selected:hover": { bgcolor: "#c90e17" },
+                "&:hover": { bgcolor: active ? "#c90e17" : "rgba(255,255,255,0.07)", color: "#fff" },
+              }}
             >
-              <ListItemIcon
-                sx={{
-                  minWidth: collapsed ? 0 : 36,
-                  mr: collapsed ? 0 : 0.5,
-                  color: active ? "primary.main" : "text.secondary",
-                }}
-              >
-                {item.icon}
+              <ListItemIcon sx={{ minWidth: 22, color: "inherit" }}>
+                <Icon size={19} strokeWidth={2} />
               </ListItemIcon>
-              {!collapsed && (
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{
-                    fontSize: "0.85rem",
-                    fontWeight: active ? 700 : 500,
-                    color: active ? "primary.main" : "text.primary",
-                  }}
-                />
-              )}
+              <ListItemText primary={label} primaryTypographyProps={{ fontSize: 14, fontWeight: active ? 650 : 500, noWrap: true }} />
             </ListItemButton>
           );
         })}
       </List>
 
-      <Divider sx={{ mx: 1, my: 1 }} />
-
-      {/* Footer controls */}
-      <Stack spacing={1} sx={{ px: 1 }}>
-        {!collapsed && (
-          <Chip
-            label={roleLabel}
-            color="primary"
-            variant="outlined"
-            size="small"
-            sx={{ fontWeight: 700, alignSelf: "flex-start" }}
-          />
-        )}
-        <Stack
-          direction={collapsed ? "column" : "row"}
-          alignItems="center"
-          justifyContent="space-between"
-          spacing={collapsed ? 1 : 0}
-        >
-          <ThemeModeToggle />
-          <Button
-            onClick={onLogout}
-            disabled={loggingOut}
-            color="inherit"
-            size="small"
-            startIcon={collapsed ? undefined : <LogoutRoundedIcon sx={{ fontSize: 18 }} />}
-            sx={{
-              fontSize: "0.78rem",
-              color: "text.secondary",
-              minWidth: collapsed ? 40 : undefined,
-              px: collapsed ? 1 : 1.5,
-              "&:hover": { color: "error.main" },
-            }}
-          >
-            {collapsed ? <LogoutRoundedIcon sx={{ fontSize: 18 }} /> : loggingOut ? "Logging out…" : "Logout"}
-          </Button>
+      <Box sx={{ borderTop: "1px solid #303230", p: 1 }}>
+        <Box sx={{ display: "flex", minHeight: 48, alignItems: "center", gap: 1.5, px: 1, color: "#e6e6e6" }}>
+          <Box sx={{ display: "grid", width: 32, height: 32, flexShrink: 0, placeItems: "center", bgcolor: "#272927", fontSize: 12, fontWeight: 700 }}>
+            {displayName.slice(0, 2).toUpperCase()}
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography noWrap sx={{ fontSize: 13, fontWeight: 600, color: "#f3f3f3" }}>{displayName}</Typography>
+            <Typography noWrap sx={{ fontSize: 11, color: "#777b77", textTransform: "lowercase" }}>{roleLabel}</Typography>
+          </Box>
+        </Box>
+        <Stack direction="row" alignItems="center" spacing={0.25} sx={{ mt: 0.25 }}>
+          <IconButton aria-label="Search navigation" onClick={() => setSearchOpen(true)} sx={{ width: 40, height: 40, color: "#c7c9c7", borderRadius: 0, "&:hover": { bgcolor: "rgba(255,255,255,0.07)", color: "#fff" } }}>
+            <Search size={19} />
+          </IconButton>
+          <ThemeModeToggle variant="sidebar" />
+          <IconButton aria-label="Logout" onClick={onLogout} disabled={loggingOut} sx={{ width: 40, height: 40, color: "#c7c9c7", borderRadius: 0, "&:hover": { bgcolor: "rgba(255,255,255,0.07)", color: "#fff" } }}>
+            <LogOut size={19} />
+          </IconButton>
         </Stack>
-      </Stack>
+      </Box>
     </Box>
   );
 
-  const sidebarBg = (t: typeof theme) =>
-    t.palette.mode === "dark"
-      ? "linear-gradient(195deg, rgba(15,27,45,0.97), rgba(9,17,31,0.98))"
-      : "linear-gradient(195deg, rgba(255,255,255,0.98), rgba(246,249,255,0.97))";
-
-  const sidebarShadow = (t: typeof theme) =>
-    t.palette.mode === "dark"
-      ? "4px 0 24px rgba(0,0,0,0.35)"
-      : "4px 0 24px rgba(37,99,235,0.08)";
-
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      {/* ── Desktop permanent sidebar ── */}
-      {isDesktop && (
-        <Box
-          component="nav"
-          sx={{
-            width: desktopNavWidth,
-            flexShrink: 0,
-            position: "fixed",
-            top: 0,
-            left: 0,
-            bottom: 0,
-            zIndex: (t) => t.zIndex.drawer,
-            borderRight: "1px solid",
-            borderColor: "divider",
-            backgroundImage: (t) => sidebarBg(t),
-            boxShadow: (t) => sidebarShadow(t),
-            transition: "width 180ms ease",
-            overflowX: "hidden",
-          }}
-        >
-          {sidebarContent(desktopCollapsed)}
-        </Box>
-      )}
-
-      {/* ── Mobile top bar (hamburger) ── */}
-      {!isDesktop && (
-        <Box
-          component="header"
-          sx={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: (t) => t.zIndex.appBar,
-            borderBottom: "1px solid",
-            borderColor: "divider",
-            backgroundImage: (t) =>
-              t.palette.mode === "dark"
-                ? "linear-gradient(135deg, rgba(15,23,42,0.92), rgba(13,27,45,0.80))"
-                : "linear-gradient(135deg, rgba(255,255,255,0.94), rgba(241,245,255,0.88))",
-            boxShadow: (t) =>
-              t.palette.mode === "dark"
-                ? "0 4px 14px rgba(0,0,0,0.24)"
-                : "0 4px 14px rgba(37,99,235,0.08)",
-          }}
-        >
-          <Toolbar sx={{ minHeight: MOBILE_TOPBAR_HEIGHT, px: 1.5, justifyContent: "space-between", gap: 1 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <IconButton
-                onClick={() => setMobileOpen(true)}
-                size="medium"
-                sx={{
-                  border: "1px solid",
-                  borderColor: "divider",
-                  bgcolor: "background.paper",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                  "&:hover": { bgcolor: "action.hover" },
-                }}
-                aria-label="Open navigation menu"
-              >
-                <MenuRoundedIcon />
-              </IconButton>
-              <Link href={homeHref} style={{ display: "flex", alignItems: "center" }}>
-                <Image
-                  src="/logo.png"
-                  alt="Logo"
-                  width={90}
-                  height={36}
-                  style={{ objectFit: "contain" }}
-                  priority
-                />
-              </Link>
-            </Stack>
-            <Stack direction="row" alignItems="center" spacing={0.5}>
-              <Chip
-                label={roleLabel}
-                color="primary"
-                variant="outlined"
-                size="small"
-                sx={{ fontWeight: 700, maxWidth: 110 }}
-              />
-              <ThemeModeToggle />
-            </Stack>
-          </Toolbar>
-        </Box>
-      )}
-
-      {/* ── Mobile slide-out drawer ── */}
-      {!isDesktop && (
-        <Drawer
-          anchor="left"
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          PaperProps={{
-            sx: {
-              width: MOBILE_DRAWER_WIDTH,
-              backgroundImage: (t) => sidebarBg(t),
-              boxShadow: (t) => sidebarShadow(t),
-              borderRight: "1px solid",
-              borderColor: "divider",
-            },
-          }}
-        >
-          {sidebarContent(false)}
-        </Drawer>
-      )}
-
-      {/* ── Main content area ── */}
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <Box
-        component="main"
+        component="header"
         sx={{
-          flexGrow: 1,
-          ml: isDesktop ? `${desktopNavWidth}px` : 0,
-          mt: isDesktop ? 0 : `${MOBILE_TOPBAR_HEIGHT}px`,
-          minHeight: isDesktop ? "100vh" : `calc(100vh - ${MOBILE_TOPBAR_HEIGHT}px)`,
-          overflow: "auto",
-          transition: "margin-left 180ms ease",
+          position: "fixed",
+          inset: "0 0 auto 0",
+          zIndex: (currentTheme) => currentTheme.zIndex.drawer + 2,
+          display: "flex",
+          height: { xs: MOBILE_TITLEBAR_HEIGHT, lg: DESKTOP_TITLEBAR_HEIGHT },
+          alignItems: "center",
+          borderBottom: "1px solid #454745",
+          bgcolor: "#0c0d0c",
+          color: "#fff",
+          px: { xs: 1, lg: 2 },
         }}
       >
+        <Typography sx={{ display: { xs: "none", lg: "block" }, fontSize: 13, fontWeight: 600 }}>Asset Insight</Typography>
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ display: { xs: "flex", lg: "none" }, width: "100%" }}>
+          <IconButton aria-label="Open navigation menu" onClick={() => setMobileOpen(true)} sx={{ color: "#fff" }}>
+            <Menu size={21} />
+          </IconButton>
+          <Typography sx={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Asset Insight</Typography>
+          <ThemeModeToggle variant="sidebar" />
+        </Stack>
+      </Box>
+
+      <Box component="aside" sx={{ display: { xs: "none", lg: "block" }, position: "fixed", top: DESKTOP_TITLEBAR_HEIGHT, bottom: 0, left: 0, zIndex: (currentTheme) => currentTheme.zIndex.drawer, width: SIDEBAR_WIDTH, borderRight: "1px solid #303230" }}>
+        {sidebarContent()}
+      </Box>
+      <Drawer
+        anchor="left"
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        ModalProps={{ keepMounted: true }}
+        PaperProps={{ sx: { top: MOBILE_TITLEBAR_HEIGHT, width: MOBILE_DRAWER_WIDTH, height: `calc(100% - ${MOBILE_TITLEBAR_HEIGHT}px)`, border: 0 } }}
+      >
+        {sidebarContent(true)}
+      </Drawer>
+
+      <Box component="main" sx={{ ml: { xs: 0, lg: `${SIDEBAR_WIDTH}px` }, pt: { xs: `${MOBILE_TITLEBAR_HEIGHT}px`, lg: `${DESKTOP_TITLEBAR_HEIGHT}px` }, minHeight: "100vh", overflow: "auto" }}>
         {children}
       </Box>
+
+      <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ pb: 1, fontSize: 18, fontWeight: 650 }}>Navigate</DialogTitle>
+        <DialogContent sx={{ pt: "8px !important" }}>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder="Go to a page..."
+            InputProps={{ startAdornment: <InputAdornment position="start"><Search size={17} /></InputAdornment> }}
+          />
+          <List sx={{ mt: 1, px: 0 }}>
+            {filteredItems.map(({ href, label, icon: Icon }) => (
+              <ListItemButton key={href} onClick={() => { setSearchOpen(false); setSearchValue(""); router.push(href); }} sx={{ borderRadius: "3px" }}>
+                <ListItemIcon sx={{ minWidth: 34 }}><Icon size={18} /></ListItemIcon>
+                <ListItemText primary={label} />
+              </ListItemButton>
+            ))}
+          </List>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

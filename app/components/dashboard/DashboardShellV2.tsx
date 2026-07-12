@@ -1,1085 +1,409 @@
 "use client";
 
-import AssessmentRoundedIcon from "@mui/icons-material/AssessmentRounded";
-import CalendarMonthRoundedIcon from "@mui/icons-material/CalendarMonthRounded";
-import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
-import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
-import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
-import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
-import PaidRoundedIcon from "@mui/icons-material/PaidRounded";
-import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
-import WarehouseRoundedIcon from "@mui/icons-material/WarehouseRounded";
 import {
-  alpha,
+  Activity,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  FileCheck2,
+  Gavel,
+  RefreshCcw,
+  Search,
+  Settings2,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArcElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip as ChartTooltip,
+} from "chart.js";
+import { Doughnut, Line } from "react-chartjs-2";
+import {
+  Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
-  Container,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
-  Grid,
+  IconButton,
   LinearProgress,
   Stack,
   Switch,
   TextField,
   Typography,
 } from "@mui/material";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import MonthlyCharts from "@/app/components/dashboard/MonthlyCharts";
 
-type MeState = {
-  email?: string;
-  username?: string;
-  role?: string;
-} | null;
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, ChartTooltip, Legend);
 
-type StatsState = {
-  totalUsers: number;
-  totalAdmins: number;
-  totalReports: number;
-  byType: { Asset: number; LotListing: number; RealEstate: number; Salvage: number };
-} | null;
-
-type SpecWebSearchState = {
-  enabled: boolean;
-  message?: string;
-} | null;
-
-type AssetApprovalThresholdState = {
-  threshold: number;
-  defaultThreshold: number;
-  message?: string;
-} | null;
-
-type WeeklyCreditRecharge = {
-  id: string;
-  source: "initial_balance" | "auto_recharge";
-  ordinal: number;
-  amountCredits: number;
-  thresholdCredits: number;
-  balanceBefore: number;
-  balanceAfter: number;
+type PersonRef = { username?: string; companyName?: string; email?: string };
+type DashboardMetric = { value: number; percent?: number };
+type DashboardRecentReport = {
+  _id: string;
+  title: string;
+  contractNo?: string;
+  type: string;
+  lotCount: number;
+  lotNumberSummary?: string;
+  thumbnailUrl?: string | null;
+  owner?: PersonRef | string;
   createdAt: string;
+  status?: string;
+  releaseStatus?: string;
 };
-
-type WeeklyCreditsState = {
-  periodStart?: string;
-  periodEnd?: string;
-  weekStart: string;
-  weekEnd: string;
-  openAIUsageUsd: number;
-  deductionMultiplier: number;
-  initialCredits?: number;
-  deductedCredits: number;
-  addedCredits: number;
-  autoRechargeTotal?: number;
+type DesktopDashboard = {
+  range: { from: string; to: string };
+  kpis: {
+    reports: DashboardMetric;
+    lotListings: DashboardMetric;
+    users: DashboardMetric;
+    pending: number;
+    released: number;
+  };
+  activity: Array<{ date: string; value: number }>;
+  byType: Array<{ type: string; value: number }>;
+  queue: { pendingReview: number; inReview: number; readyForRelease: number; releasedToday: number };
+  recentReports: DashboardRecentReport[];
+};
+type WeeklyCredits = {
+  weekStart?: string;
+  weekEnd?: string;
+  remainingCredits?: number;
   totalAvailableCredits?: number;
-  remainingCredits: number;
-  thresholdCredits: number;
-  rechargeAmount: number;
-  rechargeTotal: number;
-  requestCount: number;
-  webSearchCount: number;
-  usageSourceAvailable: boolean;
-  status: "synced" | "unavailable" | "error";
-  warnings: string[];
-  syncedAt: string;
-  recharges: WeeklyCreditRecharge[];
-} | null;
+  rechargeAmount?: number;
+  requestCount?: number;
+  webSearchCount?: number;
+  thresholdCredits?: number;
+  status?: string;
+  syncedAt?: string;
+  recharges?: Array<{ id?: string; createdAt: string; amountCredits: number; balanceBefore: number; balanceAfter: number }>;
+};
+type SettingState = { enabled: boolean } | null;
+type ThresholdState = { threshold: number; defaultThreshold: number } | null;
 
-type MetricCard = {
-  key: string;
-  label: string;
-  value: number;
-  icon: ReactNode;
-  color: string;
-  iconBg: string;
-  progress: number;
+const TYPE_COLORS: Record<string, string> = {
+  Asset: "#df111b",
+  LotListing: "#171817",
+  RealEstate: "#777a7d",
+  Salvage: "#c8c9ca",
 };
 
-const statCards: Array<{
-  key: "totalUsers" | "totalAdmins" | "totalReports";
-  label: string;
-  icon: ReactNode;
-  color: string;
-  iconBg: string;
-}> = [
-    { key: "totalUsers", label: "Users", icon: <GroupRoundedIcon />, color: "#2563eb", iconBg: "#dbeafe" },
-    { key: "totalAdmins", label: "Admins", icon: <ManageAccountsRoundedIcon />, color: "#6d28d9", iconBg: "#ede9fe" },
-    { key: "totalReports", label: "Total Reports", icon: <AssessmentRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
-  ];
-
-const reportCards: Array<{
-  key: "Asset" | "LotListing" | "RealEstate" | "Salvage";
-  label: string;
-  icon: ReactNode;
-  color: string;
-  iconBg: string;
-}> = [
-    { key: "Asset", label: "Asset Reports", icon: <WarehouseRoundedIcon />, color: "#2563eb", iconBg: "#dbeafe" },
-    { key: "LotListing", label: "Lot Listing Reports", icon: <AssessmentRoundedIcon />, color: "#7c3aed", iconBg: "#ede9fe" },
-    { key: "RealEstate", label: "Real Estate Reports", icon: <DashboardRoundedIcon />, color: "#16a34a", iconBg: "#dcfce7" },
-    { key: "Salvage", label: "Salvage Reports", icon: <CheckCircleRoundedIcon />, color: "#f59e0b", iconBg: "#ffedd5" },
-  ];
-
-const numberFormatter = new Intl.NumberFormat("en-US");
-const moneyFormatter = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 2,
-});
-
-function formatMoney(value: number | null | undefined, fallback = "--") {
-  return typeof value === "number" ? moneyFormatter.format(value) : fallback;
-}
-
-function formatDashboardDate(value: Date) {
-  const weekday = value.toLocaleDateString(undefined, { weekday: "short" });
-  const dayMonth = value.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
-  const time = value.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return `${weekday} ${dayMonth} - ${time}`;
-}
-
-function formatShortDateTime(value?: string) {
+const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+const number = (value: unknown) => Number(value || 0).toLocaleString();
+const money = (value: unknown) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const formatDate = (value?: string) => {
   if (!value) return "--";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--";
-  return date.toLocaleString([], {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatWeekRange(start?: string, end?: string) {
-  if (!start || !end) return "Current week";
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return "Current week";
-  }
-  return `${startDate.toLocaleDateString([], { month: "short", day: "2-digit" })} - ${endDate.toLocaleDateString([], {
-    month: "short",
-    day: "2-digit",
-  })}`;
-}
-
-function getNextMinuteDelay() {
-  const now = new Date();
-  return Math.max(1000, 60_000 - (now.getSeconds() * 1000 + now.getMilliseconds()));
-}
-
-const surfaceSx = {
-  height: "100%",
-  overflow: "hidden",
-  borderRadius: "12px",
-  border: "1px solid",
-  borderColor: (theme: any) =>
-    theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
-  background: (theme: any) =>
-    theme.palette.mode === "dark"
-      ? `linear-gradient(180deg, ${alpha("#132238", 0.96)}, ${alpha("#0b1728", 0.98)})`
-      : "rgba(255,255,255,0.94)",
-  boxShadow: (theme: any) =>
-    theme.palette.mode === "dark"
-      ? `0 18px 46px ${alpha("#020617", 0.46)}, inset 0 1px 0 ${alpha("#fff", 0.04)}`
-      : `0 16px 38px ${alpha("#0f172a", 0.10)}, inset 0 1px 0 ${alpha("#fff", 0.95)}`,
-  transform: "translateZ(0)",
+  return Number.isNaN(date.getTime()) ? "--" : date.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
+};
+const ownerLabel = (owner: DashboardRecentReport["owner"]) => {
+  if (!owner || typeof owner === "string") return owner || "-";
+  return owner.username || owner.companyName || owner.email || "-";
 };
 
-const compactHoverSx = {
-  transition: "transform 170ms ease, box-shadow 170ms ease, border-color 170ms ease",
-  "&:hover": {
-    transform: "translateY(-2px)",
-    boxShadow: (theme: any) =>
-      theme.palette.mode === "dark"
-        ? `0 22px 52px ${alpha("#020617", 0.58)}, inset 0 1px 0 ${alpha("#fff", 0.05)}`
-        : `0 20px 46px ${alpha("#0f172a", 0.13)}, inset 0 1px 0 ${alpha("#fff", 1)}`,
-  },
-};
-
-function metricProgress(value: number, stats: StatsState, key: string) {
-  if (!value) return 0;
-  if (key === "Asset" || key === "LotListing" || key === "RealEstate" || key === "Salvage") {
-    const totalReports = stats?.totalReports || 1;
-    return Math.min(100, Math.max(28, (value / totalReports) * 100));
-  }
-  const maxMetric = Math.max(stats?.totalUsers || 0, stats?.totalReports || 0, stats?.totalAdmins || 0, 1);
-  return Math.min(88, Math.max(34, (value / maxMetric) * 88));
+function Delta({ value }: { value?: number }) {
+  if (typeof value !== "number") return null;
+  return <span style={{ color: value >= 0 ? "#087f5b" : "#b35b00" }}>{value >= 0 ? "+" : ""}{value.toFixed(1)}%</span>;
 }
 
 export default function DashboardShellV2() {
-  const [now, setNow] = useState<Date>(() => new Date());
-  const [me, setMe] = useState<MeState>(null);
-  const [stats, setStats] = useState<StatsState>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [specWebSearch, setSpecWebSearch] = useState<SpecWebSearchState>(null);
-  const [specWebSearchLoading, setSpecWebSearchLoading] = useState(true);
-  const [specWebSearchSaving, setSpecWebSearchSaving] = useState(false);
-  const [specWebSearchError, setSpecWebSearchError] = useState<string | null>(null);
-  const [approvalThreshold, setApprovalThreshold] = useState<AssetApprovalThresholdState>(null);
-  const [approvalThresholdInput, setApprovalThresholdInput] = useState("");
-  const [approvalThresholdLoading, setApprovalThresholdLoading] = useState(true);
-  const [approvalThresholdSaving, setApprovalThresholdSaving] = useState(false);
-  const [approvalThresholdError, setApprovalThresholdError] = useState<string | null>(null);
-  const [weeklyCredits, setWeeklyCredits] = useState<WeeklyCreditsState>(null);
-  const [weeklyCreditsLoading, setWeeklyCreditsLoading] = useState(true);
-  const [weeklyCreditsRefreshing, setWeeklyCreditsRefreshing] = useState(false);
+  const router = useRouter();
+  const [from, setFrom] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 29);
+    return toIsoDate(date);
+  });
+  const [to, setTo] = useState(() => toIsoDate(new Date()));
+  const [data, setData] = useState<DesktopDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dateDialogOpen, setDateDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [rechargesOpen, setRechargesOpen] = useState(false);
+  const [weeklyCredits, setWeeklyCredits] = useState<WeeklyCredits | null>(null);
+  const [weeklyCreditsLoading, setWeeklyCreditsLoading] = useState(true);
+  const [specWebSearch, setSpecWebSearch] = useState<SettingState>(null);
+  const [specSaving, setSpecSaving] = useState(false);
+  const [threshold, setThreshold] = useState<ThresholdState>(null);
+  const [thresholdInput, setThresholdInput] = useState("");
+  const [thresholdSaving, setThresholdSaving] = useState(false);
 
-  useEffect(() => {
-    let intervalId: number | undefined;
-    const timeoutId = window.setTimeout(() => {
-      setNow(new Date());
-      intervalId = window.setInterval(() => setNow(new Date()), 60_000);
-    }, getNextMinuteDelay());
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      if (intervalId !== undefined) window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/admin/me", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json().catch(() => ({}));
-        setMe(data?.user || null);
-      } catch { }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        setStatsLoading(true);
-        const res = await fetch("/api/admin/stats", { cache: "no-store" });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) setStats(data);
-      } finally {
-        setStatsLoading(false);
-      }
-    })();
-  }, []);
-
-  const loadSpecWebSearch = useCallback(async () => {
+  const loadDashboard = useCallback(async () => {
     try {
-      setSpecWebSearchLoading(true);
-      setSpecWebSearchError(null);
-      const res = await fetch("/api/admin/spec-web-search", { cache: "no-store" });
-      const data = (await res.json().catch(() => ({}))) as { enabled?: boolean; message?: string };
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to load spec web search setting");
-      }
-      setSpecWebSearch({ enabled: data.enabled === true, message: data.message });
-    } catch (e) {
-      setSpecWebSearchError(e instanceof Error ? e.message : "Failed to load spec web search setting");
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`/api/admin/stats/desktop-dashboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.message || "Failed to load dashboard");
+      setData(payload);
+    } catch (currentError) {
+      setError(currentError instanceof Error ? currentError.message : "Failed to load dashboard");
     } finally {
-      setSpecWebSearchLoading(false);
+      setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    loadSpecWebSearch();
-  }, [loadSpecWebSearch]);
-
-  const toggleSpecWebSearch = useCallback(async () => {
-    const nextEnabled = !(specWebSearch?.enabled === true);
-    try {
-      setSpecWebSearchSaving(true);
-      setSpecWebSearchError(null);
-      const res = await fetch("/api/admin/spec-web-search", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: nextEnabled }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { enabled?: boolean; message?: string };
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update spec web search setting");
-      }
-      setSpecWebSearch({ enabled: data.enabled === true, message: data.message });
-    } catch (e) {
-      setSpecWebSearchError(e instanceof Error ? e.message : "Failed to update spec web search setting");
-    } finally {
-      setSpecWebSearchSaving(false);
-    }
-  }, [specWebSearch?.enabled]);
-
-  const loadApprovalThreshold = useCallback(async () => {
-    try {
-      setApprovalThresholdLoading(true);
-      setApprovalThresholdError(null);
-      const res = await fetch("/api/admin/asset-approval-threshold", { cache: "no-store" });
-      const data = (await res.json().catch(() => ({}))) as {
-        threshold?: number;
-        defaultThreshold?: number;
-        message?: string;
-      };
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to load asset approval threshold");
-      }
-      const threshold = Number(data.threshold);
-      const defaultThreshold = Number(data.defaultThreshold || 500000);
-      const next = {
-        threshold: Number.isFinite(threshold) ? threshold : defaultThreshold,
-        defaultThreshold: Number.isFinite(defaultThreshold) ? defaultThreshold : 500000,
-        message: data.message,
-      };
-      setApprovalThreshold(next);
-      setApprovalThresholdInput(String(next.threshold));
-    } catch (e) {
-      setApprovalThresholdError(e instanceof Error ? e.message : "Failed to load asset approval threshold");
-    } finally {
-      setApprovalThresholdLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadApprovalThreshold();
-  }, [loadApprovalThreshold]);
+  }, [from, to]);
 
   const loadWeeklyCredits = useCallback(async (sync = false) => {
     try {
-      if (sync) {
-        setWeeklyCreditsRefreshing(true);
-      } else {
-        setWeeklyCreditsLoading(true);
-      }
-      const res = await fetch(
-        sync ? "/api/admin/openai-weekly-credits/sync" : "/api/admin/openai-weekly-credits",
-        {
-          method: sync ? "POST" : "GET",
-          cache: "no-store",
-        }
-      );
-      const payload = (await res.json().catch(() => ({}))) as {
-        data?: WeeklyCreditsState;
-        message?: string;
-      };
-      if (!res.ok || !payload.data) {
-        throw new Error(payload.message || "Failed to load weekly credits");
-      }
-      setWeeklyCredits(payload.data);
-    } catch (e) {
-      console.error(e instanceof Error ? e.message : "Failed to load weekly credits");
+      setWeeklyCreditsLoading(true);
+      const response = await fetch(sync ? "/api/admin/openai-weekly-credits/sync" : "/api/admin/openai-weekly-credits", { method: sync ? "POST" : "GET", cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) setWeeklyCredits(payload?.data || payload || null);
     } finally {
       setWeeklyCreditsLoading(false);
-      setWeeklyCreditsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    loadWeeklyCredits();
+    void loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    void loadWeeklyCredits();
+    void (async () => {
+      const [searchResponse, thresholdResponse] = await Promise.all([
+        fetch("/api/admin/spec-web-search", { cache: "no-store" }),
+        fetch("/api/admin/asset-approval-threshold", { cache: "no-store" }),
+      ]);
+      const [searchPayload, thresholdPayload] = await Promise.all([
+        searchResponse.json().catch(() => ({})),
+        thresholdResponse.json().catch(() => ({})),
+      ]);
+      if (searchResponse.ok) setSpecWebSearch({ enabled: searchPayload?.enabled === true });
+      if (thresholdResponse.ok) {
+        const nextThreshold = Number(thresholdPayload?.threshold ?? thresholdPayload?.defaultThreshold ?? 500000);
+        const nextDefault = Number(thresholdPayload?.defaultThreshold ?? 500000);
+        setThreshold({ threshold: nextThreshold, defaultThreshold: nextDefault });
+        setThresholdInput(String(nextThreshold));
+      }
+    })();
   }, [loadWeeklyCredits]);
 
-  const saveApprovalThreshold = useCallback(async () => {
-    const threshold = Number.parseFloat(approvalThresholdInput.replace(/,/g, ""));
-    if (!Number.isFinite(threshold) || threshold < 0) {
-      setApprovalThresholdError("Enter a non-negative approval limit.");
-      return;
-    }
-
+  async function toggleSpecSearch() {
+    const enabled = !(specWebSearch?.enabled === true);
     try {
-      setApprovalThresholdSaving(true);
-      setApprovalThresholdError(null);
-      const res = await fetch("/api/admin/asset-approval-threshold", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threshold }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        threshold?: number;
-        defaultThreshold?: number;
-        message?: string;
-      };
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update asset approval threshold");
-      }
-      const savedThreshold = Number(data.threshold);
-      const defaultThreshold = Number(data.defaultThreshold || approvalThreshold?.defaultThreshold || 500000);
-      const next = {
-        threshold: Number.isFinite(savedThreshold) ? savedThreshold : threshold,
-        defaultThreshold: Number.isFinite(defaultThreshold) ? defaultThreshold : 500000,
-        message: data.message,
-      };
-      setApprovalThreshold(next);
-      setApprovalThresholdInput(String(next.threshold));
-    } catch (e) {
-      setApprovalThresholdError(e instanceof Error ? e.message : "Failed to update asset approval threshold");
+      setSpecSaving(true);
+      const response = await fetch("/api/admin/spec-web-search", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) setSpecWebSearch({ enabled: payload?.enabled === true });
     } finally {
-      setApprovalThresholdSaving(false);
+      setSpecSaving(false);
     }
-  }, [approvalThreshold?.defaultThreshold, approvalThresholdInput]);
+  }
 
-  const greeting = useMemo(() => {
-    const hours = now.getHours();
-    if (hours < 12) return "Good morning";
-    if (hours < 18) return "Good afternoon";
-    return "Good evening";
-  }, [now]);
+  async function saveThreshold() {
+    const value = Number.parseFloat(thresholdInput.replace(/,/g, ""));
+    if (!Number.isFinite(value) || value < 0) return;
+    try {
+      setThresholdSaving(true);
+      const response = await fetch("/api/admin/asset-approval-threshold", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threshold: value }) });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) setThreshold({ threshold: Number(payload?.threshold ?? value), defaultThreshold: Number(payload?.defaultThreshold ?? threshold?.defaultThreshold ?? 500000) });
+    } finally {
+      setThresholdSaving(false);
+    }
+  }
 
-  const allMetricCards = useMemo<MetricCard[]>(() => {
-    const base = [
-      ...statCards.map((card) => ({
-        key: card.key,
-        label: card.label,
-        value: stats?.[card.key] ?? 0,
-        icon: card.icon,
-        color: card.color,
-        iconBg: card.iconBg,
-      })),
-      ...reportCards.map((card) => ({
-        key: card.key,
-        label: card.label,
-        value: stats?.byType?.[card.key] ?? 0,
-        icon: card.icon,
-        color: card.color,
-        iconBg: card.iconBg,
-      })),
-    ];
+  const activityLabels = data?.activity.map((point) => formatDate(point.date).replace(/, \d{4}$/, "")) || [];
+  const activityValues = data?.activity.map((point) => point.value) || [];
+  const typeValues = useMemo(() => {
+    const map = new Map((data?.byType || []).map((item) => [item.type, item.value]));
+    return ["Asset", "LotListing", "RealEstate", "Salvage"].map((type) => map.get(type) || 0);
+  }, [data?.byType]);
+  const creditTotal = Math.max(weeklyCredits?.totalAvailableCredits || weeklyCredits?.rechargeAmount || 1, 1);
+  const creditPercent = Math.max(0, Math.min(100, ((weeklyCredits?.remainingCredits || 0) / creditTotal) * 100));
 
-    return base.map((card) => ({
-      ...card,
-      progress: statsLoading ? 0 : metricProgress(card.value, stats, card.key),
-    }));
-  }, [stats, statsLoading]);
+  const kpis = [
+    { label: "Reports", value: number(data?.kpis.reports.value), delta: data?.kpis.reports.percent, note: "vs previous period", icon: FileCheck2 },
+    { label: "Lot Listings", value: number(data?.kpis.lotListings.value), delta: data?.kpis.lotListings.percent, note: "vs previous period", icon: Gavel },
+    { label: "Users", value: number(data?.kpis.users.value), note: "active directory", icon: Users },
+    { label: "Pending / Released", value: `${number(data?.kpis.pending)} / ${number(data?.kpis.released)}`, note: "current workflow", icon: Clock3 },
+  ];
+  const queueItems: Array<{ label: string; value: number; icon: LucideIcon }> = [
+    { label: "Pending Review", value: data?.queue.pendingReview || 0, icon: Clock3 },
+    { label: "In Review", value: data?.queue.inReview || 0, icon: Search },
+    { label: "Ready for Release", value: data?.queue.readyForRelease || 0, icon: CheckCircle2 },
+    { label: "Released Today", value: data?.queue.releasedToday || 0, icon: Activity },
+  ];
 
   return (
-    <Box
-      sx={{
-        minHeight: "calc(100vh - 64px)",
-        pb: { xs: 1.5, md: 2 },
-        bgcolor: (theme) => (theme.palette.mode === "dark" ? "#07111f" : "#f3f6fb"),
-      }}
-    >
-      <Container
-        maxWidth={false}
-        sx={{
-          px: { xs: 1.25, md: 1.75 },
-          py: { xs: 1.25, md: 1.75 },
-          maxWidth: "1800px",
-        }}
-      >
-        <Grid container spacing={1.5} alignItems="stretch">
-          <Grid size={{ xs: 12, lg: 8 }}>
-            <Card sx={{ ...surfaceSx, ...compactHoverSx }}>
-              <CardContent sx={{ p: { xs: 2, md: 3 }, height: "100%" }}>
-                <Stack spacing={2.25} sx={{ height: "100%" }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
-                    <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
-                      <Typography
-                        variant="overline"
-                        sx={{
-                          color: "#1458f5",
-                          fontSize: { xs: 17, sm: 20 },
-                          fontWeight: 950,
-                          letterSpacing: "0.02em",
-                          lineHeight: 1,
-                        }}
-                      >
-                        OPERATIONS
-                      </Typography>
-                      {me?.role ? (
-                        <Chip
-                          size="small"
-                          label={me.role}
-                          variant="outlined"
-                          sx={{
-                            height: 28,
-                            borderColor: alpha("#1458f5", 0.42),
-                            color: "#1458f5",
-                            fontWeight: 850,
-                            bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#1458f5", 0.12) : "#eff6ff"),
-                          }}
-                        />
-                      ) : null}
-                    </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "text.primary", flexShrink: 0 }}>
-                      <CalendarMonthRoundedIcon sx={{ fontSize: 22 }} />
-                      <Typography variant="body2" sx={{ fontWeight: 750 }} suppressHydrationWarning>
-                        {formatDashboardDate(now)}
-                      </Typography>
-                    </Stack>
-                  </Stack>
+    <Box className="desktop-admin-page" sx={{ p: { xs: 2, lg: 3.5 } }}>
+      <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "flex-start" }} spacing={2} sx={{ mb: 3 }}>
+        <Box>
+          <h1 className="desktop-page-title">Dashboard</h1>
+          <p className="desktop-page-subtitle">Overview of report operations and system activity.</p>
+        </Box>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button variant="outlined" startIcon={<CalendarDays size={17} />} onClick={() => setDateDialogOpen(true)}>
+            {formatDate(from)} - {formatDate(to)}
+          </Button>
+          <Button variant="outlined" startIcon={<RefreshCcw size={17} />} disabled={loading} onClick={() => void loadDashboard()}>
+            Refresh
+          </Button>
+          <IconButton aria-label="Operations settings" onClick={() => setSettingsOpen(true)} sx={{ width: 36, height: 36, border: "1px solid", borderColor: "divider", borderRadius: "4px" }}>
+            <Settings2 size={17} />
+          </IconButton>
+        </Stack>
+      </Stack>
 
-                  <Box>
-                    <Typography
-                      variant="h3"
-                      sx={{
-                        fontSize: { xs: 30, sm: 38, md: 42 },
-                        lineHeight: 1.03,
-                        fontWeight: 950,
-                        color: "text.primary",
-                      }}
-                    >
-                      {greeting}{me ? `, ${me.username || me.email}` : ""}
-                    </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{ mt: 1, maxWidth: 760, fontWeight: 500 }}>
-                      Reports, approvals, users, CRM and operational settings in one dense control surface.
-                    </Typography>
-                  </Box>
+      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
-                  <Grid container spacing={1.25}>
-                    {allMetricCards.map((card) => (
-                      <Grid key={card.key} size={{ xs: 6, sm: 4 }}>
-                        <Card
-                          sx={{
-                            height: "100%",
-                            borderRadius: "10px",
-                            border: "1px solid",
-                            borderColor: (theme) =>
-                              theme.palette.mode === "dark" ? alpha("#93a9c8", 0.14) : alpha("#94a3b8", 0.28),
-                            bgcolor: (theme) =>
-                              theme.palette.mode === "dark" ? alpha("#0f1b2d", 0.72) : alpha("#ffffff", 0.82),
-                            boxShadow: (theme) =>
-                              theme.palette.mode === "dark"
-                                ? `0 12px 26px ${alpha("#020617", 0.32)}, inset 0 1px 0 ${alpha("#fff", 0.04)}`
-                                : `0 10px 22px ${alpha("#0f172a", 0.08)}, inset 0 1px 0 ${alpha("#fff", 0.9)}`,
-                          }}
-                        >
-                          <CardContent sx={{ p: { xs: 1.15, sm: 1.35 }, "&:last-child": { pb: { xs: 1.15, sm: 1.35 } } }}>
-                            <Stack spacing={1}>
-                              <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={0.75}>
-                                <Box sx={{ minWidth: 0 }}>
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }} noWrap>
-                                    {card.label}
-                                  </Typography>
-                                  <Typography
-                                    variant="h5"
-                                    suppressHydrationWarning
-                                    sx={{ mt: 0.25, fontWeight: 950, lineHeight: 1, fontSize: { xs: 22, sm: 25 } }}
-                                  >
-                                    {statsLoading ? "..." : numberFormatter.format(card.value)}
-                                  </Typography>
-                                </Box>
-                                <Box
-                                  sx={{
-                                    width: { xs: 36, sm: 40 },
-                                    height: { xs: 36, sm: 40 },
-                                    borderRadius: "11px",
-                                    display: "grid",
-                                    placeItems: "center",
-                                    bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha(card.color, 0.18) : card.iconBg),
-                                    color: card.color,
-                                    flexShrink: 0,
-                                    boxShadow: `inset 0 1px 0 ${alpha("#fff", 0.55)}`,
-                                    "& svg": { fontSize: { xs: 24, sm: 26 } },
-                                  }}
-                                >
-                                  {card.icon}
-                                </Box>
-                              </Stack>
-                              <LinearProgress
-                                variant="determinate"
-                                value={card.progress}
-                                sx={{
-                                  height: 4,
-                                  borderRadius: 999,
-                                  bgcolor: alpha(card.color, 0.13),
-                                  "& .MuiLinearProgress-bar": {
-                                    borderRadius: 999,
-                                    bgcolor: card.color,
-                                  },
-                                }}
-                              />
-                            </Stack>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, lg: 4 }}>
-            <Card sx={{ ...surfaceSx, ...compactHoverSx }}>
-              <CardContent sx={{ p: { xs: 2, md: 2.25 }, height: "100%" }}>
-                <Stack spacing={1.35} sx={{ height: "100%" }}>
-                  <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.08 }}>
-                      Operations Settings
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", fontWeight: 650 }}>
-                      Controls for report generation behavior.
-                    </Typography>
-                  </Box>
-
-                  <Box
-                    sx={{
-                      border: "1px solid",
-                      borderColor: (theme) =>
-                        theme.palette.mode === "dark" ? alpha("#16a34a", 0.2) : alpha("#16a34a", 0.22),
-                      borderRadius: "10px",
-                      p: { xs: 1, sm: 1.15 },
-                      bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#052e16", 0.18) : alpha("#f0fdf4", 0.72)),
-                    }}
-                  >
-                    <Stack spacing={1}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-                        <Stack direction="row" spacing={1} alignItems="center" minWidth={0}>
-                          <Box
-                            sx={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: "10px",
-                              display: "grid",
-                              placeItems: "center",
-                              color: "#15803d",
-                              bgcolor: alpha("#16a34a", 0.14),
-                              flexShrink: 0,
-                            }}
-                          >
-                            <PaidRoundedIcon sx={{ fontSize: 22 }} />
-                          </Box>
-                          <Box minWidth={0}>
-                            <Typography variant="body1" sx={{ fontWeight: 950 }} noWrap>
-                              Weekly Credits
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                              {formatWeekRange(weeklyCredits?.weekStart, weeklyCredits?.weekEnd)}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                        <Stack direction="row" spacing={0.75} alignItems="center" flexShrink={0}>
-                          <Chip
-                            size="small"
-                            label={weeklyCredits?.status === "synced" ? "Synced" : weeklyCredits?.status === "error" ? "Error" : "Unavailable"}
-                            sx={{
-                              height: 24,
-                              bgcolor:
-                                weeklyCredits?.status === "synced" ? alpha("#16a34a", 0.14) : alpha("#f59e0b", 0.14),
-                              color: weeklyCredits?.status === "synced" ? "#15803d" : "#b45309",
-                              fontWeight: 850,
-                            }}
-                          />
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => void loadWeeklyCredits(true)}
-                            disabled={weeklyCreditsLoading || weeklyCreditsRefreshing}
-                            sx={{
-                              minWidth: 36,
-                              height: 32,
-                              px: 0.75,
-                              borderRadius: "8px",
-                            }}
-                          >
-                            <RefreshRoundedIcon sx={{ fontSize: 18 }} />
-                          </Button>
-                        </Stack>
-                      </Stack>
-
-                      <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" useFlexGap>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
-                            Remaining
-                          </Typography>
-                          <Typography variant="h4" sx={{ fontWeight: 950, lineHeight: 1 }}>
-                            {weeklyCreditsLoading ? "..." : formatMoney(weeklyCredits?.remainingCredits, "0")}
-                          </Typography>
-                        </Box>
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => setRechargesOpen(true)}
-                          sx={{ ml: "auto", fontWeight: 900, borderRadius: "8px" }}
-                        >
-                          View renewals
-                        </Button>
-                      </Stack>
-
-                      <Box
-                        sx={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                          gap: 0.75,
-                        }}
-                      >
-                        <Box sx={{ px: 1, py: 0.75, borderRadius: "8px", bgcolor: alpha("#2563eb", 0.08) }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
-                            Requests
-                          </Typography>
-                          <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.15 }}>
-                            {numberFormatter.format(weeklyCredits?.requestCount || 0)}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ px: 1, py: 0.75, borderRadius: "8px", bgcolor: alpha("#7c3aed", 0.08) }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 750 }}>
-                            Web searches
-                          </Typography>
-                          <Typography variant="body1" sx={{ fontWeight: 950, lineHeight: 1.15 }}>
-                            {numberFormatter.format(weeklyCredits?.webSearchCount || 0)}
-                          </Typography>
-                        </Box>
-                      </Box>
-
-                      <LinearProgress
-                        variant="determinate"
-                        value={
-                          weeklyCredits
-                            ? Math.max(
-                              0,
-                              Math.min(
-                                100,
-                                (weeklyCredits.remainingCredits /
-                                  Math.max(
-                                    weeklyCredits.totalAvailableCredits || weeklyCredits.rechargeAmount,
-                                    1
-                                  )) *
-                                100
-                              )
-                            )
-                            : 0
-                        }
-                        sx={{
-                          height: 5,
-                          borderRadius: 999,
-                          bgcolor: alpha("#16a34a", 0.12),
-                          "& .MuiLinearProgress-bar": { borderRadius: 999, bgcolor: "#16a34a" },
-                        }}
-                      />
-
-                      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
-                        Renews when the balance falls below {weeklyCredits?.thresholdCredits || 20}. Last sync{" "}
-                        {formatShortDateTime(weeklyCredits?.syncedAt)}.
-                      </Typography>
-                    </Stack>
-                  </Box>
-
-                  <Box
-                    sx={{
-                      border: "1px solid",
-                      borderColor: (theme) =>
-                        theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
-                      borderRadius: "10px",
-                      p: { xs: 1, sm: 1.15 },
-                      bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#0f172a", 0.28) : alpha("#f8fafc", 0.8)),
-                    }}
-                  >
-                    <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="center">
-                      <Box minWidth={0}>
-                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                          <Typography variant="body1" sx={{ fontWeight: 950 }}>
-                            Spec web search
-                          </Typography>
-                          <Chip
-                            size="small"
-                            label={specWebSearch?.enabled ? "Enabled" : "Off"}
-                            sx={{
-                              height: 24,
-                              bgcolor: specWebSearch?.enabled ? alpha("#16a34a", 0.14) : alpha("#64748b", 0.12),
-                              color: specWebSearch?.enabled ? "#15803d" : "#475569",
-                              border: `1px solid ${specWebSearch?.enabled ? alpha("#16a34a", 0.24) : alpha("#64748b", 0.18)}`,
-                              fontWeight: 850,
-                            }}
-                          />
-                        </Stack>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.35, display: "block", lineHeight: 1.35 }}>
-                          Off uses uploaded images and provided data only.
-                        </Typography>
-                        {specWebSearchError ? (
-                          <Typography variant="caption" sx={{ mt: 0.75, display: "block", color: "#dc2626", fontWeight: 800 }}>
-                            {specWebSearchError}
-                          </Typography>
-                        ) : null}
-                      </Box>
-                      <Switch
-                        checked={specWebSearch?.enabled === true}
-                        onChange={toggleSpecWebSearch}
-                        disabled={specWebSearchLoading || specWebSearchSaving}
-                        color="success"
-                        inputProps={{ "aria-label": "Toggle spec web search" }}
-                        sx={{ flexShrink: 0 }}
-                      />
-                    </Stack>
-                  </Box>
-
-                  <Box
-                    sx={{
-                      border: "1px solid",
-                      borderColor: (theme) =>
-                        theme.palette.mode === "dark" ? alpha("#93a9c8", 0.18) : alpha("#94a3b8", 0.28),
-                      borderRadius: "10px",
-                      p: { xs: 1, sm: 1.15 },
-                      bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#0f172a", 0.28) : alpha("#f8fafc", 0.8)),
-                    }}
-                  >
-                    <Stack spacing={1}>
-                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
-                        <Box minWidth={0}>
-                          <Typography variant="body1" sx={{ fontWeight: 950 }}>
-                            Asset approval limit
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", lineHeight: 1.35 }}>
-                            Asset reports above this value require manager approval.
-                          </Typography>
-                        </Box>
-                        <Chip
-                          size="small"
-                          label={`Saved ${formatMoney(approvalThreshold?.threshold, approvalThresholdLoading ? "..." : "--")}`}
-                          sx={{
-                            height: 24,
-                            bgcolor: alpha("#2563eb", 0.12),
-                            color: "#2563eb",
-                            border: `1px solid ${alpha("#2563eb", 0.18)}`,
-                            fontWeight: 850,
-                          }}
-                        />
-                      </Stack>
-
-                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
-                        <TextField
-                          size="small"
-                          value={approvalThresholdInput}
-                          onChange={(event) => setApprovalThresholdInput(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              void saveApprovalThreshold();
-                            }
-                          }}
-                          disabled={approvalThresholdLoading || approvalThresholdSaving}
-                          placeholder="500000"
-                          inputProps={{ inputMode: "decimal", "aria-label": "Asset approval limit" }}
-                          sx={{
-                            flex: 1,
-                            "& .MuiOutlinedInput-root": {
-                              borderRadius: "8px",
-                              bgcolor: (theme) => (theme.palette.mode === "dark" ? alpha("#020617", 0.32) : "#fff"),
-                            },
-                          }}
-                        />
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={() => void saveApprovalThreshold()}
-                          disabled={approvalThresholdLoading || approvalThresholdSaving}
-                          sx={{
-                            minHeight: 38,
-                            borderRadius: "8px",
-                            px: 1.5,
-                            fontWeight: 850,
-                            bgcolor: "#2563eb",
-                            boxShadow: `0 10px 20px ${alpha("#2563eb", 0.18)}`,
-                            "&:hover": { bgcolor: "#1d4ed8" },
-                          }}
-                        >
-                          {approvalThresholdSaving ? "Saving" : "Save"}
-                        </Button>
-                      </Stack>
-
-                      {approvalThresholdError ? (
-                        <Typography variant="caption" sx={{ color: "#dc2626", fontWeight: 800 }}>
-                          {approvalThresholdError}
-                        </Typography>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          Current rule: {formatMoney(approvalThreshold?.threshold, "--")} and below auto-approves.
-                        </Typography>
-                      )}
-                    </Stack>
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={12}>
-            <MonthlyCharts />
-          </Grid>
-        </Grid>
-      </Container>
-
-      <Dialog
-        open={rechargesOpen}
-        onClose={() => setRechargesOpen(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: "12px" } }}
-      >
-        <DialogTitle sx={{ fontWeight: 950 }}>
-          Weekly Recharges
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {formatShortDateTime(weeklyCredits?.periodStart || weeklyCredits?.weekStart)} -{" "}
-            {formatShortDateTime(weeklyCredits?.periodEnd || weeklyCredits?.weekEnd)}
-          </Typography>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={1.25}>
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" },
-                gap: 1,
-              }}
-            >
-              <Box
-                sx={{
-                  border: "1px solid",
-                  borderColor: alpha("#94a3b8", 0.25),
-                  borderRadius: "10px",
-                  p: 1.25,
-                  bgcolor: alpha("#f8fafc", 0.75),
-                }}
-              >
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
-                  Initial Weekly Credit
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                  {formatMoney(weeklyCredits?.initialCredits, "0")} cr
-                </Typography>
-              </Box>
-              <Box
-                sx={{
-                  border: "1px solid",
-                  borderColor: alpha("#16a34a", 0.22),
-                  borderRadius: "10px",
-                  p: 1.25,
-                  bgcolor: alpha("#dcfce7", 0.45),
-                }}
-              >
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
-                  Auto Recharged
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 950, color: "#15803d" }}>
-                  {formatMoney(weeklyCredits?.autoRechargeTotal ?? weeklyCredits?.rechargeTotal, "0")} cr
-                </Typography>
-              </Box>
-              <Box
-                sx={{
-                  border: "1px solid",
-                  borderColor: alpha("#2563eb", 0.2),
-                  borderRadius: "10px",
-                  p: 1.25,
-                  bgcolor: alpha("#dbeafe", 0.45),
-                }}
-              >
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
-                  Remaining
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 950, color: "#1d4ed8" }}>
-                  {formatMoney(weeklyCredits?.remainingCredits, "0")} cr
-                </Typography>
-              </Box>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0,1fr))", xl: "repeat(4, minmax(0,1fr))" }, gap: 1.5, mb: 1.5 }}>
+        {kpis.map(({ label, value, delta, note, icon: Icon }) => (
+          <Box key={label} className="desktop-flat-panel" sx={{ display: "flex", minHeight: 148, alignItems: "center", gap: 2, p: 2.5 }}>
+            <Box sx={{ display: "grid", width: 48, height: 48, flexShrink: 0, placeItems: "center", border: "1px solid", borderColor: "divider", bgcolor: "action.hover" }}>
+              <Icon size={25} strokeWidth={2} />
             </Box>
-            {weeklyCredits?.recharges?.length ? (
-              <Box sx={{ overflowX: "auto" }}>
-                <Box
-                  component="table"
-                  sx={{
-                    width: "100%",
-                    minWidth: 680,
-                    borderCollapse: "separate",
-                    borderSpacing: 0,
-                    overflow: "hidden",
-                    border: "1px solid",
-                    borderColor: alpha("#94a3b8", 0.28),
-                    borderRadius: "10px",
-                    "& th": {
-                      bgcolor: alpha("#e2e8f0", 0.55),
-                      color: "#334155",
-                      fontSize: 12,
-                      fontWeight: 900,
-                      textAlign: "left",
-                      px: 1.25,
-                      py: 1,
-                      whiteSpace: "nowrap",
-                    },
-                    "& td": {
-                      borderTop: "1px solid",
-                      borderColor: alpha("#94a3b8", 0.18),
-                      fontSize: 13,
-                      px: 1.25,
-                      py: 1,
-                      whiteSpace: "nowrap",
-                    },
-                  }}
-                >
-                  <Box component="thead">
-                    <Box component="tr">
-                      <Box component="th">#</Box>
-                      <Box component="th">Date</Box>
-                      <Box component="th">Time</Box>
-                      <Box component="th">Balance Before</Box>
-                      <Box component="th">Added</Box>
-                      <Box component="th">Balance After</Box>
-                    </Box>
-                  </Box>
-                  <Box component="tbody">
-                    {weeklyCredits.recharges.map((recharge, index) => {
-                      const createdAt = new Date(recharge.createdAt);
-                      const dateLabel = Number.isNaN(createdAt.getTime())
-                        ? "--"
-                        : createdAt.toLocaleDateString([], {
-                          month: "short",
-                          day: "2-digit",
-                          year: "numeric",
-                        });
-                      const timeLabel = Number.isNaN(createdAt.getTime())
-                        ? "--"
-                        : createdAt.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
-                      return (
-                        <Box component="tr" key={recharge.id}>
-                          <Box component="td" sx={{ fontWeight: 850 }}>
-                            {index + 1}
-                          </Box>
-                          <Box component="td">{dateLabel}</Box>
-                          <Box component="td">{timeLabel}</Box>
-                          <Box component="td">{formatMoney(recharge.balanceBefore)} cr</Box>
-                          <Box component="td" sx={{ color: "#15803d", fontWeight: 900 }}>
-                            +{formatMoney(recharge.amountCredits)} cr
-                          </Box>
-                          <Box component="td" sx={{ fontWeight: 850 }}>
-                            {formatMoney(recharge.balanceAfter)} cr
-                          </Box>
-                        </Box>
-                      );
-                    })}
-                  </Box>
-                </Box>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  border: "1px dashed",
-                  borderColor: alpha("#94a3b8", 0.42),
-                  borderRadius: "10px",
-                  p: 2,
-                  textAlign: "center",
-                }}
-              >
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
-                  No automatic recharges have been added this week.
-                </Typography>
-              </Box>
-            )}
-            <Divider />
-            <Stack direction="row" justifyContent="space-between" spacing={1.5} alignItems="center">
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 750 }}>
-                Total auto-recharged this week
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ color: "text.secondary", fontSize: 14, fontWeight: 500 }}>{label}</Typography>
+              <Typography sx={{ mt: 0.25, fontSize: 28, fontWeight: 650, lineHeight: 1.05, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                {loading && !data ? "..." : value}
               </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                {formatMoney(weeklyCredits?.autoRechargeTotal ?? weeklyCredits?.rechargeTotal, "0")} credits
+              <Typography component="div" sx={{ mt: 1, color: "text.secondary", fontSize: 12 }}>
+                <Delta value={delta} />{typeof delta === "number" ? "  " : ""}{note}
               </Typography>
+            </Box>
+          </Box>
+        ))}
+      </Box>
+
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", xl: "minmax(0,7fr) minmax(280px,4fr) minmax(220px,2fr)" }, gap: 1.5, alignItems: "stretch" }}>
+        <Box className="desktop-flat-panel" sx={{ minHeight: 430, p: 2.5 }}>
+          <Typography sx={{ fontSize: 17, fontWeight: 600 }}>Report Activity</Typography>
+          <Typography sx={{ mt: 0.5, mb: 2, color: "text.secondary", fontSize: 14 }}>Reports created per day</Typography>
+          <Box sx={{ height: 330 }}>
+            <Line
+              data={{ labels: activityLabels, datasets: [{ data: activityValues, borderColor: "#c8232c", backgroundColor: "#c8232c", pointBackgroundColor: "#fff", pointBorderColor: "#c8232c", pointBorderWidth: 2, pointRadius: 3, tension: 0.2, borderWidth: 2 }] }}
+              options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: "#62666c" } }, y: { beginAtZero: true, grid: { color: "#dedfe1" }, ticks: { color: "#62666c", precision: 0 } } } }}
+            />
+          </Box>
+        </Box>
+
+        <Box className="desktop-flat-panel" sx={{ minHeight: 430, p: 2.5 }}>
+          <Typography sx={{ fontSize: 17, fontWeight: 600 }}>Reports by Type</Typography>
+          <Typography sx={{ mt: 0.5, color: "text.secondary", fontSize: 14 }}>Share of reports in the selected period</Typography>
+          <Box sx={{ display: "grid", minHeight: 335, gridTemplateColumns: { xs: "1fr", sm: "minmax(150px,1fr) 145px", xl: "1fr" }, alignItems: "center", gap: 2 }}>
+            <Box sx={{ mx: "auto", width: "min(220px, 100%)", height: 220 }}>
+              <Doughnut
+                data={{ labels: ["Asset", "Lot Listing", "Real Estate", "Salvage"], datasets: [{ data: typeValues, backgroundColor: [TYPE_COLORS.Asset, TYPE_COLORS.LotListing, TYPE_COLORS.RealEstate, TYPE_COLORS.Salvage], borderWidth: 0 }] }}
+                options={{ responsive: true, maintainAspectRatio: false, cutout: "64%", plugins: { legend: { display: false } } }}
+              />
+            </Box>
+            <Stack spacing={1.2} sx={{ minWidth: 140 }}>
+              {["Asset", "LotListing", "RealEstate", "Salvage"].map((type, index) => (
+                <Stack key={type} direction="row" alignItems="center" spacing={1}>
+                  <Box sx={{ width: 10, height: 10, bgcolor: TYPE_COLORS[type] }} />
+                  <Typography sx={{ flex: 1, fontSize: 12 }}>{type === "LotListing" ? "Lot Listing" : type === "RealEstate" ? "RealEstate" : type}</Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 650 }}>{number(typeValues[index])}</Typography>
+                </Stack>
+              ))}
             </Stack>
+          </Box>
+        </Box>
+
+        <Stack spacing={1.5}>
+          <Box className="desktop-flat-panel" sx={{ overflow: "hidden" }}>
+            <Box sx={{ p: 2 }}><Typography sx={{ fontSize: 16, fontWeight: 600 }}>Processing / Release Queue</Typography></Box>
+            {queueItems.map(({ label, value, icon: Icon }) => (
+              <Button key={label} fullWidth onClick={() => router.push("/reports")} endIcon={<ChevronRight size={15} />} sx={{ minHeight: 44, justifyContent: "flex-start", borderTop: "1px solid", borderColor: "divider", borderRadius: 0, color: "text.primary", px: 2, fontSize: 12 }}>
+                <Icon size={15} style={{ marginRight: 10 }} /><span style={{ flex: 1, textAlign: "left" }}>{label}</span><strong>{number(value)}</strong>
+              </Button>
+            ))}
+            <Button fullWidth onClick={() => router.push("/reports")} sx={{ minHeight: 38, justifyContent: "flex-start", borderTop: "1px solid", borderColor: "divider", borderRadius: 0, color: "primary.main", fontSize: 12, px: 2 }}>View full queue</Button>
+          </Box>
+
+          <Box className="desktop-flat-panel" sx={{ p: 2 }}>
+            <Stack direction="row" justifyContent="space-between" spacing={1}>
+              <Box>
+                <Typography sx={{ fontSize: 14, fontWeight: 600 }}>Weekly Credits</Typography>
+                <Typography sx={{ mt: 0.25, color: "text.secondary", fontSize: 11 }}>{formatDate(weeklyCredits?.weekStart)} - {formatDate(weeklyCredits?.weekEnd)}</Typography>
+              </Box>
+              <IconButton aria-label="Refresh credits" size="small" disabled={weeklyCreditsLoading} onClick={() => void loadWeeklyCredits(true)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "3px" }}><RefreshCcw size={15} /></IconButton>
+            </Stack>
+            <Typography sx={{ mt: 2, color: "text.secondary", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Remaining</Typography>
+            <Typography sx={{ mt: 0.25, fontSize: 26, fontWeight: 650, lineHeight: 1 }}>{weeklyCreditsLoading && !weeklyCredits ? "..." : money(weeklyCredits?.remainingCredits)}</Typography>
+            <Typography sx={{ mt: 1.5, color: "text.secondary", fontSize: 11 }}>{number(weeklyCredits?.requestCount)} requests</Typography>
+            <Typography sx={{ color: "text.secondary", fontSize: 11 }}>{number(weeklyCredits?.webSearchCount)} web searches</Typography>
+            <LinearProgress variant="determinate" value={creditPercent} sx={{ mt: 1.5, height: 5, bgcolor: "#ececed", "& .MuiLinearProgress-bar": { bgcolor: "#df111b" } }} />
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5 }}>
+              <Chip size="small" label={weeklyCredits?.status === "synced" ? "Synced" : "Unavailable"} sx={{ height: 22, bgcolor: "#eef0f1", fontSize: 10 }} />
+              <Button size="small" onClick={() => setRechargesOpen(true)} sx={{ minHeight: 28, px: 0, color: "text.primary", fontSize: 10 }}>Recharge history</Button>
+            </Stack>
+          </Box>
+        </Stack>
+      </Box>
+
+      <Box className="desktop-flat-panel" sx={{ mt: 1.5, overflow: "hidden" }}>
+        <Box sx={{ px: 2.5, py: 2 }}><Typography sx={{ fontSize: 17, fontWeight: 600 }}>Recent Reports</Typography></Box>
+        <Box sx={{ overflowX: "auto" }}>
+          <Box component="table" sx={{ width: "100%", minWidth: 860, borderCollapse: "collapse", "& th": { px: 2, py: 1.25, borderTop: "1px solid", borderBottom: "1px solid", borderColor: "divider", textAlign: "left", fontSize: 11, fontWeight: 650 }, "& td": { px: 2, py: 1.2, borderBottom: "1px solid", borderColor: "divider", fontSize: 12 } }}>
+            <Box component="thead"><Box component="tr"><Box component="th">Report</Box><Box component="th">Type</Box><Box component="th">Lot / Asset</Box><Box component="th">Created</Box><Box component="th">Status</Box><Box component="th">Action</Box></Box></Box>
+            <Box component="tbody">
+              {(data?.recentReports || []).map((report) => (
+                <Box component="tr" key={report._id}>
+                  <Box component="td"><Stack direction="row" spacing={1.25} alignItems="center">{report.thumbnailUrl ? <Box component="img" src={report.thumbnailUrl} alt="" sx={{ width: 52, height: 44, objectFit: "cover", border: "1px solid", borderColor: "divider" }} /> : null}<Box><Typography sx={{ fontSize: 12, fontWeight: 650 }}>{report.title}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{report.contractNo || report._id.slice(-6)}</Typography></Box></Stack></Box>
+                  <Box component="td">{report.type === "LotListing" ? "Lot Listing" : report.type}</Box>
+                  <Box component="td">{report.lotNumberSummary || `${number(report.lotCount)} lot${report.lotCount === 1 ? "" : "s"}`}</Box>
+                  <Box component="td"><Typography sx={{ fontSize: 12 }}>{formatDate(report.createdAt)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{ownerLabel(report.owner)}</Typography></Box>
+                  <Box component="td"><Chip size="small" label={report.releaseStatus === "released" || report.status === "released" ? "Released" : report.status || "Approved"} sx={{ height: 22, bgcolor: "#e9f7f2", color: "#087f5b", fontSize: 10 }} /></Box>
+                  <Box component="td"><IconButton aria-label="Open report" size="small" onClick={() => router.push(`/reports?search=${encodeURIComponent(report.contractNo || report.title)}`)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "3px" }}><ChevronRight size={15} /></IconButton></Box>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+
+      <Dialog open={dateDialogOpen} onClose={() => setDateDialogOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Date range</DialogTitle>
+        <DialogContent sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, pt: "12px !important" }}>
+          <TextField type="date" label="From" value={from} onChange={(event) => setFrom(event.target.value)} InputLabelProps={{ shrink: true }} />
+          <TextField type="date" label="To" value={to} onChange={(event) => setTo(event.target.value)} InputLabelProps={{ shrink: true }} />
+        </DialogContent>
+        <DialogActions><Button onClick={() => setDateDialogOpen(false)}>Cancel</Button><Button variant="contained" onClick={() => { setDateDialogOpen(false); void loadDashboard(); }}>Apply</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Operations settings</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2.5}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+              <Box><Typography sx={{ fontWeight: 650 }}>Spec web search</Typography><Typography sx={{ color: "text.secondary", fontSize: 12 }}>Off uses uploaded images and provided data only.</Typography></Box>
+              <Switch checked={specWebSearch?.enabled === true} onChange={() => void toggleSpecSearch()} disabled={specSaving} color="success" />
+            </Stack>
+            <Divider />
+            <Box>
+              <Typography sx={{ fontWeight: 650 }}>Asset approval limit</Typography>
+              <Typography sx={{ mb: 1.5, color: "text.secondary", fontSize: 12 }}>Asset reports above this value require manager approval.</Typography>
+              <Stack direction="row" spacing={1}><TextField fullWidth size="small" value={thresholdInput} onChange={(event) => setThresholdInput(event.target.value)} inputProps={{ inputMode: "decimal" }} /><Button variant="contained" onClick={() => void saveThreshold()} disabled={thresholdSaving}>Save</Button></Stack>
+            </Box>
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 1.5 }}>
-          <Button onClick={() => setRechargesOpen(false)} variant="contained" sx={{ borderRadius: "8px", fontWeight: 900 }}>
-            Close
-          </Button>
-        </DialogActions>
+        <DialogActions><Button variant="contained" onClick={() => setSettingsOpen(false)}>Close</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={rechargesOpen} onClose={() => setRechargesOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Weekly recharge history</DialogTitle>
+        <DialogContent dividers>
+          {weeklyCredits?.recharges?.length ? weeklyCredits.recharges.map((recharge, index) => (
+            <Stack key={recharge.id || `${recharge.createdAt}-${index}`} direction="row" justifyContent="space-between" sx={{ py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
+              <Box><Typography sx={{ fontSize: 13, fontWeight: 600 }}>Recharge {index + 1}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{new Date(recharge.createdAt).toLocaleString()}</Typography></Box>
+              <Box sx={{ textAlign: "right" }}><Typography sx={{ color: "success.main", fontSize: 13, fontWeight: 650 }}>+{money(recharge.amountCredits)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{money(recharge.balanceBefore)} → {money(recharge.balanceAfter)}</Typography></Box>
+            </Stack>
+          )) : <Typography sx={{ color: "text.secondary" }}>No automatic recharges have been added this week.</Typography>}
+        </DialogContent>
+        <DialogActions><Button variant="contained" onClick={() => setRechargesOpen(false)}>Close</Button></DialogActions>
       </Dialog>
     </Box>
   );

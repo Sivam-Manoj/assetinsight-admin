@@ -1,10 +1,10 @@
 "use client";
 
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FileText as FileTextIcon, Pilcrow, Save as SaveIcon, Send } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
-import Underline from "@tiptap/extension-underline";
 import {
   type ColumnDef,
   flexRender,
@@ -26,6 +26,7 @@ import {
   CardContent,
   Chip,
   Checkbox,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -34,7 +35,7 @@ import {
   FormControl,
   FormControlLabel,
   Grid,
-  InputLabel,
+  InputAdornment,
   IconButton,
   MenuItem,
   Select,
@@ -51,6 +52,8 @@ import {
   Typography,
 } from "@mui/material";
 import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CollectionsRoundedIcon from "@mui/icons-material/CollectionsRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
@@ -70,7 +73,10 @@ import NotesRoundedIcon from "@mui/icons-material/NotesRounded";
 import OpenInFullRoundedIcon from "@mui/icons-material/OpenInFullRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import StrikethroughSRoundedIcon from "@mui/icons-material/StrikethroughSRounded";
 import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
 import TableRowsRoundedIcon from "@mui/icons-material/TableRowsRounded";
@@ -95,6 +101,7 @@ type ReportItem = {
   report?: string;
   contract_no?: string;
   lot_number_summary?: string;
+  thumbnail_url?: string | null;
   preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   crDisclaimerCount?: number;
   isRealEstateReport?: boolean;
@@ -116,10 +123,12 @@ type ReportGroup = {
   title: string;
   contract_no?: string;
   lotNumberSummary?: string;
+  thumbnailUrl?: string | null;
   reportType: string;
   createdAt: string;
   fairMarketValue: string;
   userEmail?: string;
+  userDisplayName?: string;
   variants: { pdf?: ReportItem; specPdf?: ReportItem; crDocx?: ReportItem; docx?: ReportItem; xlsx?: ReportItem; images?: ReportItem };
   isAssetReport?: boolean;
   isRealEstateReport?: boolean;
@@ -193,8 +202,6 @@ const emptyCrDisclaimers: CrDisclaimerSettings = {
 };
 
 const auctionBidOptions = [5, 25, 100, 1000] as const;
-const closingHourOptions = Array.from({ length: 12 }, (_, index) => String(index + 1));
-const closingMinuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
 
 const fallbackCrDisclaimerOptions: CrDisclaimerOption[] = [
   { key: "smallsOnsite", label: "Smalls - Notice on Every Lot - Onsite" },
@@ -214,7 +221,6 @@ const richEditorExtensions = [
     bulletList: { keepMarks: true },
     orderedList: { keepMarks: true },
   }),
-  Underline,
   TextAlign.configure({
     types: ["heading", "paragraph"],
     alignments: ["left", "center", "right", "justify"],
@@ -229,6 +235,7 @@ type RichCrNoteSurfaceProps = {
   minHeight?: number;
   autoFocus?: boolean;
   onExpand?: () => void;
+  desktopMode?: boolean;
 };
 
 function RichCrNoteSurface({
@@ -238,6 +245,7 @@ function RichCrNoteSurface({
   minHeight = 120,
   autoFocus,
   onExpand,
+  desktopMode = false,
 }: RichCrNoteSurfaceProps) {
   const [, setToolbarTick] = useState(0);
   const editor = useEditor({
@@ -302,18 +310,19 @@ function RichCrNoteSurface({
           onClick={onClick}
           aria-label={buttonLabel}
           sx={{
-            width: 34,
-            height: 34,
-            borderRadius: 1,
+            width: 28,
+            height: 28,
+            borderRadius: "3px",
             border: "1px solid",
-            borderColor: active ? "#7c3aed" : "#dbe3ef",
-            bgcolor: active ? "#ede9fe" : "#fff",
-            color: active ? "#5b21b6" : "#334155",
-            boxShadow: active ? "inset 0 0 0 1px rgba(124, 58, 237, 0.18)" : "none",
+            borderColor: active ? "#df111b" : "transparent",
+            bgcolor: active ? "#df111b" : "transparent",
+            color: active ? "#fff" : "#3e423e",
+            boxShadow: "none",
             "&:hover": {
-              borderColor: "#8b5cf6",
-              bgcolor: active ? "#ddd6fe" : "#f8fafc",
+              borderColor: active ? "#c91019" : "transparent",
+              bgcolor: active ? "#c91019" : "#eceeed",
             },
+            "& svg": { width: 16, height: 16, fontSize: 16 },
             "&.Mui-disabled": {
               bgcolor: "#f8fafc",
               color: "#94a3b8",
@@ -346,11 +355,11 @@ function RichCrNoteSurface({
   return (
     <Box
       sx={{
-        border: "1px solid #cbd5e1",
-        borderRadius: 1.5,
-        bgcolor: disabled ? "#f8fafc" : "#fff",
+        border: "1px solid #dedfe1",
+        borderRadius: "3px",
+        bgcolor: disabled ? "#f7f8f8" : "#fff",
         overflow: "hidden",
-        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+        boxShadow: "none",
       }}
     >
       <Stack
@@ -360,11 +369,24 @@ function RichCrNoteSurface({
         useFlexGap
         flexWrap="wrap"
         sx={{
-          p: 0.75,
-          borderBottom: "1px solid #e2e8f0",
-          bgcolor: "#f1f5f9",
+          p: 1,
+          borderBottom: "1px solid #dedfe1",
+          bgcolor: "#f7f8f8",
         }}
       >
+        {desktopMode ? (
+          <>
+            {toolbarButton("Bold", <FormatBoldRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bold")), () => run(() => editor!.chain().focus().toggleBold().run()))}
+            {toolbarButton("Italic", <FormatItalicRoundedIcon fontSize="small" />, Boolean(editor?.isActive("italic")), () => run(() => editor!.chain().focus().toggleItalic().run()))}
+            {toolbarButton("Underline", <FormatUnderlinedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("underline")), () => run(() => editor!.chain().focus().toggleUnderline().run()))}
+            {toolbarButton("Paragraph", <Pilcrow size={16} />, Boolean(editor?.isActive("paragraph")), () => run(() => editor!.chain().focus().setParagraph().run()))}
+            {toolbarButton("Bullet list", <FormatListBulletedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bulletList")), () => run(() => editor!.chain().focus().toggleBulletList().run()))}
+            {toolbarButton("Numbered list", <FormatListNumberedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("orderedList")), () => run(() => editor!.chain().focus().toggleOrderedList().run()))}
+            {toolbarButton("Horizontal rule", <HorizontalRuleRoundedIcon fontSize="small" />, false, () => run(() => editor!.chain().focus().setHorizontalRule().run()))}
+            {toolbarButton("Clear formatting", <FormatClearRoundedIcon fontSize="small" />, false, () => run(() => editor!.chain().focus().unsetAllMarks().clearNodes().run()))}
+          </>
+        ) : (
+          <>
         <FormControl size="small" sx={{ minWidth: 142 }}>
           <Select
             value={blockValue}
@@ -470,6 +492,8 @@ function RichCrNoteSurface({
             {toolbarButton("Open large editor", <OpenInFullRoundedIcon fontSize="small" />, false, onExpand)}
           </>
         ) : null}
+          </>
+        )}
       </Stack>
       <Box
         sx={{
@@ -537,11 +561,13 @@ function RichCrNoteEditor({
   value,
   disabled,
   onChange,
+  desktopMode = false,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
   onChange: (value: string) => void;
+  desktopMode?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [expandedValue, setExpandedValue] = useState(value || "");
@@ -557,25 +583,22 @@ function RichCrNoteEditor({
   };
 
   return (
-    <Stack spacing={0.75}>
+    <Stack spacing={desktopMode ? 1 : 0.75}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-        <Typography variant="caption" sx={{ color: "#475569", fontWeight: 900 }}>
+        <Typography variant="caption" sx={desktopMode ? { color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" } : { color: "#17191d", fontWeight: 650 }}>
           {label}
         </Typography>
-        <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 700 }}>
-          CR HTML editor
-        </Typography>
+        {!desktopMode ? <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 700 }}>CR HTML editor</Typography> : null}
       </Stack>
       <RichCrNoteSurface
         value={value}
         disabled={disabled}
         onChange={onChange}
-        minHeight={124}
-        onExpand={openExpanded}
+        minHeight={desktopMode ? 280 : 124}
+        onExpand={desktopMode ? undefined : openExpanded}
+        desktopMode={desktopMode}
       />
-      <Typography variant="caption" color="text.secondary">
-        {richNoteHelpText}
-      </Typography>
+      {!desktopMode ? <Typography variant="caption" color="text.secondary">{richNoteHelpText}</Typography> : null}
 
       <Dialog
         open={expanded}
@@ -666,20 +689,6 @@ function parseAuctionBidValue(value: unknown): CrDisclaimerSettings["bidIncremen
     : null;
 }
 
-function formatClosingDateLabel(dateValue: string | null, timeValue: string | null, periodValue: "AM" | "PM" | null) {
-  const date = String(dateValue || "").trim();
-  const time = String(timeValue || "").trim();
-  const period = periodValue ? ` ${periodValue}` : "";
-  if (!date && !time) return "";
-  const dateLabel = date
-    ? (() => {
-        const parts = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        return parts ? `${Number(parts[2])}/${Number(parts[3])}/${parts[1]}` : date;
-      })()
-    : "";
-  return [dateLabel, time ? `${time}${period}` : ""].filter(Boolean).join(" ");
-}
-
 function splitClosingTime(value: string | null) {
   const match = String(value || "").trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/);
   if (!match) return { hour: "", minute: "00" };
@@ -691,6 +700,25 @@ function splitClosingTime(value: string | null) {
   return { hour: String(hour), minute: String(minute).padStart(2, "0") };
 }
 
+function closingDateTimeValue(settings: CrDisclaimerSettings) {
+  if (!settings.closingDate) return "";
+  const { hour, minute } = splitClosingTime(settings.closingTime);
+  if (!hour) return settings.closingDate;
+  let hour24 = Number(hour) % 12;
+  if (settings.closingTimePeriod === "PM") hour24 += 12;
+  return `${settings.closingDate}T${String(hour24).padStart(2, "0")}:${minute}`;
+}
+
+function parseClosingDateTime(value: string): Partial<CrDisclaimerSettings> {
+  if (!value) return { closingDate: null, closingTime: null, closingTimePeriod: null };
+  const [date, time = ""] = value.split("T");
+  const [hourText = "0", minute = "00"] = time.split(":");
+  const hour24 = Number(hourText);
+  const period: "AM" | "PM" = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 || 12;
+  return { closingDate: date || null, closingTime: time ? `${hour12}:${minute}` : null, closingTimePeriod: time ? period : null };
+}
+
 function ClosingDateTimePicker({
   settings,
   disabled,
@@ -700,150 +728,20 @@ function ClosingDateTimePicker({
   disabled?: boolean;
   onChange: (patch: Partial<CrDisclaimerSettings>) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draftDate, setDraftDate] = useState("");
-  const [draftHour, setDraftHour] = useState("");
-  const [draftMinute, setDraftMinute] = useState("00");
-  const [draftPeriod, setDraftPeriod] = useState<"AM" | "PM">("AM");
-
-  const displayValue = formatClosingDateLabel(settings.closingDate, settings.closingTime, settings.closingTimePeriod);
-
-  const openPicker = () => {
-    if (disabled) return;
-    const timeParts = splitClosingTime(settings.closingTime);
-    setDraftDate(settings.closingDate || "");
-    setDraftHour(timeParts.hour);
-    setDraftMinute(timeParts.minute);
-    setDraftPeriod(settings.closingTimePeriod || "AM");
-    setOpen(true);
-  };
-
-  const clearPicker = () => {
-    onChange({ closingDate: null, closingTime: null, closingTimePeriod: null });
-    setOpen(false);
-  };
-
-  const applyPicker = () => {
-    const normalizedTime = draftHour ? `${draftHour}:${draftMinute}` : null;
-    onChange({
-      closingDate: draftDate || null,
-      closingTime: normalizedTime || null,
-      closingTimePeriod: normalizedTime ? draftPeriod : null,
-    });
-    setOpen(false);
-  };
-
   return (
-    <>
+    <Stack spacing={0.75}>
+      <Typography sx={{ color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" }}>Closing date &amp; time</Typography>
       <TextField
         fullWidth
         size="small"
-        label="Closing Date & Time"
-        value={displayValue}
-        placeholder="Set close date and time"
+        type="datetime-local"
+        value={closingDateTimeValue(settings)}
         disabled={disabled}
-        onClick={openPicker}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openPicker();
-          }
-        }}
-        inputProps={{ readOnly: true }}
-        InputLabelProps={{ shrink: true }}
-        sx={{
-          "& .MuiInputBase-root": {
-            borderRadius: 2,
-            bgcolor: "#fff",
-            cursor: disabled ? "default" : "pointer",
-          },
-          "& input": { cursor: disabled ? "default" : "pointer" },
-        }}
+        onChange={(event) => onChange(parseClosingDateTime(event.target.value))}
+        inputProps={{ step: 60, "aria-label": "Closing date & time" }}
+        sx={{ "& .MuiInputBase-root": { height: 32, borderRadius: "3px", bgcolor: "#fff", fontSize: 13 } }}
       />
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 900 }}>
-            Closing Date & Time
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            This exports into the Excel Close Date column.
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
-          <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <TextField
-              fullWidth
-              type="date"
-              label="Date"
-              value={draftDate}
-              InputLabelProps={{ shrink: true }}
-              onChange={(event) => setDraftDate(event.target.value)}
-            />
-            <Grid container spacing={1}>
-              <Grid size={{ xs: 4 }}>
-                <FormControl fullWidth>
-                  <InputLabel id="cr-closing-picker-hour-label">Hour</InputLabel>
-                  <Select
-                    labelId="cr-closing-picker-hour-label"
-                    label="Hour"
-                    value={draftHour}
-                    onChange={(event) => setDraftHour(String(event.target.value || ""))}
-                  >
-                    <MenuItem value="">Blank</MenuItem>
-                    {closingHourOptions.map((hour) => (
-                      <MenuItem key={`closing-hour-${hour}`} value={hour}>
-                        {hour}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ xs: 4 }}>
-                <FormControl fullWidth disabled={!draftHour}>
-                  <InputLabel id="cr-closing-picker-minute-label">Minute</InputLabel>
-                  <Select
-                    labelId="cr-closing-picker-minute-label"
-                    label="Minute"
-                    value={draftMinute}
-                    onChange={(event) => setDraftMinute(String(event.target.value || "00"))}
-                  >
-                    {closingMinuteOptions.map((minute) => (
-                      <MenuItem key={`closing-minute-${minute}`} value={minute}>
-                        {minute}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ xs: 4 }}>
-                <FormControl fullWidth disabled={!draftHour}>
-                  <InputLabel id="cr-closing-picker-period-label">AM/PM</InputLabel>
-                  <Select
-                    labelId="cr-closing-picker-period-label"
-                    label="AM/PM"
-                    value={draftPeriod}
-                    onChange={(event) => setDraftPeriod(event.target.value === "PM" ? "PM" : "AM")}
-                  >
-                    <MenuItem value="AM">AM</MenuItem>
-                    <MenuItem value="PM">PM</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button color="inherit" onClick={clearPicker}>
-            Clear
-          </Button>
-          <Box sx={{ flex: 1 }} />
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={applyPicker}>
-            Apply
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+    </Stack>
   );
 }
 
@@ -856,90 +754,53 @@ function CrAuctionControls({
   disabled?: boolean;
   onChange: (patch: Partial<CrDisclaimerSettings>) => void;
 }) {
-  const selectSx = {
-    "& .MuiSelect-select": { py: 1.05 },
-    "& .MuiInputBase-root": { borderRadius: 2 },
-  };
-
   return (
-    <Box sx={{ border: "1px solid #dbeafe", bgcolor: "#f8fbff", borderRadius: 2, p: 1.25 }}>
-      <Stack spacing={1}>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-          <Chip size="small" label="Auction import" sx={{ fontWeight: 900, bgcolor: "#dbeafe", color: "#1e3a8a" }} />
-          <Typography variant="caption" color="text.secondary">
-            Applies to Excel Description, Close Date, Bid Increment, and Opening Bid.
-          </Typography>
-        </Stack>
-        <Grid container spacing={1}>
-          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-            <FormControlLabel
-              sx={{
-                m: 0,
-                minHeight: 40,
-                px: 1,
-                width: "100%",
-                border: "1px solid #cbd5e1",
-                borderRadius: 2,
-                bgcolor: settings.unreserved ? "#fff7ed" : "#fff",
-                "& .MuiFormControlLabel-label": { fontWeight: 800, fontSize: "0.82rem" },
-              }}
-              control={
-                <Checkbox
-                  size="small"
-                  disabled={disabled}
-                  checked={Boolean(settings.unreserved)}
-                  onChange={(event) => onChange({ unreserved: event.target.checked })}
-                />
-              }
-              label="Unreserved"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 5.5 }}>
-            <ClosingDateTimePicker settings={settings} disabled={disabled} onChange={onChange} />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 2.25 }}>
-            <FormControl fullWidth size="small" sx={selectSx}>
-              <InputLabel id="cr-bid-increment-label">Bid Increment</InputLabel>
+    <Stack spacing={2.5}>
+      <FormControlLabel
+        sx={{ m: 0, minHeight: 42, width: "100%", border: "1px solid #dedfe1", borderRadius: "3px", px: 1.5, py: 1.5, bgcolor: "#fff", "& .MuiCheckbox-root": { width: 16, height: 16, p: 0, mr: 1 }, "& .MuiSvgIcon-root": { fontSize: 18 }, "& .MuiFormControlLabel-label": { color: "#17191d", fontSize: 13, fontWeight: 600, lineHeight: "16px", textTransform: "uppercase" } }}
+        control={<Checkbox size="small" disabled={disabled} checked={Boolean(settings.unreserved)} onChange={(event) => onChange({ unreserved: event.target.checked })} />}
+        label="Unreserved"
+      />
+      <ClosingDateTimePicker settings={settings} disabled={disabled} onChange={onChange} />
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <Stack spacing={0.75} alignItems="flex-start">
+            <Typography sx={{ color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" }}>Bid increment</Typography>
+            <FormControl size="small">
               <Select
-                labelId="cr-bid-increment-label"
-                label="Bid Increment"
+                displayEmpty
                 value={settings.bidIncrement ?? ""}
                 disabled={disabled}
                 onChange={(event) => onChange({ bidIncrement: parseAuctionBidValue(event.target.value) })}
-                sx={{ bgcolor: "#fff" }}
+                renderValue={(value) => value ? `$${Number(value).toLocaleString()}` : "Blank"}
+                sx={{ minWidth: 78, height: 32, borderRadius: "3px", bgcolor: "#fff", fontSize: 13, "& .MuiSelect-select": { py: 0.75, pl: 1.25 } }}
               >
                 <MenuItem value="">Blank</MenuItem>
-                {auctionBidOptions.map((value) => (
-                  <MenuItem key={`bid-${value}`} value={value}>
-                    ${value.toLocaleString()}
-                  </MenuItem>
-                ))}
+                {auctionBidOptions.map((value) => <MenuItem key={`bid-${value}`} value={value}>${value.toLocaleString()}</MenuItem>)}
               </Select>
             </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 2.25 }}>
-            <FormControl fullWidth size="small" sx={selectSx}>
-              <InputLabel id="cr-opening-bid-label">Opening Bid</InputLabel>
+          </Stack>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <Stack spacing={0.75} alignItems="flex-start">
+            <Typography sx={{ color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" }}>Opening bid</Typography>
+            <FormControl size="small">
               <Select
-                labelId="cr-opening-bid-label"
-                label="Opening Bid"
+                displayEmpty
                 value={settings.openingBid ?? ""}
                 disabled={disabled}
                 onChange={(event) => onChange({ openingBid: parseAuctionBidValue(event.target.value) })}
-                sx={{ bgcolor: "#fff" }}
+                renderValue={(value) => value ? `$${Number(value).toLocaleString()}` : "Blank"}
+                sx={{ minWidth: 78, height: 32, borderRadius: "3px", bgcolor: "#fff", fontSize: 13, "& .MuiSelect-select": { py: 0.75, pl: 1.25 } }}
               >
                 <MenuItem value="">Blank</MenuItem>
-                {auctionBidOptions.map((value) => (
-                  <MenuItem key={`opening-${value}`} value={value}>
-                    ${value.toLocaleString()}
-                  </MenuItem>
-                ))}
+                {auctionBidOptions.map((value) => <MenuItem key={`opening-${value}`} value={value}>${value.toLocaleString()}</MenuItem>)}
               </Select>
             </FormControl>
-          </Grid>
+          </Stack>
         </Grid>
-      </Stack>
-    </Box>
+      </Grid>
+    </Stack>
   );
 }
 
@@ -947,184 +808,65 @@ const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
   lot,
   options,
   disabled,
-  selected,
-  onSelectedChange,
   onChange,
   onPreviewImage,
 }: {
   lot: CrDisclaimerLot;
   options: CrDisclaimerOption[];
   disabled: boolean;
-  selected: boolean;
-  onSelectedChange: (lotKey: string, selected: boolean) => void;
   onChange: (lotKey: string, settings: CrDisclaimerSettings) => void;
   onPreviewImage: (url: string, lot: CrDisclaimerLot) => void;
 }) {
-  const update = (patch: Partial<CrDisclaimerSettings>) => {
-    onChange(lot.lotKey, { ...lot.settings, ...patch });
-  };
   const images = Array.isArray(lot.imageUrls) ? lot.imageUrls.filter(Boolean) : [];
-  const activeCount = getCrSettingsActiveCount(lot.settings);
+  const update = (patch: Partial<CrDisclaimerSettings>) => onChange(lot.lotKey, { ...lot.settings, ...patch });
 
   return (
-    <Card
-      variant="outlined"
-      sx={{
-        borderRadius: 2.5,
-        bgcolor: "#fff",
-        borderColor: activeCount > 0 ? "#c4b5fd" : "divider",
-        boxShadow: activeCount > 0 ? "0 10px 30px rgba(109, 40, 217, 0.08)" : "none",
-      }}
-    >
-      <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
-        <Stack spacing={1.15}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ xs: "stretch", md: "flex-start" }} justifyContent="space-between">
-            <Stack direction="row" spacing={1} alignItems="flex-start" minWidth={0}>
-              <Checkbox
-                size="small"
-                disabled={disabled}
-                checked={selected}
-                onChange={(event) => onSelectedChange(lot.lotKey, event.target.checked)}
-                sx={{ p: 0.25, mt: -0.25 }}
-                inputProps={{ "aria-label": `Select lot ${lot.lotNumber}` }}
-              />
-            <Stack minWidth={0}>
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#111827" }}>
-                  Lot {lot.lotNumber}
-                </Typography>
-                {activeCount > 0 ? (
-                  <Chip
-                    size="small"
-                    label={`${activeCount} notes`}
-                    sx={{ height: 20, fontSize: "0.65rem", fontWeight: 800, bgcolor: "#ede9fe", color: "#5b21b6" }}
-                  />
-                ) : null}
-                {images.length > 0 ? (
-                  <Chip
-                    size="small"
-                    label={`${images.length} image${images.length === 1 ? "" : "s"}`}
-                    variant="outlined"
-                    sx={{ height: 20, fontSize: "0.65rem", fontWeight: 800 }}
-                  />
-                ) : null}
-              </Stack>
-              <Typography variant="caption" color="text.secondary" title={lot.title}>
-                {lot.title || "Untitled lot"}
-              </Typography>
-            </Stack>
-            </Stack>
-          </Stack>
-          <Stack
-            direction="row"
-            spacing={1}
-            sx={{
-              overflowX: "auto",
-              pb: 0.25,
-              scrollbarWidth: "thin",
-              minHeight: images.length ? 84 : "auto",
-            }}
-          >
-            {images.length > 0 ? (
-              images.map((url, index) => (
-                <button
-                  key={`${lot.lotKey}-img-${index}-${url}`}
-                  type="button"
-                  onClick={() => onPreviewImage(url, lot)}
-                  disabled={disabled}
-                  style={{
-                    width: 92,
-                    height: 72,
-                    flex: "0 0 auto",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 12,
-                    padding: 0,
-                    overflow: "hidden",
-                    background: "#f8fafc",
-                    cursor: disabled ? "default" : "zoom-in",
-                    position: "relative",
-                  }}
-                  title={`Open Lot ${lot.lotNumber} image ${index + 1}`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={url}
-                    alt={`Lot ${lot.lotNumber} image ${index + 1}`}
-                    loading="lazy"
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
-                  <span
-                    style={{
-                      position: "absolute",
-                      right: 5,
-                      bottom: 5,
-                      minWidth: 18,
-                      height: 18,
-                      borderRadius: 999,
-                      background: "rgba(17,24,39,0.76)",
-                      color: "#fff",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      lineHeight: "18px",
-                    }}
-                  >
-                    {index + 1}
-                  </span>
-                </button>
-              ))
-            ) : (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  width: "100%",
-                  border: "1px dashed #cbd5e1",
-                  borderRadius: 1.5,
-                  bgcolor: "#f8fafc",
-                  px: 1.5,
-                  py: 1.25,
-                }}
-              >
-                No lot images available for this row.
-              </Typography>
-            )}
-          </Stack>
-          <Grid container spacing={0.25}>
+    <Stack spacing={2.5} sx={{ minWidth: 0 }}>
+      <Box>
+        <Typography component="h3" sx={{ color: "#17191d", fontSize: 20, fontWeight: 600, lineHeight: "28px" }}>Lot {lot.lotNumber}</Typography>
+        <Typography sx={{ color: "#737773", fontSize: 14, lineHeight: "20px" }}>{lot.title || "Untitled lot"} | {images.length} image{images.length === 1 ? "" : "s"}</Typography>
+      </Box>
+
+      {images.length ? (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(3, minmax(0, 1fr))", md: "repeat(5, minmax(0, 1fr))", xl: "repeat(8, minmax(0, 1fr))" }, gap: 1 }}>
+          {images.map((url, index) => (
+            <Box
+              key={`${lot.lotKey}-img-${index}-${url}`}
+              component="button"
+              type="button"
+              aria-label={`Open Lot ${lot.lotNumber} image ${index + 1}`}
+              onClick={() => onPreviewImage(url, lot)}
+              disabled={disabled}
+              sx={{ minWidth: 0, overflow: "hidden", border: "1px solid #dedfe1", borderRadius: 0, bgcolor: "#f4f5f5", p: 0, aspectRatio: "4 / 3", cursor: disabled ? "default" : "zoom-in" }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Lot ${lot.lotNumber} image ${index + 1}`} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+            </Box>
+          ))}
+        </Box>
+      ) : null}
+
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", xl: "360px minmax(0, 1fr)" }, gap: 3 }}>
+        <Stack spacing={2.5}>
+          <Box component="fieldset" sx={{ display: "flex", flexDirection: "column", gap: 1, border: 0, m: 0, p: 0 }}>
+            <Typography component="legend" sx={{ mb: 0.5, color: "#17191d", fontSize: 14, fontWeight: 600, lineHeight: "14px" }}>Disclaimer blocks</Typography>
             {options.map((option) => (
-              <Grid key={`${lot.lotKey}-${option.key}`} size={{ xs: 12, sm: 6 }}>
-                <FormControlLabel
-                  sx={{
-                    m: 0,
-                    width: "100%",
-                    "& .MuiFormControlLabel-label": {
-                      fontSize: "0.76rem",
-                      lineHeight: 1.2,
-                      fontWeight: 700,
-                    },
-                  }}
-                  control={
-                    <Checkbox
-                      size="small"
-                      disabled={disabled}
-                      checked={Boolean(lot.settings[option.key])}
-                      onChange={(event) => update({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)}
-                    />
-                  }
-                  label={option.label}
-                />
-              </Grid>
+              <FormControlLabel
+                key={`${lot.lotKey}-${option.key}`}
+                sx={{ m: 0, minHeight: 42, alignItems: "flex-start", border: "1px solid #dedfe1", borderRadius: "3px", px: 1.5, py: 1.5, bgcolor: "#fff", "& .MuiCheckbox-root": { width: 16, height: 16, p: 0, mt: 0.25, mr: 1 }, "& .MuiSvgIcon-root": { fontSize: 18 }, "& .MuiFormControlLabel-label": { color: "#17191d", fontSize: 14, lineHeight: "16px" } }}
+                control={<Checkbox size="small" disabled={disabled} checked={Boolean(lot.settings[option.key])} onChange={(event) => update({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)} />}
+                label={option.label}
+              />
             ))}
-          </Grid>
+          </Box>
           <CrAuctionControls settings={lot.settings} disabled={disabled} onChange={update} />
-          <RichCrNoteEditor
-            label="Custom note"
-            value={lot.settings.customText}
-            onChange={(value) => update({ customText: value })}
-            disabled={disabled}
-          />
         </Stack>
-      </CardContent>
-    </Card>
+
+        <Box sx={{ minWidth: 0 }}>
+          <RichCrNoteEditor label="Custom note" value={lot.settings.customText} onChange={(value) => update({ customText: value })} disabled={disabled} desktopMode />
+        </Box>
+      </Box>
+    </Stack>
   );
 });
 
@@ -1145,6 +887,9 @@ function CrDisclaimersDialog({
   const [selectedLotKeys, setSelectedLotKeys] = useState<Set<string>>(new Set());
   const [bulkSettings, setBulkSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
   const [previewImage, setPreviewImage] = useState<{ url: string; lot: CrDisclaimerLot } | null>(null);
+  const [activeLotIndex, setActiveLotIndex] = useState(0);
+  const [lotSearch, setLotSearch] = useState("");
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -1162,6 +907,9 @@ function CrDisclaimersDialog({
     setLocalLots(nextLots);
     setSelectedLotKeys(new Set(nextLots.map((lot) => lot.lotKey)));
     setBulkSettings({ ...emptyCrDisclaimers });
+    setActiveLotIndex(0);
+    setLotSearch("");
+    setBulkOpen(false);
   }, [initialLots, initialSettings, open]);
 
   const payload: CrDisclaimersPayload = {
@@ -1211,185 +959,152 @@ function CrDisclaimersDialog({
     );
   }, [bulkSettings, selectedLotKeys]);
 
+  const visibleLots = useMemo(
+    () => localLots.map((lot, index) => ({ lot, index })).filter(({ lot }) => !lotSearch.trim() || `${lot.lotNumber} ${lot.title}`.toLowerCase().includes(lotSearch.trim().toLowerCase())),
+    [localLots, lotSearch]
+  );
+  const activeLot = localLots[Math.min(activeLotIndex, Math.max(localLots.length - 1, 0))];
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
       fullWidth
-      maxWidth="xl"
+      maxWidth={false}
+      slotProps={{ backdrop: { sx: { bgcolor: "rgba(0,0,0,0.10)", backdropFilter: "blur(2px)" } } }}
       PaperProps={{
         sx: {
-          width: { xs: "calc(100% - 16px)", md: "min(1500px, calc(100% - 48px))" },
-          height: { xs: "94vh", md: "90vh" },
-          maxHeight: { xs: "94vh", md: "90vh" },
-          m: { xs: 1, md: 3 },
-          borderRadius: { xs: 2, md: 2 },
+          width: { xs: "calc(100vw - 16px)", sm: "min(1480px, calc(100vw - 32px))" },
+          height: { xs: "94vh", sm: "92vh" },
+          maxHeight: { xs: "94vh", sm: "92vh" },
+          m: { xs: 1, sm: 2 },
+          borderRadius: "4px",
           overflow: "hidden",
+          bgcolor: "#fff",
+          backgroundImage: "none",
         },
       }}
     >
-      <DialogTitle sx={{ borderBottom: "1px solid #e5e7eb", px: { xs: 2, md: 3 }, py: 2 }}>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
-          <Stack spacing={0.25}>
+      <DialogTitle sx={{ position: "relative", flex: "0 0 auto", borderBottom: "1px solid #dedfe1", px: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 2.5 }, pb: { xs: 2, sm: 2.25 } }}>
+        <Stack direction="row" spacing={2} alignItems="flex-start" justifyContent="space-between">
+          <Box>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="h6" sx={{ fontWeight: 900, color: "#0f172a" }}>
-                CR Disclaimers
-              </Typography>
-              {localLots.length > 0 ? (
-                <Chip
-                  size="small"
-                  label={`${localLots.length} lot${localLots.length === 1 ? "" : "s"}`}
-                  sx={{ height: 22, fontSize: "0.7rem", fontWeight: 800, bgcolor: "#eef2ff", color: "#3730a3" }}
-                />
-              ) : null}
+              <FileTextIcon size={24} color="#df111b" />
+              <Typography component="h2" sx={{ color: "#17191d", fontSize: 16, fontWeight: 500, lineHeight: 1 }}>CR Notes by Lot</Typography>
             </Stack>
-            <Typography variant="body2" color="text.secondary">
-              Choose notes for each lot. Save &amp; Resubmit refreshes Excel/CR links.
-            </Typography>
-          </Stack>
+            <Typography sx={{ mt: 1, color: "#737773", fontSize: 14, lineHeight: "20px" }}>Review images, disclaimers, notes, and auction controls for each lot.</Typography>
+          </Box>
+          <IconButton aria-label="Close CR notes" onClick={onClose} sx={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, border: "1px solid #dedfe1", borderRadius: "3px", color: "#555955" }}><CloseRoundedIcon sx={{ fontSize: 17 }} /></IconButton>
         </Stack>
       </DialogTitle>
-      <DialogContent sx={{ bgcolor: "#f8fafc", p: { xs: 1.5, md: 2.25 } }}>
-        <Stack spacing={1.5}>
-          {error ? <Alert severity="error">{error}</Alert> : null}
-          {filesBusy ? (
-            <Alert severity="warning">This report is already generating files. Save is available, but resubmit is disabled until it finishes.</Alert>
-          ) : null}
-          {!loading ? (
-            <Card variant="outlined" sx={{ borderRadius: 2.5, bgcolor: "#fff" }}>
-              <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
-                <Stack spacing={1.25}>
-                  <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
-                    <Stack spacing={0.25}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
-                        Multi-lot apply
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Select lots below, choose disclaimer settings here, then apply them to all selected lots.
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                      <Chip
-                        size="small"
-                        color={selectedCount ? "primary" : "default"}
-                        label={`${selectedCount} selected`}
-                        sx={{ fontWeight: 800 }}
-                      />
-                      <Button size="small" variant="outlined" disabled={saving || allSelected} onClick={selectAllLots}>
-                        Select all
-                      </Button>
-                      <Button size="small" variant="text" disabled={saving || selectedCount === 0} onClick={clearSelectedLots}>
-                        Clear selection
-                      </Button>
-                    </Stack>
-                  </Stack>
-                  <Grid container spacing={0.25}>
-                    {options.map((option) => (
-                      <Grid key={`bulk-${option.key}`} size={{ xs: 12, sm: 6, md: 3 }}>
-                        <FormControlLabel
-                          sx={{
-                            m: 0,
-                            width: "100%",
-                            "& .MuiFormControlLabel-label": {
-                              fontSize: "0.76rem",
-                              lineHeight: 1.2,
-                              fontWeight: 700,
-                            },
-                          }}
-                          control={
-                            <Checkbox
-                              size="small"
-                              disabled={saving}
-                              checked={Boolean(bulkSettings[option.key])}
-                              onChange={(event) =>
-                                updateBulkSettings({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)
-                              }
-                            />
-                          }
-                          label={option.label}
-                        />
-                      </Grid>
-                    ))}
-                  </Grid>
-                  <CrAuctionControls
-                    settings={bulkSettings}
-                    disabled={saving}
-                    onChange={updateBulkSettings}
-                  />
-                  <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "flex-start" }}>
-                    <RichCrNoteEditor
-                      label="Bulk custom note"
-                      value={bulkSettings.customText}
-                      onChange={(value) => updateBulkSettings({ customText: value })}
-                      disabled={saving}
-                    />
-                    <Button
-                      variant="contained"
-                      disabled={saving || selectedCount === 0}
-                      onClick={applyBulkToSelected}
-                      sx={{ minWidth: { md: 180 }, fontWeight: 900 }}
-                    >
-                      Apply to selected
-                    </Button>
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
-          ) : null}
-          {loading ? (
-            <Typography variant="body2" color="text.secondary">
-              Loading CR disclaimer settings...
-            </Typography>
-          ) : (
-            <Stack spacing={1}>
-              {localLots.map((lot) => (
-                <Stack key={lot.lotKey} spacing={0.75}>
-                  <CrLotDisclaimerRow
-                    lot={lot}
-                    options={options}
-                    disabled={saving}
-                    selected={selectedLotKeys.has(lot.lotKey)}
-                    onSelectedChange={toggleLotSelection}
-                    onChange={updateLotSettings}
-                    onPreviewImage={(url, selectedLot) => setPreviewImage({ url, lot: selectedLot })}
-                  />
-                  {getCrSettingsActiveCount(lot.settings) > 0 ? (
-                    <Button
-                      size="small"
-                      variant="text"
-                      color="inherit"
-                      disabled={saving}
-                      onClick={() => clearLotSettings(lot.lotKey)}
-                      sx={{ alignSelf: "flex-end", fontWeight: 800, color: "text.secondary" }}
-                    >
-                      Clear lot notes
-                    </Button>
-                  ) : null}
-                </Stack>
-              ))}
-            </Stack>
-          )}
-        </Stack>
+      <DialogContent sx={{ display: "flex", minHeight: 0, flex: 1, flexDirection: "column", overflow: "hidden", p: 0 }}>
+        {loading ? <Box sx={{ display: "grid", minHeight: 0, flex: 1, placeItems: "center" }}><CircularProgress size={26} sx={{ color: "#df111b" }} /></Box> : null}
+        {error ? <Alert severity="error" sx={{ m: 2, borderRadius: "3px" }}>{error}</Alert> : null}
+        {!loading && !error ? (
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "280px minmax(0, 1fr)" }, minHeight: 0, flex: 1, overflow: "hidden" }}>
+            <Box component="aside" sx={{ display: "flex", minHeight: 0, flexDirection: "column", borderRight: { lg: "1px solid #dedfe1" }, borderBottom: { xs: "1px solid #dedfe1", lg: 0 }, bgcolor: "#f7f8f8" }}>
+              <Box sx={{ position: "relative", flex: "0 0 auto", borderBottom: "1px solid #dedfe1", p: 1.5 }}>
+                <TextField
+                  autoFocus
+                  fullWidth
+                  size="small"
+                  value={lotSearch}
+                  onChange={(event) => setLotSearch(event.target.value)}
+                  placeholder="Find a lot"
+                  inputProps={{ "aria-label": "Find a lot" }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 17, color: "#737773" }} /></InputAdornment> }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: "3px", bgcolor: "#fff", fontSize: 13, "&.Mui-focused": { boxShadow: "0 0 0 3px rgba(223,17,27,0.25)" } } }}
+                />
+              </Box>
+              <Stack spacing={0.75} sx={{ minHeight: 0, flex: 1, overflowY: "auto", p: 1.5 }}>
+                {visibleLots.map(({ lot, index }) => {
+                  const selected = activeLotIndex === index;
+                  const thumbnail = lot.imageUrls?.[0];
+                  return (
+                    <Box key={lot.lotKey} sx={{ display: "flex", alignItems: "center", border: selected ? "1px solid #df111b" : "1px solid #dedfe1", bgcolor: selected ? "rgba(223,17,27,0.06)" : "#fff" }}>
+                      <Box component="button" type="button" onClick={() => setActiveLotIndex(index)} sx={{ display: "flex", minWidth: 0, flex: 1, alignItems: "center", gap: 1.25, border: 0, bgcolor: "transparent", p: 1, color: "#17191d", font: "inherit", textAlign: "left", cursor: "pointer" }}>
+                        {thumbnail ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumbnail} alt="" loading="lazy" style={{ width: 48, height: 48, flex: "0 0 auto", border: "1px solid #dedfe1", objectFit: "cover" }} />
+                        ) : <Box sx={{ display: "grid", width: 48, height: 48, flex: "0 0 auto", placeItems: "center", border: "1px solid #dedfe1", bgcolor: "#f4f5f5", color: "#737773", fontSize: 10 }}>No image</Box>}
+                        <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontSize: 13, fontWeight: 650 }}>Lot {lot.lotNumber || index + 1}</Typography><Typography noWrap sx={{ mt: 0.25, color: "#737773", fontSize: 11 }}>{lot.title || "Untitled"}</Typography></Box>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Stack>
+              {localLots.length > 1 ? <Box sx={{ flex: "0 0 auto", borderTop: "1px solid #dedfe1", p: 1.5 }}>
+                <Button fullWidth variant="outlined" onClick={() => setBulkOpen(true)} disabled={saving || !localLots.length} sx={{ minHeight: 36, borderRadius: "3px", borderColor: "#c7c9ca", color: "#17191d", fontSize: 12, fontWeight: 600, textTransform: "none" }}>Bulk apply ({selectedCount} selected)</Button>
+              </Box> : null}
+            </Box>
+
+            <Box sx={{ minHeight: 0, minWidth: 0, overflowX: "hidden", overflowY: "auto" }}>
+              <Stack spacing={2} sx={{ minWidth: 0, p: { xs: 2, sm: 3 }, pb: 5 }}>
+                {filesBusy ? <Alert severity="warning" sx={{ borderRadius: "3px" }}>This report is already generating files. Save is available, but resubmit is disabled until it finishes.</Alert> : null}
+                {activeLot ? (
+                  <>
+                    <CrLotDisclaimerRow lot={activeLot} options={options} disabled={saving} onChange={updateLotSettings} onPreviewImage={(url, selectedLot) => setPreviewImage({ url, lot: selectedLot })} />
+                    {getCrSettingsActiveCount(activeLot.settings) > 0 ? <Button size="small" color="inherit" disabled={saving} onClick={() => clearLotSettings(activeLot.lotKey)} sx={{ alignSelf: "flex-end", color: "#737773", fontSize: 12, fontWeight: 600, textTransform: "none" }}>Clear lot notes</Button> : null}
+                  </>
+                ) : <Typography sx={{ color: "#737773", fontSize: 13 }}>No lots are available.</Typography>}
+              </Stack>
+            </Box>
+          </Box>
+        ) : null}
       </DialogContent>
-      <DialogActions sx={{ p: { xs: 1.5, md: 2 }, gap: 1, flexWrap: "wrap", borderTop: "1px solid #e5e7eb" }}>
-        <Button onClick={onClose} disabled={saving}>
+      <DialogActions sx={{ flex: "0 0 auto", p: { xs: 1.5, sm: 2 }, gap: 1, flexWrap: "wrap", borderTop: "1px solid #dedfe1", bgcolor: "#fff" }}>
+        <Button onClick={onClose} disabled={saving} variant="outlined" sx={{ height: 32, minHeight: 32, py: 0, borderRadius: "3px", borderColor: "#c7c9ca", color: "#17191d", textTransform: "none" }}>
           Cancel
         </Button>
         <Button
           variant="outlined"
+          startIcon={<SaveIcon size={16} />}
           onClick={() => void onSave(payload)}
           disabled={loading || saving}
+          sx={{ height: 32, minHeight: 32, py: 0, borderRadius: "3px", borderColor: "#c7c9ca", color: "#17191d", textTransform: "none" }}
         >
           Save
         </Button>
         <Button
           variant="contained"
+          startIcon={<Send size={16} />}
           onClick={() => void onResubmit(payload)}
           disabled={loading || saving || filesBusy}
+          sx={{ height: 32, minHeight: 32, py: 0, borderRadius: "3px", bgcolor: "#df111b", color: "#fff", textTransform: "none", boxShadow: "none", "&:hover": { bgcolor: "#c91019", boxShadow: "none" } }}
         >
           {saving ? "Working..." : "Save & Resubmit"}
         </Button>
       </DialogActions>
+      <Dialog open={bulkOpen} onClose={() => setBulkOpen(false)} fullWidth maxWidth="md" PaperProps={{ sx: { borderRadius: "4px", backgroundImage: "none" } }}>
+        <DialogTitle sx={{ borderBottom: "1px solid #dedfe1", px: 3, py: 2 }}>
+          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
+            <Box><Typography component="h3" sx={{ color: "#17191d", fontSize: 17, fontWeight: 650 }}>Bulk apply</Typography><Typography sx={{ mt: 0.5, color: "#737773", fontSize: 12 }}>Apply one set of CR notes to the selected lots.</Typography></Box>
+            <IconButton aria-label="Close bulk apply" onClick={() => setBulkOpen(false)} sx={{ width: 32, height: 32, borderRadius: "3px" }}><CloseRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Stack spacing={2.5}>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Chip size="small" label={`${selectedCount} selected`} sx={{ bgcolor: "#eef0f1", color: "#4b4f4b", fontSize: 11, fontWeight: 650 }} />
+              <Button size="small" variant="outlined" disabled={saving || allSelected} onClick={selectAllLots} sx={{ borderRadius: "3px", color: "#17191d", textTransform: "none" }}>Select all</Button>
+              <Button size="small" color="inherit" disabled={saving || selectedCount === 0} onClick={clearSelectedLots} sx={{ color: "#737773", textTransform: "none" }}>Clear selection</Button>
+            </Stack>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" }, maxHeight: 176, overflowY: "auto", border: "1px solid #dedfe1", p: 1 }}>
+              {localLots.map((lot) => <FormControlLabel key={`bulk-select-${lot.lotKey}`} sx={{ m: 0, minWidth: 0, px: 0.5, "& .MuiFormControlLabel-label": { minWidth: 0, overflow: "hidden", color: "#17191d", fontSize: 12, textOverflow: "ellipsis", whiteSpace: "nowrap" } }} control={<Checkbox size="small" disabled={saving} checked={selectedLotKeys.has(lot.lotKey)} onChange={(event) => toggleLotSelection(lot.lotKey, event.target.checked)} />} label={`Lot ${lot.lotNumber} — ${lot.title || "Untitled"}`} />)}
+            </Box>
+            <Box component="fieldset" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" }, gap: 1, border: 0, m: 0, p: 0 }}>
+              <Typography component="legend" sx={{ gridColumn: "1 / -1", mb: 0.5, color: "#17191d", fontSize: 13, fontWeight: 650 }}>Disclaimer blocks</Typography>
+              {options.map((option) => <FormControlLabel key={`bulk-${option.key}`} sx={{ m: 0, minHeight: 46, border: "1px solid #dedfe1", borderRadius: "3px", px: 1.25, py: 0.75, "& .MuiFormControlLabel-label": { fontSize: 12.5, lineHeight: 1.35 } }} control={<Checkbox size="small" disabled={saving} checked={Boolean(bulkSettings[option.key])} onChange={(event) => updateBulkSettings({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)} />} label={option.label} />)}
+            </Box>
+            <CrAuctionControls settings={bulkSettings} disabled={saving} onChange={updateBulkSettings} />
+            <RichCrNoteEditor label="Bulk custom note" value={bulkSettings.customText} onChange={(value) => updateBulkSettings({ customText: value })} disabled={saving} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: "1px solid #dedfe1", px: 3, py: 2 }}>
+          <Button variant="outlined" onClick={() => setBulkOpen(false)} sx={{ borderRadius: "3px", color: "#17191d", textTransform: "none" }}>Cancel</Button>
+          <Button variant="contained" disabled={saving || selectedCount === 0} onClick={() => { applyBulkToSelected(); setBulkOpen(false); }} sx={{ borderRadius: "3px", bgcolor: "#df111b", textTransform: "none", boxShadow: "none", "&:hover": { bgcolor: "#c91019", boxShadow: "none" } }}>Apply to selected</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog
         open={Boolean(previewImage)}
         onClose={() => setPreviewImage(null)}
@@ -1468,14 +1183,16 @@ function groupReportItems(items: ReportItem[]): ReportGroup[] {
       group = {
         key,
         title: r.contract_no
-          ? `${base} - ${r.contract_no}${r.lot_number_summary ? ` - ${r.lot_number_summary}` : ""}`
+          ? `${base} - ${r.contract_no}`
           : r.address || base,
         contract_no: r.contract_no,
         lotNumberSummary: r.lot_number_summary,
+        thumbnailUrl: r.thumbnail_url || null,
         reportType: r.reportType,
         createdAt: r.createdAt,
         fairMarketValue: r.fairMarketValue,
         userEmail: r.user?.email || undefined,
+        userDisplayName: r.user?.username || r.user?.email || undefined,
         variants: {},
         isAssetReport: r.reportType === "Asset",
         isRealEstateReport: r.reportType === "RealEstate" || r.isRealEstateReport,
@@ -1630,14 +1347,15 @@ export default function AdminReports() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [debouncedUserEmail, setDebouncedUserEmail] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
-  const [pageSizeMode, setPageSizeMode] = useState<"20" | "50" | "100" | "all" | "custom">("20");
-  const [customPageSizeInput, setCustomPageSizeInput] = useState("150");
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 5 });
+  const [pageSizeMode, setPageSizeMode] = useState<"5" | "20" | "50" | "100" | "all" | "custom">("5");
+  const [customPageSizeInput] = useState("150");
   const [archiveMode, setArchiveMode] = useState<"active" | "archived">("active");
   const [sameContractOpen, setSameContractOpen] = useState(false);
   const [sameContractLoading, setSameContractLoading] = useState(false);
   const [sameContractError, setSameContractError] = useState<string | null>(null);
   const [sameContractNumber, setSameContractNumber] = useState("");
+  const [sameContractCurrentKey, setSameContractCurrentKey] = useState("");
   const [sameContractGroups, setSameContractGroups] = useState<ReportGroup[]>([]);
 
   // Data
@@ -1652,6 +1370,7 @@ export default function AdminReports() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<ReportPreviewPayload | null>(null);
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState("");
   const [previewSaving, setPreviewSaving] = useState(false);
   const [previewSaveError, setPreviewSaveError] = useState<string | null>(null);
   const [previewSaveSuccess, setPreviewSaveSuccess] = useState<string | null>(null);
@@ -1724,8 +1443,9 @@ export default function AdminReports() {
     setConfirmOpen(true);
   }
 
-  async function openPreview(id: string) {
+  async function openPreview(id: string, title = "") {
     setPreviewTargetId(id);
+    setPreviewTitle(title);
     setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError(null);
@@ -1949,7 +1669,7 @@ export default function AdminReports() {
       : 1;
   }, [data, pagination.pageSize]);
 
-  function applyPageSize(nextSize: number, nextMode: "20" | "50" | "100" | "all" | "custom") {
+  function applyPageSize(nextSize: number, nextMode: "5" | "20" | "50" | "100" | "all" | "custom") {
     const safeSize = Math.max(1, Math.floor(nextSize));
     setPageSizeMode(nextMode);
     setPagination((prev) => ({
@@ -1976,6 +1696,7 @@ export default function AdminReports() {
   async function openSameContractReports(group: ReportGroup) {
     if (!group.contract_no) return;
     setSameContractNumber(group.contract_no);
+    setSameContractCurrentKey(group.key);
     setSameContractGroups([]);
     setSameContractError(null);
     setSameContractOpen(true);
@@ -2033,7 +1754,7 @@ export default function AdminReports() {
                 "&:hover": { bgcolor: "#0369a1", boxShadow: "0 8px 18px rgba(2, 132, 199, 0.22)" },
               }}
               onClick={() => {
-                if (previewId) void openPreview(previewId);
+                if (previewId) void openPreview(previewId, group.title);
               }}
             >
               Data
@@ -2239,24 +1960,129 @@ export default function AdminReports() {
     );
   }
 
+  const desktopTileSx = {
+    minWidth: 0,
+    width: 68,
+    height: 48,
+    px: 0.5,
+    py: 0.5,
+    borderRadius: 0,
+    borderColor: "divider",
+    bgcolor: "background.paper",
+    color: "text.primary",
+    fontSize: "0.52rem",
+    fontWeight: 550,
+    lineHeight: 1.05,
+    flexDirection: "column",
+    gap: 0.35,
+    whiteSpace: "normal",
+    "&:hover": { borderColor: "#9b9da0", bgcolor: "action.hover" },
+    "& .MuiButton-startIcon": { m: 0 },
+    "& .MuiSvgIcon-root": { fontSize: "1rem" },
+  } as const;
+
+  function renderDesktopFiles(group: ReportGroup) {
+    const previewId = getPreviewTargetId(group);
+    return (
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Button variant="outlined" startIcon={<VisibilityRoundedIcon />} sx={desktopTileSx} onClick={() => previewId && void openPreview(previewId, group.title)}>
+          Data
+        </Button>
+        {buildFileLinks(group).map((file) => (
+          <Button
+            key={`${group.key}-${file.label}`}
+            variant="outlined"
+            disabled={!file.href}
+            startIcon={getFileActionIcon(file.label)}
+            sx={desktopTileSx}
+            {...(file.href
+              ? {
+                  href: file.href,
+                  ...(file.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" }),
+                }
+              : {})}
+          >
+            {file.label}
+          </Button>
+        ))}
+      </Stack>
+    );
+  }
+
+  function renderDesktopRowActions(group: ReportGroup) {
+    const desktopActionSx = {
+      minHeight: 36,
+      borderRadius: 0,
+      borderColor: "divider",
+      bgcolor: "background.paper",
+      color: "text.primary",
+      px: 1,
+      fontSize: "0.58rem",
+      fontWeight: 550,
+      whiteSpace: "nowrap",
+      "&:hover": { borderColor: "#9b9da0", bgcolor: "action.hover" },
+      "& .MuiButton-startIcon": { mr: 0.5 },
+      "& .MuiSvgIcon-root": { fontSize: "0.95rem" },
+    } as const;
+    return (
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        {group.contract_no ? (
+          <Button variant="outlined" startIcon={<TableRowsRoundedIcon />} sx={desktopActionSx} onClick={() => void openSameContractReports(group)}>
+            Same Contract
+          </Button>
+        ) : null}
+        {canUseCrDisclaimers(group) ? (
+          <Button variant="outlined" startIcon={<NoteAddRoundedIcon />} sx={desktopActionSx} disabled={actionBusyId === group.key} onClick={() => void openCrDisclaimers(group)}>
+            CR Notes
+          </Button>
+        ) : null}
+        {group.release_status === "pending_release" ? (
+          <Button variant="outlined" sx={{ ...desktopActionSx, color: "#087f5b" }} disabled={actionBusyId === group.key} onClick={() => void releaseReport(group.key)}>
+            Release
+          </Button>
+        ) : null}
+        <Button
+          variant="outlined"
+          startIcon={archiveMode === "archived" ? <RestoreRoundedIcon /> : <ArchiveRoundedIcon />}
+          sx={desktopActionSx}
+          disabled={actionBusyId === group.key}
+          onClick={() => void setReportArchived(group.key, archiveMode !== "archived")}
+        >
+          {archiveMode === "archived" ? "Restore" : "Archive"}
+        </Button>
+        <IconButton aria-label="Delete report" size="small" onClick={() => openDelete(group.key)} sx={{ width: 36, height: 36, border: "1px solid #efb6ba", borderRadius: 0, color: "#df111b" }}>
+          <DeleteOutlineRoundedIcon sx={{ fontSize: 17 }} />
+        </IconButton>
+      </Stack>
+    );
+  }
+
   const columns: ColumnDef<ReportGroup>[] = [
-      {
-        id: "title",
-        accessorKey: "title",
-        header: "Report",
-        cell: ({ row }) => (
-          <Stack direction="row" spacing={0.75} alignItems="flex-start" minWidth={0} sx={{ maxWidth: 260 }}>
-            <Stack spacing={0.25} minWidth={0}>
+    {
+      id: "title",
+      accessorKey: "title",
+      header: "Report",
+      cell: ({ row }) => (
+        <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
+          {row.original.thumbnailUrl ? (
+            <Box component="img" src={row.original.thumbnailUrl} alt="" sx={{ width: 70, height: 58, flexShrink: 0, objectFit: "cover", border: "1px solid", borderColor: "divider" }} />
+          ) : (
+            <Box sx={{ position: "relative", display: "grid", width: 70, height: 58, flexShrink: 0, placeItems: "center", overflow: "hidden", border: "1px solid", borderColor: "divider", bgcolor: "#ececed", color: "#111", fontSize: 22, fontWeight: 750 }}>
+              {String(row.original.contract_no || row.original.key).slice(-3)}
+              <Box sx={{ position: "absolute", inset: "auto 0 0", bgcolor: "#181918", color: "#fff", py: 0.2, textAlign: "center", fontSize: 8, fontWeight: 650 }}>
+                {row.original.lotNumberSummary?.split(",")[0] || "Report"}
+              </Box>
+            </Box>
+          )}
+          <Stack spacing={0.25} minWidth={0}>
             <Typography
               variant="body2"
               sx={{
-                fontWeight: 700,
+                fontWeight: 650,
                 lineHeight: 1.25,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
+                whiteSpace: "nowrap",
               }}
             >
               {row.original.title}
@@ -2264,48 +2090,71 @@ export default function AdminReports() {
             <Typography variant="caption" color="text.secondary" noWrap>
               Contract: {row.original.contract_no || "-"}
             </Typography>
-            </Stack>
+            <Typography variant="caption" color="text.secondary" noWrap>{row.original.lotNumberSummary || "No lot summary"}</Typography>
           </Stack>
-        ),
-      },
-      {
-        id: "fairMarketValue",
-        accessorFn: (row) => row.fairMarketValue || "",
-        header: "FMV",
-        cell: ({ row }) => (
-          <Chip size="small" color="success" label={formatFMV(row.original.fairMarketValue)} sx={{ height: 24, fontWeight: 700, maxWidth: 110 }} />
-        ),
-      },
-      {
-        id: "reportType",
-        accessorFn: (row) => getReportTypeLabel(row.reportType),
-        header: "Type",
-        cell: ({ row }) => (
-          <Chip size="small" variant="outlined" color="secondary" label={getReportTypeLabel(row.original.reportType)} sx={{ height: 24 }} />
-        ),
-      },
-      {
-        id: "createdAt",
-        accessorFn: (row) => new Date(row.createdAt).getTime(),
-        header: "Created",
-        cell: ({ row }) => (
-          <Stack spacing={0.25} minWidth={0} sx={{ maxWidth: 190 }}>
-            <Typography variant="body2" sx={{ lineHeight: 1.2 }}>
-              {new Date(row.original.createdAt).toLocaleDateString()}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {row.original.userEmail || "-"}
-            </Typography>
+        </Stack>
+      ),
+    },
+    {
+      id: "lotsFmv",
+      header: "Lots / FMV",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <Stack spacing={0.4}>
+          <Typography variant="body2" sx={{ fontSize: "0.72rem" }}>
+            Lot: {String(row.original.fairMarketValue || "").toLowerCase().includes("lot") ? String(row.original.fairMarketValue).match(/\d+/)?.[0] || "-" : row.original.lotNumberSummary ? row.original.lotNumberSummary.split(",").length : "-"}
+          </Typography>
+          <Typography variant="body2" sx={{ fontSize: "0.72rem" }}>
+            FMV: {String(row.original.fairMarketValue || "").toLowerCase().includes("lot") ? "-" : formatFMV(row.original.fairMarketValue)}
+          </Typography>
+        </Stack>
+      ),
+    },
+    {
+      id: "reportType",
+      accessorFn: (row) => getReportTypeLabel(row.reportType),
+      header: "Type",
+      cell: ({ row }) => <Typography variant="body2" sx={{ fontSize: "0.72rem" }}>{getReportTypeLabel(row.original.reportType)}</Typography>,
+    },
+    {
+      id: "createdAt",
+      accessorFn: (row) => new Date(row.createdAt).getTime(),
+      header: "Created",
+      cell: ({ row }) => (
+        <Stack spacing={0.2} minWidth={0}>
+          <Typography variant="body2" sx={{ fontSize: "0.72rem", lineHeight: 1.25 }}>{new Date(row.original.createdAt).toLocaleDateString()}</Typography>
+          <Typography variant="body2" sx={{ fontSize: "0.72rem", lineHeight: 1.25 }}>{new Date(row.original.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>by {row.original.userEmail || "-"}</Typography>
+        </Stack>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const released = row.original.release_status !== "pending_release";
+        return (
+          <Stack spacing={0.5} alignItems="center">
+            <Chip size="small" label={released ? "Released" : "Awaiting Release"} sx={{ height: 23, bgcolor: released ? "#e9f7f2" : "#fff4df", color: released ? "#087f5b" : "#a45a00", border: "1px solid", borderColor: released ? "#c5e9dd" : "#f2d6a5", fontSize: "0.62rem" }} />
+            {row.original.released_at ? <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.56rem" }}>{new Date(row.original.released_at).toLocaleString()}</Typography> : null}
           </Stack>
-        ),
+        );
       },
-      {
-        id: "actions",
-        enableSorting: false,
-        header: "Actions",
-        cell: ({ row }) => renderReportActions(row.original),
-      },
-    ];
+    },
+    {
+      id: "files",
+      header: "Files",
+      enableSorting: false,
+      cell: ({ row }) => renderDesktopFiles(row.original),
+    },
+    {
+      id: "actions",
+      enableSorting: false,
+      header: "Actions",
+      cell: ({ row }) => renderDesktopRowActions(row.original),
+    },
+  ];
 
   const table = useReactTable({
     data: groups,
@@ -2321,219 +2170,61 @@ export default function AdminReports() {
   });
 
   const rows = table.getRowModel().rows;
+  const currentPage = pagination.pageIndex + 1;
+  const pageValues = Array.from(new Set([1, currentPage - 1, currentPage, currentPage + 1, totalPages].filter((value) => value >= 1 && value <= totalPages))).sort((a, b) => a - b);
 
   return (
-    <div className="admin-page-shell">
-      <main className="w-full max-w-none mx-auto space-y-4">
-        {/* Hero Summary */}
-        <section className="admin-glass-surface rounded-xl p-4 md:p-5">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-xl md:text-2xl font-semibold text-gray-900">
-                {archiveMode === "archived" ? "Archived Reports" : "Approved Reports"}
-              </h1>
-              <p className="text-gray-600">
-                Search, download, refresh, and complete approved reports.
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="rounded-xl border border-rose-200 bg-white/70 px-4 py-2 shadow-sm">
-                <div className="text-xs text-gray-600">{archiveMode === "archived" ? "Archived" : "Approved"}</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  {data?.total ?? 0}
-                </div>
-              </div>
-              <div className="rounded-xl border border-rose-200 bg-white/70 px-4 py-2 shadow-sm hidden sm:block">
-                <div className="text-xs text-gray-600">Page</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  {pagination.pageIndex + 1}
-                </div>
-              </div>
-            </div>
+    <div className="admin-page-shell desktop-admin-page">
+      <main className="w-full max-w-none mx-auto space-y-3">
+        <header className="mb-5">
+          <div className="flex items-center gap-2">
+            <h1 className="desktop-page-title">{archiveMode === "archived" ? "Archived Reports" : "Approved Reports"}</h1>
+            <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-gray-300 bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">
+              {data?.total ?? 0}
+            </span>
           </div>
-        </section>
+          <p className="desktop-page-subtitle">{archiveMode === "archived" ? "Reports moved out of the active workspace." : "Reports that have been approved and released."}</p>
+        </header>
 
-        {/* Filters */}
-        <section className="admin-glass-surface rounded-xl p-4 md:p-5">
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }}>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Button
-                  variant={archiveMode === "active" ? "contained" : "outlined"}
-                  color="primary"
-                  onClick={() => {
-                    setArchiveMode("active");
-                    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                  }}
-                >
-                  Active
-                </Button>
-                <Button
-                  variant={archiveMode === "archived" ? "contained" : "outlined"}
-                  color="secondary"
-                  onClick={() => {
-                    setArchiveMode("archived");
-                    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                  }}
-                >
-                  Archived
-                </Button>
-              </Stack>
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Search"
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                }}
-                placeholder="Filename or address"
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Type</InputLabel>
-                <Select
-                  value={reportType}
-                  label="Type"
-                  onChange={(e) => {
-                    setReportType(e.target.value);
-                    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                  }}
-                >
-                  <MenuItem value="">All</MenuItem>
-                  <MenuItem value="RealEstate">Real Estate</MenuItem>
-                  <MenuItem value="Salvage">Salvage</MenuItem>
-                  <MenuItem value="Asset">Asset</MenuItem>
-                  <MenuItem value="LotListing">Lot Listing</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-              <TextField
-                fullWidth
-                size="small"
-                type="date"
-                label="From"
-                value={from}
-                onChange={(e) => {
-                  setFrom(e.target.value);
-                  setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                }}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-              <TextField
-                fullWidth
-                size="small"
-                type="date"
-                label="To"
-                value={to}
-                onChange={(e) => {
-                  setTo(e.target.value);
-                  setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                }}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Created By"
-                value={userEmail}
-                onChange={(e) => {
-                  setUserEmail(e.target.value);
-                  setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                }}
-                placeholder="user@example.com"
-              />
-            </Grid>
-          </Grid>
-          <Stack
-            direction={{ xs: "column", xl: "row" }}
-            spacing={1.5}
-            justifyContent="space-between"
-            alignItems={{ xs: "stretch", xl: "center" }}
-            sx={{ mt: 2 }}
-          >
-            <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-              <Button variant="contained" onClick={applyTextFiltersNow}>Apply</Button>
-              <Button variant="outlined" onClick={() => load()} disabled={loading}>
-                {loading ? "Refreshing..." : "Refresh"}
-              </Button>
-              <Button variant="outlined" color="secondary" onClick={onReset}>Reset</Button>
+        <section className="desktop-flat-panel p-3">
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 150px", xl: "minmax(260px,1fr) 130px 160px 12px 160px 175px 128px auto auto" }, gap: 1, alignItems: "center" }}>
+            <TextField
+              fullWidth
+              size="small"
+              value={q}
+              onChange={(event) => { setQ(event.target.value); setPagination((previous) => ({ ...previous, pageIndex: 0 })); }}
+              placeholder="Search reports..."
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment> }}
+            />
+            <FormControl fullWidth size="small">
+              <Select value={reportType} displayEmpty onChange={(event) => { setReportType(event.target.value); setPagination((previous) => ({ ...previous, pageIndex: 0 })); }}>
+                <MenuItem value="">All Types</MenuItem>
+                <MenuItem value="RealEstate">Real Estate</MenuItem>
+                <MenuItem value="Salvage">Salvage</MenuItem>
+                <MenuItem value="Asset">Asset</MenuItem>
+                <MenuItem value="LotListing">Lot Listing</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField fullWidth size="small" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPagination((previous) => ({ ...previous, pageIndex: 0 })); }} inputProps={{ "aria-label": "From date" }} />
+            <Typography sx={{ display: { xs: "none", xl: "block" }, color: "text.secondary", textAlign: "center", fontSize: 12 }}>-</Typography>
+            <TextField fullWidth size="small" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPagination((previous) => ({ ...previous, pageIndex: 0 })); }} inputProps={{ "aria-label": "To date" }} />
+            <TextField fullWidth size="small" value={userEmail} onChange={(event) => { setUserEmail(event.target.value); setPagination((previous) => ({ ...previous, pageIndex: 0 })); }} placeholder="All Creators" inputProps={{ "aria-label": "Created by" }} />
+            <Stack direction="row" sx={{ height: 40, border: "1px solid", borderColor: "divider", p: 0.25 }}>
+              <Button size="small" variant={archiveMode === "active" ? "contained" : "text"} onClick={() => { setArchiveMode("active"); setPagination((previous) => ({ ...previous, pageIndex: 0 })); }} sx={{ minWidth: 58, minHeight: 32 }}>Active</Button>
+              <Button size="small" variant={archiveMode === "archived" ? "contained" : "text"} onClick={() => { setArchiveMode("archived"); setPagination((previous) => ({ ...previous, pageIndex: 0 })); }} sx={{ minWidth: 62, minHeight: 32 }}>Archived</Button>
             </Stack>
-
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ xs: "stretch", sm: "center" }}>
-              <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 150 } }}>
-                <InputLabel>Rows</InputLabel>
-                <Select
-                  value={pageSizeMode}
-                  label="Rows"
-                  onChange={(e) => {
-                    const value = e.target.value as "20" | "50" | "100" | "all" | "custom";
-                    if (value === "20" || value === "50" || value === "100") {
-                      applyPageSize(Number(value), value);
-                      return;
-                    }
-                    if (value === "all") {
-                      applyPageSize(LARGE_PAGE_SIZE, "all");
-                      return;
-                    }
-                    setPageSizeMode("custom");
-                    commitCustomPageSize();
-                  }}
-                >
-                  <MenuItem value="20">20</MenuItem>
-                  <MenuItem value="50">50</MenuItem>
-                  <MenuItem value="100">100</MenuItem>
-                  <MenuItem value="all">500</MenuItem>
-                  <MenuItem value="custom">Custom</MenuItem>
-                </Select>
-              </FormControl>
-
-              {pageSizeMode === "custom" ? (
-                <TextField
-                  size="small"
-                  label="Custom rows"
-                  value={customPageSizeInput}
-                  onChange={(e) => setCustomPageSizeInput(e.target.value)}
-                  onBlur={commitCustomPageSize}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitCustomPageSize();
-                    }
-                  }}
-                  inputProps={{ inputMode: "numeric", min: 1 }}
-                  sx={{ width: { xs: "100%", sm: 132 } }}
-                />
-              ) : null}
-
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <Button variant="outlined" color="secondary" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-                  Prev
-                </Button>
-                <Typography variant="body2" sx={{ minWidth: 112, textAlign: "center" }}>
-                  Page {pagination.pageIndex + 1} of {table.getPageCount()}
-                </Typography>
-                <Button variant="outlined" color="secondary" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-                  Next
-                </Button>
-              </Stack>
+            <Button variant="contained" onClick={applyTextFiltersNow}>Apply</Button>
+            <Stack direction="row" spacing={0.5}>
+              <IconButton aria-label="Refresh reports" onClick={() => void load()} disabled={loading} sx={{ width: 40, height: 40, border: "1px solid", borderColor: "divider", borderRadius: "4px" }}><RefreshRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
+              <IconButton aria-label="Reset filters" onClick={onReset} sx={{ width: 40, height: 40, border: "1px solid", borderColor: "divider", borderRadius: "4px" }}><RestartAltRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
             </Stack>
-          </Stack>
+          </Box>
         </section>
 
         {/* List */}
-        <section className="admin-glass-surface rounded-xl p-3 md:p-4">
+        <section className="desktop-flat-panel overflow-hidden">
           {loading ? (
-            <Typography color="text.secondary">Loading...</Typography>
+            <Typography color="text.secondary" sx={{ p: 3 }}>Loading...</Typography>
           ) : error ? (
             <Alert severity="error">{error}</Alert>
           ) : (
@@ -2544,20 +2235,25 @@ export default function AdminReports() {
                 </Alert>
               ) : null}
               {/* Table on md+ */}
-              <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1 }}>
-                <Chip size="small" color="secondary" variant="outlined" label={`${rows.length} visible`} />
-              </Stack>
-              <TableContainer sx={{ display: { xs: "none", lg: "block" }, overflow: "visible" }}>
+              <TableContainer sx={{ display: { xs: "none", lg: "block" }, overflowX: "auto" }}>
                 <Table
+                  className="desktop-reports-table"
                   size="small"
                   sx={{
                     tableLayout: "fixed",
                     width: "100%",
+                    minWidth: 1480,
                     "& .MuiTableCell-root": {
-                      px: 0.75,
+                      px: 1.5,
                       py: 1,
-                      fontSize: "0.76rem",
+                      fontSize: "0.72rem",
                       verticalAlign: "middle",
+                    },
+                    "& .MuiTableHead-root .MuiTableCell-root": {
+                      height: 48,
+                      fontSize: "0.7rem",
+                      fontWeight: 650,
+                      bgcolor: "background.paper",
                     },
                   }}
                 >
@@ -2573,15 +2269,19 @@ export default function AdminReports() {
                               whiteSpace: "nowrap",
                               width:
                                 header.column.id === "title"
-                                  ? "18%"
-                                  : header.column.id === "fairMarketValue"
-                                  ? "7%"
+                                  ? "24%"
+                                  : header.column.id === "lotsFmv"
+                                  ? "8%"
                                   : header.column.id === "reportType"
-                                  ? "7%"
+                                  ? "8%"
                                   : header.column.id === "createdAt"
                                   ? "12%"
+                                  : header.column.id === "status"
+                                  ? "10%"
+                                  : header.column.id === "files"
+                                  ? "25%"
                                   : header.column.id === "actions"
-                                  ? "56%"
+                                  ? "23%"
                                   : "auto",
                             }}
                           >
@@ -2609,7 +2309,8 @@ export default function AdminReports() {
                           hover
                           sx={{
                             contentVisibility: "auto",
-                            containIntrinsicSize: "64px",
+                            containIntrinsicSize: "84px",
+                            height: 84,
                           }}
                         >
                           {row.getVisibleCells().map((cell) => (
@@ -2617,7 +2318,7 @@ export default function AdminReports() {
                               key={cell.id}
                               align="left"
                               sx={{
-                                overflow: cell.column.id === "actions" ? "visible" : "hidden",
+                                overflow: cell.column.id === "actions" || cell.column.id === "files" ? "visible" : "hidden",
                               }}
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -2637,7 +2338,7 @@ export default function AdminReports() {
               </TableContainer>
 
               {/* Cards on mobile */}
-              <Stack spacing={1.5} sx={{ display: { xs: "flex", lg: "none" } }}>
+              <Stack spacing={1.5} sx={{ display: { xs: "flex", lg: "none" }, p: 2 }}>
                 {rows.length ? (
                   rows.map((row) => {
                     const g = row.original;
@@ -2693,26 +2394,39 @@ export default function AdminReports() {
                 )}
               </Stack>
 
-              {/* Pagination */}
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} sx={{ mt: 3 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {data ? (
-                    <>
-                      Showing {rows.length} of {data.total} {archiveMode === "archived" ? "archived" : "approved"} reports
-                    </>
-                  ) : null}
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} sx={{ minHeight: 60, borderTop: "1px solid", borderColor: "divider", px: 2, py: 1.25 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.72rem" }}>
+                  Showing {data?.total ? pagination.pageIndex * pagination.pageSize + 1 : 0} to {Math.min((pagination.pageIndex + 1) * pagination.pageSize, data?.total || 0)} of {data?.total || 0} reports
                 </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Button variant="outlined" color="secondary" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-                    Prev
-                  </Button>
-                  <Typography variant="body2" sx={{ minWidth: 100, textAlign: "center" }}>
-                    Page {pagination.pageIndex + 1} of {table.getPageCount()}
-                  </Typography>
-                  <Button variant="outlined" color="secondary" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-                    Next
-                  </Button>
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <IconButton aria-label="Previous page" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} sx={{ width: 36, height: 36, border: "1px solid", borderColor: "divider", borderRadius: 0 }}><ChevronLeftRoundedIcon /></IconButton>
+                  {pageValues.map((value, index) => (
+                    <span key={value} className="contents">
+                      {index > 0 && value - pageValues[index - 1] > 1 ? <Typography sx={{ px: 0.5, fontSize: 12 }}>...</Typography> : null}
+                      <Button variant={value === currentPage ? "contained" : "outlined"} onClick={() => setPagination((previous) => ({ ...previous, pageIndex: value - 1 }))} sx={{ minWidth: 36, width: 36, minHeight: 36, borderRadius: 0, px: 0 }}>{value}</Button>
+                    </span>
+                  ))}
+                  <IconButton aria-label="Next page" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} sx={{ width: 36, height: 36, border: "1px solid", borderColor: "divider", borderRadius: 0 }}><ChevronRightRoundedIcon /></IconButton>
                 </Stack>
+                <FormControl size="small" sx={{ width: 122 }}>
+                  <Select
+                    value={pageSizeMode}
+                    onChange={(event) => {
+                      const value = event.target.value as "5" | "20" | "50" | "100" | "all" | "custom";
+                      if (value === "5" || value === "20" || value === "50" || value === "100") return applyPageSize(Number(value), value);
+                      if (value === "all") return applyPageSize(LARGE_PAGE_SIZE, "all");
+                      setPageSizeMode("custom");
+                      commitCustomPageSize();
+                    }}
+                  >
+                    <MenuItem value="5">5 per page</MenuItem>
+                    <MenuItem value="20">20 per page</MenuItem>
+                    <MenuItem value="50">50 per page</MenuItem>
+                    <MenuItem value="100">100 per page</MenuItem>
+                    <MenuItem value="all">500 per page</MenuItem>
+                    <MenuItem value="custom">Custom</MenuItem>
+                  </Select>
+                </FormControl>
               </Stack>
             </>
           )}
@@ -2720,83 +2434,106 @@ export default function AdminReports() {
       </main>
       <Dialog
         open={sameContractOpen}
-        onClose={() => setSameContractOpen(false)}
-        maxWidth="lg"
+        onClose={() => {
+          setSameContractOpen(false);
+          setSameContractCurrentKey("");
+        }}
         fullWidth
-        PaperProps={{ sx: { borderRadius: 2, maxHeight: "88vh" } }}
+        maxWidth={false}
+        slotProps={{ backdrop: { sx: { bgcolor: "rgba(0,0,0,0.10)", backdropFilter: "blur(2px)" } } }}
+        PaperProps={{
+          sx: {
+            width: { xs: "calc(100vw - 16px)", sm: "min(1280px, calc(100vw - 32px))" },
+            height: { xs: "90vh", sm: "82vh" },
+            maxHeight: { xs: "90vh", sm: "82vh" },
+            m: { xs: 1, sm: 2 },
+            borderRadius: "4px",
+            overflow: "hidden",
+            bgcolor: "#fff",
+            backgroundImage: "none",
+          },
+        }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle sx={{ position: "relative", flex: "0 0 auto", borderBottom: "1px solid #dedfe1", px: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 2.5 }, pb: { xs: 2, sm: 2.25 } }}>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                Reports for contract {sameContractNumber}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {sameContractGroups.length} report{sameContractGroups.length === 1 ? "" : "s"}. Each row has its own files and lot data.
-              </Typography>
+              <Typography component="h2" sx={{ color: "#17191d", fontSize: 16, fontWeight: 500, lineHeight: 1 }}>Same Contract Reports</Typography>
+              <Typography sx={{ mt: 1, color: "#737773", fontSize: 14, lineHeight: "20px" }}>Exact contract {sameContractNumber || "-"}. Every report and file remains independent.</Typography>
             </Box>
-            <IconButton aria-label="Close" onClick={() => setSameContractOpen(false)}>
-              <CloseRoundedIcon />
+            <IconButton
+              aria-label="Close same contract reports"
+              onClick={() => {
+                setSameContractOpen(false);
+                setSameContractCurrentKey("");
+              }}
+              sx={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, border: "1px solid #dedfe1", borderRadius: "3px", color: "#555955" }}
+            >
+              <CloseRoundedIcon sx={{ fontSize: 17 }} />
             </IconButton>
           </Stack>
         </DialogTitle>
-        <DialogContent dividers sx={{ p: { xs: 1, sm: 2 } }}>
-          {sameContractError ? <Alert severity="error" sx={{ mb: 2 }}>{sameContractError}</Alert> : null}
-          {sameContractLoading ? (
-            <Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>Loading contract reports...</Typography>
-          ) : sameContractGroups.length ? (
-            <TableContainer sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}>
-              <Table size="small" sx={{ minWidth: 840 }}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Report</TableCell>
-                    <TableCell>Lots</TableCell>
-                    <TableCell>Created By</TableCell>
-                    <TableCell>Created</TableCell>
-                    <TableCell>Files</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {sameContractGroups.map((report) => (
-                    <TableRow key={report.key} hover>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 800 }}>{report.title}</Typography>
-                        <Typography variant="caption" color="text.secondary">ID {report.key.slice(-8)}</Typography>
-                      </TableCell>
-                      <TableCell>{report.lotNumberSummary || "-"}</TableCell>
-                      <TableCell>{report.userEmail || "-"}</TableCell>
-                      <TableCell>{new Date(report.createdAt).toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                          {buildFileLinks(report).filter((file) => file.href).map((file) => (
-                            <Button
-                              key={`${report.key}-${file.label}`}
-                              size="small"
-                              variant="outlined"
-                              startIcon={getFileActionIcon(file.label)}
-                              href={file.href}
-                              {...(file.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" })}
-                              sx={{ ...actionButtonSx, height: 28, fontSize: "0.68rem" }}
-                            >
-                              {file.label}
-                            </Button>
-                          ))}
+        <DialogContent sx={{ minHeight: 0, flex: 1, overflow: "auto", bgcolor: "#fff", p: { xs: 1.5, sm: 2.5 }, "&&": { pt: { xs: 1.5, sm: 2.5 } } }}>
+          {sameContractError ? <Alert severity="error" sx={{ mb: 2, borderRadius: "3px" }}>{sameContractError}</Alert> : null}
+          {sameContractLoading ? <Box sx={{ display: "grid", height: "100%", minHeight: 220, placeItems: "center" }}><CircularProgress size={26} sx={{ color: "#df111b" }} /></Box> : null}
+          {!sameContractLoading && !sameContractError && !sameContractGroups.length ? (
+            <Box sx={{ display: "grid", height: 208, placeItems: "center", border: "1px solid #dedfe1", color: "#737773", textAlign: "center" }}>
+              <Box><TableRowsRoundedIcon sx={{ mb: 1, fontSize: 24 }} /><Typography sx={{ fontSize: 13 }}>No other reports use this exact contract.</Typography></Box>
+            </Box>
+          ) : null}
+          {!sameContractLoading && sameContractGroups.length ? (
+            <Stack spacing={1}>
+              {sameContractGroups.map((report) => {
+                const files = buildFileLinks(report).filter((file) => file.href);
+                return (
+                  <Box
+                    component="article"
+                    key={report.key}
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: { xs: "1fr", md: "minmax(280px, 1.2fr) 140px 180px minmax(280px, 1fr)" },
+                      alignItems: { md: "center" },
+                      gap: 2,
+                      border: "1px solid #dedfe1",
+                      p: 2,
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
+                      {report.thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={report.thumbnailUrl} alt="" loading="lazy" style={{ width: 56, height: 56, flex: "0 0 auto", border: "1px solid #dedfe1", objectFit: "cover" }} />
+                      ) : (
+                        <Box sx={{ display: "grid", width: 56, height: 56, flex: "0 0 auto", placeItems: "center", border: "1px solid #dedfe1", bgcolor: "#f4f5f5" }}><TableRowsRoundedIcon sx={{ fontSize: 21, color: "#737773" }} /></Box>
+                      )}
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+                          <Typography noWrap sx={{ minWidth: 0, color: "#17191d", fontSize: 14, fontWeight: 650 }}>{report.title}</Typography>
+                          {report.key === sameContractCurrentKey ? <Chip label="Current" size="small" sx={{ height: 21, borderRadius: "10px", bgcolor: "#eef0f1", color: "#4b4f4b", fontSize: 10, fontWeight: 650 }} /> : null}
                         </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>
-              No approved reports were found for this contract.
-            </Typography>
-          )}
+                        <Typography noWrap sx={{ mt: 0.5, color: "#737773", fontSize: 11 }}>{report.lotNumberSummary || "No lot summary"}</Typography>
+                      </Box>
+                    </Stack>
+                    <Box><Typography sx={{ color: "#737773", fontSize: 11 }}>Created</Typography><Typography sx={{ mt: 0.5, color: "#17191d", fontSize: 13 }}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(report.createdAt))}</Typography></Box>
+                    <Box sx={{ minWidth: 0 }}><Typography sx={{ color: "#737773", fontSize: 11 }}>Owner</Typography><Typography noWrap sx={{ mt: 0.5, color: "#17191d", fontSize: 13 }}>{report.userDisplayName || report.userEmail || "Unknown"}</Typography></Box>
+                    <Stack direction="row" justifyContent={{ md: "flex-end" }} spacing={0.75} useFlexGap flexWrap="wrap">
+                      {files.map((file) => (
+                        <Button
+                          key={`${report.key}-${file.label}`}
+                          size="small"
+                          variant="outlined"
+                          href={file.href}
+                          {...(file.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" })}
+                          sx={{ minWidth: "auto", minHeight: 28, borderRadius: "3px", borderColor: "#dedfe1", px: 1.25, color: "#17191d", fontSize: 11, fontWeight: 600, textTransform: "none", boxShadow: "none", "&:hover": { borderColor: "#b9bcbe", bgcolor: "#f7f8f8", boxShadow: "none" }, "&.Mui-focusVisible": { borderColor: "#df111b", boxShadow: "0 0 0 2px rgba(223,17,27,0.28)" } }}
+                        >
+                          {file.label}
+                        </Button>
+                      ))}
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Stack>
+          ) : null}
         </DialogContent>
-        <DialogActions sx={{ px: 2, py: 1.5 }}>
-          <Button onClick={() => setSameContractOpen(false)} variant="contained">Close</Button>
-        </DialogActions>
       </Dialog>
       <ConfirmModal
         open={confirmOpen}
@@ -2821,6 +2558,7 @@ export default function AdminReports() {
         loading={previewLoading}
         error={previewError}
         preview={previewData}
+        titleOverride={previewTitle}
         savingAssetSheet={previewSaving}
         assetSheetSaveError={previewSaveError}
         assetSheetSaveSuccess={previewSaveSuccess}
@@ -2831,6 +2569,7 @@ export default function AdminReports() {
           setPreviewError(null);
           setPreviewData(null);
           setPreviewTargetId(null);
+          setPreviewTitle("");
           setPreviewSaving(false);
           setPreviewSaveError(null);
           setPreviewSaveSuccess(null);

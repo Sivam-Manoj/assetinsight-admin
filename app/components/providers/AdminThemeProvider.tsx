@@ -21,19 +21,19 @@ const AdminThemeContext = React.createContext<AdminThemeContextValue | undefined
 
 function buildTheme(mode: PaletteMode) {
   const isDark = mode === "dark";
-  const primary = isDark ? "#7dd3fc" : "#2563eb";
-  const secondary = isDark ? "#c084fc" : "#7c3aed";
-  const backgroundDefault = isDark ? "#07111f" : "#eef4ff";
-  const backgroundPaper = isDark ? "#0f1b2d" : "#ffffff";
-  const textPrimary = isDark ? "#e6eefc" : "#132238";
-  const textSecondary = isDark ? "#93a9c8" : "#52637a";
+  const primary = isDark ? "#ef3340" : "#df111b";
+  const secondary = isDark ? "#d5d7da" : "#30343a";
+  const backgroundDefault = isDark ? "#151615" : "#ffffff";
+  const backgroundPaper = isDark ? "#1d1e1d" : "#ffffff";
+  const textPrimary = isDark ? "#f4f4f3" : "#17191d";
+  const textSecondary = isDark ? "#a8aaad" : "#62666c";
 
   return createTheme({
     palette: {
       mode,
       primary: { main: primary },
       secondary: { main: secondary },
-      success: { main: isDark ? "#34d399" : "#059669" },
+      success: { main: isDark ? "#40c997" : "#0a8f68" },
       warning: { main: isDark ? "#fbbf24" : "#d97706" },
       error: { main: isDark ? "#fb7185" : "#dc2626" },
       background: {
@@ -44,17 +44,17 @@ function buildTheme(mode: PaletteMode) {
         primary: textPrimary,
         secondary: textSecondary,
       },
-      divider: isDark ? "rgba(148, 163, 184, 0.18)" : "rgba(148, 163, 184, 0.24)",
+      divider: isDark ? "#343634" : "#dedfe1",
     },
     shape: {
-      borderRadius: 20,
+      borderRadius: 4,
     },
     typography: {
       fontFamily: "var(--font-geist-sans), Inter, Arial, sans-serif",
-      h1: { fontWeight: 800, letterSpacing: "-0.03em" },
-      h2: { fontWeight: 800, letterSpacing: "-0.025em" },
-      h3: { fontWeight: 700, letterSpacing: "-0.02em" },
-      button: { fontWeight: 700, textTransform: "none" },
+      h1: { fontWeight: 600, letterSpacing: "-0.025em" },
+      h2: { fontWeight: 600, letterSpacing: "-0.02em" },
+      h3: { fontWeight: 600, letterSpacing: "-0.018em" },
+      button: { fontWeight: 600, textTransform: "none", letterSpacing: "-0.01em" },
     },
     shadows: [
       "none",
@@ -94,9 +94,7 @@ function buildTheme(mode: PaletteMode) {
           },
           body: {
             minHeight: "100vh",
-            background: isDark
-              ? "radial-gradient(circle at top left, rgba(56,189,248,0.16), transparent 28%), radial-gradient(circle at top right, rgba(168,85,247,0.14), transparent 24%), linear-gradient(180deg, #07111f 0%, #081426 46%, #0c1930 100%)"
-              : "radial-gradient(circle at top left, rgba(37,99,235,0.12), transparent 26%), radial-gradient(circle at top right, rgba(168,85,247,0.10), transparent 20%), linear-gradient(180deg, #f7faff 0%, #eef4ff 52%, #e6eefc 100%)",
+            background: backgroundDefault,
             color: textPrimary,
           },
           a: {
@@ -108,41 +106,31 @@ function buildTheme(mode: PaletteMode) {
       MuiAppBar: {
         styleOverrides: {
           root: {
-            backgroundImage: isDark
-              ? "linear-gradient(135deg, rgba(15,23,42,0.90), rgba(13,27,45,0.76))"
-              : "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(241,245,255,0.84))",
-            boxShadow: isDark
-              ? "0 12px 30px rgba(2,6,23,0.34)"
-              : "0 10px 26px rgba(37,99,235,0.10)",
+            backgroundImage: "none",
+            boxShadow: "none",
           },
         },
       },
       MuiDrawer: {
         styleOverrides: {
           paper: {
-            backgroundImage: isDark
-              ? "linear-gradient(180deg, rgba(9,16,28,0.96), rgba(15,27,45,0.94))"
-              : "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(242,247,255,0.96))",
+            backgroundImage: "none",
           },
         },
       },
       MuiPaper: {
         styleOverrides: {
           root: {
-            backgroundImage: isDark
-              ? "linear-gradient(180deg, rgba(15,27,45,0.92), rgba(9,17,31,0.94))"
-              : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(246,249,255,0.96))",
-            border: `1px solid ${alpha(isDark ? "#93c5fd" : "#c7d2fe", isDark ? 0.10 : 0.28)}`,
-            boxShadow: isDark
-              ? "0 10px 26px rgba(2,6,23,0.30), inset 0 1px 0 rgba(255,255,255,0.03)"
-              : "0 8px 22px rgba(37,99,235,0.08), inset 0 1px 0 rgba(255,255,255,0.9)",
+            backgroundImage: "none",
+            border: `1px solid ${isDark ? "#343634" : "#dedfe1"}`,
+            boxShadow: "none",
           },
         },
       },
       MuiCard: {
         styleOverrides: {
           root: {
-            borderRadius: 24,
+            borderRadius: 4,
             transform: "translateZ(0)",
             transition: "border-color 160ms ease, background-color 160ms ease",
           },
@@ -154,17 +142,13 @@ function buildTheme(mode: PaletteMode) {
         },
         styleOverrides: {
           root: {
-            borderRadius: 16,
-            paddingInline: 18,
-            minHeight: 42,
+            borderRadius: 4,
+            paddingInline: 14,
+            minHeight: 36,
           },
           containedPrimary: {
-            backgroundImage: isDark
-              ? "linear-gradient(135deg, #38bdf8, #2563eb)"
-              : "linear-gradient(135deg, #2563eb, #7c3aed)",
-            boxShadow: isDark
-              ? "0 8px 18px rgba(37,99,235,0.24)"
-              : "0 8px 18px rgba(37,99,235,0.18)",
+            backgroundImage: "none",
+            boxShadow: "none",
           },
         },
       },
@@ -172,12 +156,32 @@ function buildTheme(mode: PaletteMode) {
         styleOverrides: {
           root: {
             borderRadius: 999,
+            fontWeight: 600,
           },
         },
       },
       MuiTextField: {
         defaultProps: {
           variant: "outlined",
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 4,
+            backgroundImage: "none",
+          },
+        },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            borderColor: isDark ? "#343634" : "#dedfe1",
+          },
+          head: {
+            fontWeight: 650,
+            color: textPrimary,
+          },
         },
       },
     },

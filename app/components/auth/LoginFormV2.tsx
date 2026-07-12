@@ -433,7 +433,7 @@ function LoginShell({
                   isDark ? "bg-white/6 ring-2 ring-white/85 ring-offset-4 ring-offset-slate-950" : "bg-white shadow-[0_20px_50px_rgba(15,23,42,0.10)]"
                 }`}
               >
-                <Image src="/logo.png" alt="Asset Insight logo" fill className="object-contain p-1" priority />
+                <Image src="/logo.png" alt="Asset Insight logo" fill sizes="128px" className="object-contain p-1" priority />
               </div>
               <div>
                 <p className={`text-[0.7rem] font-semibold uppercase tracking-[0.38em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
