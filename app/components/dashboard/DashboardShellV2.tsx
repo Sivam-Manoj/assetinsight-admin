@@ -82,6 +82,8 @@ type WeeklyCredits = {
   remainingCredits?: number;
   totalAvailableCredits?: number;
   rechargeAmount?: number;
+  autoRechargeTotal?: number;
+  autoRenewEnabled?: boolean;
   requestCount?: number;
   webSearchCount?: number;
   thresholdCredits?: number;
@@ -335,6 +337,11 @@ export default function DashboardShellV2() {
             <Typography sx={{ mt: 0.25, fontSize: 26, fontWeight: 650, lineHeight: 1 }}>{weeklyCreditsLoading && !weeklyCredits ? "..." : money(weeklyCredits?.remainingCredits)}</Typography>
             <Typography sx={{ mt: 1.5, color: "text.secondary", fontSize: 11 }}>{number(weeklyCredits?.requestCount)} requests</Typography>
             <Typography sx={{ color: "text.secondary", fontSize: 11 }}>{number(weeklyCredits?.webSearchCount)} web searches</Typography>
+            <Typography sx={{ color: "text.secondary", fontSize: 11 }}>
+              {weeklyCredits?.autoRenewEnabled === false
+                ? "Renewal off · 0 credits added"
+                : `${number(weeklyCredits?.autoRechargeTotal)} credits renewed this week`}
+            </Typography>
             <LinearProgress variant="determinate" value={creditPercent} sx={{ mt: 1.5, height: 5, bgcolor: "#ececed", "& .MuiLinearProgress-bar": { bgcolor: "#df111b" } }} />
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5 }}>
               <Chip size="small" label={weeklyCredits?.status === "synced" ? "Synced" : "Unavailable"} sx={{ height: 22, bgcolor: "#eef0f1", fontSize: 10 }} />
@@ -396,12 +403,20 @@ export default function DashboardShellV2() {
       <Dialog open={rechargesOpen} onClose={() => setRechargesOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Weekly recharge history</DialogTitle>
         <DialogContent dividers>
-          {weeklyCredits?.recharges?.length ? weeklyCredits.recharges.map((recharge, index) => (
-            <Stack key={recharge.id || `${recharge.createdAt}-${index}`} direction="row" justifyContent="space-between" sx={{ py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
-              <Box><Typography sx={{ fontSize: 13, fontWeight: 600 }}>Recharge {index + 1}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{new Date(recharge.createdAt).toLocaleString()}</Typography></Box>
-              <Box sx={{ textAlign: "right" }}><Typography sx={{ color: "success.main", fontSize: 13, fontWeight: 650 }}>+{money(recharge.amountCredits)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{money(recharge.balanceBefore)} → {money(recharge.balanceAfter)}</Typography></Box>
-            </Stack>
-          )) : <Typography sx={{ color: "text.secondary" }}>No automatic recharges have been added this week.</Typography>}
+          {weeklyCredits?.autoRenewEnabled === false ? (
+            <Typography sx={{ color: "text.secondary" }}>
+              Automatic renewal is off. No credits were added this week.
+            </Typography>
+          ) : weeklyCredits?.recharges?.length ? (
+            weeklyCredits.recharges.map((recharge, index) => (
+              <Stack key={recharge.id || `${recharge.createdAt}-${index}`} direction="row" justifyContent="space-between" sx={{ py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
+                <Box><Typography sx={{ fontSize: 13, fontWeight: 600 }}>Recharge {index + 1}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{new Date(recharge.createdAt).toLocaleString()}</Typography></Box>
+                <Box sx={{ textAlign: "right" }}><Typography sx={{ color: "success.main", fontSize: 13, fontWeight: 650 }}>+{money(recharge.amountCredits)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{money(recharge.balanceBefore)} → {money(recharge.balanceAfter)}</Typography></Box>
+              </Stack>
+            ))
+          ) : (
+            <Typography sx={{ color: "text.secondary" }}>No automatic recharges have been added this week.</Typography>
+          )}
         </DialogContent>
         <DialogActions><Button variant="contained" onClick={() => setRechargesOpen(false)}>Close</Button></DialogActions>
       </Dialog>
