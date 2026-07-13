@@ -14,7 +14,11 @@ function setAccessCookie(resp: NextResponse, token: string) {
 async function tryRefresh(request: NextRequest): Promise<string | null> {
   try {
     const url = new URL("/api/admin/refresh", request.url);
-    const res = await fetch(url, { method: "POST", cache: "no-store" });
+    const res = await fetch(url, {
+      method: "POST",
+      cache: "no-store",
+      headers: { cookie: request.headers.get("cookie") || "" },
+    });
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));
     return (data?.accessToken as string) || null;

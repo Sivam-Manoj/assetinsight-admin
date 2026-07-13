@@ -29,6 +29,7 @@ import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import AdminNavbarV2 from "@/app/components/common/AdminNavbarV2";
+import { SERVER_URL } from "@/lib/api";
 
 type ApkRelease = {
   id: string;
@@ -47,6 +48,28 @@ type ApkRelease = {
   uploadedBy?: { username?: string; email?: string } | null;
   createdAt?: string;
 };
+
+type ApkUploadGrant = {
+  token: string;
+  uploadUrl: string;
+};
+
+function resolveDirectUploadUrl(uploadUrl: string): string {
+  if (/^https?:\/\//i.test(uploadUrl)) return uploadUrl;
+  return `${SERVER_URL.replace(/\/+$/, "")}/${uploadUrl.replace(/^\/+/, "")}`;
+}
+
+function parseUploadResponse(value: string, fallback: string): any {
+  try {
+    return value ? JSON.parse(value) : {};
+  } catch {
+    const readable = value
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return { message: readable || fallback };
+  }
+}
 
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0 B";
@@ -108,11 +131,30 @@ export default function ApkManagerPage() {
     setUploadPhase("");
   }
 
-  function uploadApkWithProgress(formData: FormData): Promise<any> {
+  async function requestUploadGrant(): Promise<ApkUploadGrant> {
+    const response = await fetch("/api/admin/apk-releases/upload-token", {
+      method: "POST",
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.message || "Unable to authorize the APK upload");
+    }
+    if (!payload?.token || !payload?.uploadUrl) {
+      throw new Error("The server returned an invalid APK upload authorization");
+    }
+    return {
+      token: String(payload.token),
+      uploadUrl: resolveDirectUploadUrl(String(payload.uploadUrl)),
+    };
+  }
+
+  function uploadApkWithProgress(formData: FormData, grant: ApkUploadGrant): Promise<any> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/admin/apk-releases");
+      xhr.open("POST", grant.uploadUrl);
       xhr.responseType = "text";
+      xhr.setRequestHeader("x-apk-upload-token", grant.token);
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) {
@@ -125,12 +167,7 @@ export default function ApkManagerPage() {
       };
 
       xhr.onload = () => {
-        let payload: any = {};
-        try {
-          payload = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-        } catch {
-          payload = { message: xhr.responseText || "Failed to upload APK" };
-        }
+        const payload = parseUploadResponse(xhr.responseText, "Failed to upload APK");
 
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(payload);
@@ -139,7 +176,12 @@ export default function ApkManagerPage() {
         }
       };
 
-      xhr.onerror = () => reject(new Error("Network error while uploading APK"));
+      xhr.onerror = () =>
+        reject(
+          new Error(
+            "The APK upload connection was interrupted. Check the network and try again."
+          )
+        );
       xhr.onabort = () => reject(new Error("APK upload was cancelled"));
       xhr.send(formData);
     });
@@ -165,7 +207,10 @@ export default function ApkManagerPage() {
       formData.append("releaseNotes", releaseNotes.trim());
       formData.append("mandatory", mandatory ? "true" : "false");
 
-      await uploadApkWithProgress(formData);
+      setUploadPhase("Authorizing secure upload...");
+      const grant = await requestUploadGrant();
+      setUploadPhase("Uploading APK...");
+      await uploadApkWithProgress(formData, grant);
 
       setSuccess("APK uploaded and activated.");
       setVersionName("");
