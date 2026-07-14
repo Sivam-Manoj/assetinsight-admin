@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  ChartNoAxesCombined,
   CheckCircle2,
   FileCheck2,
   Grid2X2,
@@ -119,6 +120,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
 
     return [
       { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
+      { href: "/stats", label: "Stats", icon: ChartNoAxesCombined },
       { href: "/reports", label: "Approved Reports", icon: FileCheck2 },
       { href: "/users", label: "Users", icon: Users },
       ...(role === "superadmin" ? [{ href: "/admins", label: "Admins", icon: Shield }] : []),

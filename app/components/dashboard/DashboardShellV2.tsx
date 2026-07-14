@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  AlertTriangle,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
@@ -9,9 +10,9 @@ import {
   FileCheck2,
   Gavel,
   RefreshCcw,
-  Search,
   Settings2,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -37,6 +38,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Drawer,
   IconButton,
   LinearProgress,
   Stack,
@@ -62,10 +64,33 @@ type DashboardRecentReport = {
   status?: string;
   releaseStatus?: string;
 };
+type WorkflowStage =
+  | "preparing_preview"
+  | "preview_ready"
+  | "generating_files"
+  | "awaiting_approval"
+  | "awaiting_release"
+  | "ready"
+  | "error";
+type DashboardQueueItem = {
+  id: string;
+  reportType: string;
+  title: string;
+  contractNo?: string;
+  creator: string;
+  creatorEmail?: string;
+  lotCount: number;
+  thumbnailUrl?: string | null;
+  workflowStage: WorkflowStage;
+  workflowMessage: string;
+  elapsedMinutes: number;
+  error?: string | null;
+};
 type DesktopDashboard = {
   range: { from: string; to: string };
   kpis: {
     reports: DashboardMetric;
+    lots: DashboardMetric;
     lotListings: DashboardMetric;
     users: DashboardMetric;
     pending: number;
@@ -73,7 +98,18 @@ type DesktopDashboard = {
   };
   activity: Array<{ date: string; value: number }>;
   byType: Array<{ type: string; value: number }>;
-  queue: { pendingReview: number; inReview: number; readyForRelease: number; releasedToday: number };
+  queue: {
+    preparingPreview: number;
+    previewReady: number;
+    generatingFiles: number;
+    awaitingApproval: number;
+    awaitingRelease: number;
+    releasedToday: number;
+    items: DashboardQueueItem[];
+    pendingReview?: number;
+    inReview?: number;
+    readyForRelease?: number;
+  };
   recentReports: DashboardRecentReport[];
 };
 type WeeklyCredits = {
@@ -113,6 +149,16 @@ const ownerLabel = (owner: DashboardRecentReport["owner"]) => {
   if (!owner || typeof owner === "string") return owner || "-";
   return owner.username || owner.companyName || owner.email || "-";
 };
+const workflowLabels: Record<WorkflowStage, string> = {
+  preparing_preview: "Preparing previews",
+  preview_ready: "Preview ready",
+  generating_files: "Generating files",
+  awaiting_approval: "Awaiting approval",
+  awaiting_release: "Awaiting release",
+  ready: "Released today",
+  error: "Error",
+};
+const elapsed = (value: number) => value < 60 ? `${Math.max(0, Math.round(value))}m` : `${(value / 60).toFixed(1)}h`;
 
 function Delta({ value }: { value?: number }) {
   if (typeof value !== "number") return null;
@@ -133,6 +179,7 @@ export default function DashboardShellV2() {
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rechargesOpen, setRechargesOpen] = useState(false);
+  const [queueStage, setQueueStage] = useState<WorkflowStage | null>(null);
   const [weeklyCredits, setWeeklyCredits] = useState<WeeklyCredits | null>(null);
   const [weeklyCreditsLoading, setWeeklyCreditsLoading] = useState(true);
   const [specWebSearch, setSpecWebSearch] = useState<SettingState>(null);
@@ -228,16 +275,19 @@ export default function DashboardShellV2() {
 
   const kpis = [
     { label: "Reports", value: number(data?.kpis.reports.value), delta: data?.kpis.reports.percent, note: "vs previous period", icon: FileCheck2 },
-    { label: "Lot Listings", value: number(data?.kpis.lotListings.value), delta: data?.kpis.lotListings.percent, note: "vs previous period", icon: Gavel },
+    { label: "Lots", value: number(data?.kpis.lots?.value ?? data?.kpis.lotListings.value), delta: data?.kpis.lots?.percent ?? data?.kpis.lotListings.percent, note: "Asset and Lot Listing", icon: Gavel },
     { label: "Users", value: number(data?.kpis.users.value), note: "active directory", icon: Users },
     { label: "Pending / Released", value: `${number(data?.kpis.pending)} / ${number(data?.kpis.released)}`, note: "current workflow", icon: Clock3 },
   ];
-  const queueItems: Array<{ label: string; value: number; icon: LucideIcon }> = [
-    { label: "Pending Review", value: data?.queue.pendingReview || 0, icon: Clock3 },
-    { label: "In Review", value: data?.queue.inReview || 0, icon: Search },
-    { label: "Ready for Release", value: data?.queue.readyForRelease || 0, icon: CheckCircle2 },
-    { label: "Released Today", value: data?.queue.releasedToday || 0, icon: Activity },
+  const queueItems: Array<{ stage: WorkflowStage; label: string; value: number; icon: LucideIcon }> = [
+    { stage: "preparing_preview", label: "Preparing previews", value: data?.queue.preparingPreview || 0, icon: Clock3 },
+    { stage: "preview_ready", label: "Preview ready", value: data?.queue.previewReady || 0, icon: FileCheck2 },
+    { stage: "generating_files", label: "Generating files", value: data?.queue.generatingFiles || 0, icon: Activity },
+    { stage: "awaiting_approval", label: "Awaiting approval", value: data?.queue.awaitingApproval || 0, icon: CheckCircle2 },
+    { stage: "awaiting_release", label: "Awaiting release", value: data?.queue.awaitingRelease || 0, icon: Clock3 },
+    { stage: "ready", label: "Released today", value: data?.queue.releasedToday || 0, icon: CheckCircle2 },
   ];
+  const visibleQueueItems = (data?.queue.items || []).filter((item) => item.workflowStage === queueStage);
 
   return (
     <Box className="desktop-admin-page" sx={{ p: { xs: 2, lg: 3.5 } }}>
@@ -317,12 +367,22 @@ export default function DashboardShellV2() {
         <Stack spacing={1.5}>
           <Box className="desktop-flat-panel" sx={{ overflow: "hidden" }}>
             <Box sx={{ p: 2 }}><Typography sx={{ fontSize: 16, fontWeight: 600 }}>Processing / Release Queue</Typography></Box>
-            {queueItems.map(({ label, value, icon: Icon }) => (
-              <Button key={label} fullWidth onClick={() => router.push("/reports")} endIcon={<ChevronRight size={15} />} sx={{ minHeight: 44, justifyContent: "flex-start", borderTop: "1px solid", borderColor: "divider", borderRadius: 0, color: "text.primary", px: 2, fontSize: 12 }}>
-                <Icon size={15} style={{ marginRight: 10 }} /><span style={{ flex: 1, textAlign: "left" }}>{label}</span><strong>{number(value)}</strong>
-              </Button>
+            {queueItems.map(({ stage, label, value, icon: Icon }) => (
+              <Box key={stage} sx={{ display: "flex", minHeight: 44, borderTop: "1px solid", borderColor: "divider" }}>
+                <Button fullWidth onClick={() => setQueueStage(stage)} sx={{ justifyContent: "flex-start", borderRadius: 0, color: "text.primary", px: 2, fontSize: 12 }}>
+                  <Icon size={15} style={{ marginRight: 10 }} /><span style={{ flex: 1, textAlign: "left" }}>{label}</span>
+                </Button>
+                <Button
+                  aria-label={`Open ${label} in Stats`}
+                  onClick={() => router.push(`/stats?workflowStage=${stage}`)}
+                  endIcon={<ChevronRight size={14} />}
+                  sx={{ minWidth: 70, borderRadius: 0, color: "text.primary", fontSize: 12, fontWeight: 700 }}
+                >
+                  {number(value)}
+                </Button>
+              </Box>
             ))}
-            <Button fullWidth onClick={() => router.push("/reports")} sx={{ minHeight: 38, justifyContent: "flex-start", borderTop: "1px solid", borderColor: "divider", borderRadius: 0, color: "primary.main", fontSize: 12, px: 2 }}>View full queue</Button>
+            <Button fullWidth onClick={() => router.push("/stats")} sx={{ minHeight: 38, justifyContent: "flex-start", borderTop: "1px solid", borderColor: "divider", borderRadius: 0, color: "primary.main", fontSize: 12, px: 2 }}>View full queue</Button>
           </Box>
 
           <Box className="desktop-flat-panel" sx={{ p: 2 }}>
@@ -339,7 +399,7 @@ export default function DashboardShellV2() {
             <Typography sx={{ color: "text.secondary", fontSize: 11 }}>{number(weeklyCredits?.webSearchCount)} web searches</Typography>
             <Typography sx={{ color: "text.secondary", fontSize: 11 }}>
               {weeklyCredits?.autoRenewEnabled === false
-                ? "Renewal off · 0 credits added"
+                ? "Renewal off - 0 credits added"
                 : `${number(weeklyCredits?.autoRechargeTotal)} credits renewed this week`}
             </Typography>
             <LinearProgress variant="determinate" value={creditPercent} sx={{ mt: 1.5, height: 5, bgcolor: "#ececed", "& .MuiLinearProgress-bar": { bgcolor: "#df111b" } }} />
@@ -371,6 +431,48 @@ export default function DashboardShellV2() {
           </Box>
         </Box>
       </Box>
+
+      <Drawer
+        anchor="right"
+        open={Boolean(queueStage)}
+        onClose={() => setQueueStage(null)}
+        PaperProps={{ sx: { width: { xs: "100%", sm: 460 }, maxWidth: "100vw" } }}
+      >
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ px: 2.5, py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+          <Box>
+            <Typography sx={{ fontSize: 19, fontWeight: 700 }}>{queueStage ? workflowLabels[queueStage] : "Workflow queue"}</Typography>
+            <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Current reports, oldest elapsed work first.</Typography>
+          </Box>
+          <IconButton aria-label="Close workflow queue" onClick={() => setQueueStage(null)}><X size={18} /></IconButton>
+        </Stack>
+        <Box sx={{ flex: 1, overflowY: "auto" }}>
+          {visibleQueueItems.length ? visibleQueueItems
+            .slice()
+            .sort((left, right) => right.elapsedMinutes - left.elapsedMinutes)
+            .map((item) => (
+              <Box key={`${item.reportType}-${item.id}`} sx={{ display: "flex", gap: 1.5, p: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+                {item.thumbnailUrl ? (
+                  <Box component="img" src={item.thumbnailUrl} alt="" loading="lazy" sx={{ width: 66, height: 56, flexShrink: 0, objectFit: "cover", border: "1px solid", borderColor: "divider" }} />
+                ) : (
+                  <Box sx={{ display: "grid", width: 66, height: 56, flexShrink: 0, placeItems: "center", bgcolor: "action.hover", border: "1px solid", borderColor: "divider" }}><FileCheck2 size={19} /></Box>
+                )}
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack direction="row" justifyContent="space-between" gap={1}>
+                    <Typography noWrap sx={{ fontSize: 13, fontWeight: 700 }}>{item.title || item.contractNo || item.reportType}</Typography>
+                    <Typography sx={{ flexShrink: 0, color: "text.secondary", fontSize: 11 }}>{elapsed(item.elapsedMinutes)}</Typography>
+                  </Stack>
+                  <Typography noWrap sx={{ color: "text.secondary", fontSize: 11 }}>{item.creator}{item.creatorEmail ? ` - ${item.creatorEmail}` : ""}</Typography>
+                  <Typography sx={{ mt: 0.5, color: "text.secondary", fontSize: 11 }}>{item.contractNo || "No contract"} - {item.lotCount} lot{item.lotCount === 1 ? "" : "s"}</Typography>
+                  <Typography sx={{ mt: 0.5, fontSize: 11 }}>{item.workflowMessage}</Typography>
+                  {item.error ? <Alert severity="error" icon={<AlertTriangle size={15} />} sx={{ mt: 1, py: 0, fontSize: 11 }}>{item.error}</Alert> : null}
+                </Box>
+              </Box>
+            )) : <Typography sx={{ p: 3, color: "text.secondary", fontSize: 12 }}>No reports are currently in this stage.</Typography>}
+        </Box>
+        <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
+          <Button fullWidth variant="contained" onClick={() => router.push(queueStage ? `/stats?workflowStage=${queueStage}` : "/stats")}>Open filtered Stats</Button>
+        </Box>
+      </Drawer>
 
       <Dialog open={dateDialogOpen} onClose={() => setDateDialogOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Date range</DialogTitle>
@@ -411,7 +513,7 @@ export default function DashboardShellV2() {
             weeklyCredits.recharges.map((recharge, index) => (
               <Stack key={recharge.id || `${recharge.createdAt}-${index}`} direction="row" justifyContent="space-between" sx={{ py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
                 <Box><Typography sx={{ fontSize: 13, fontWeight: 600 }}>Recharge {index + 1}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{new Date(recharge.createdAt).toLocaleString()}</Typography></Box>
-                <Box sx={{ textAlign: "right" }}><Typography sx={{ color: "success.main", fontSize: 13, fontWeight: 650 }}>+{money(recharge.amountCredits)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{money(recharge.balanceBefore)} → {money(recharge.balanceAfter)}</Typography></Box>
+                <Box sx={{ textAlign: "right" }}><Typography sx={{ color: "success.main", fontSize: 13, fontWeight: 650 }}>+{money(recharge.amountCredits)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{money(recharge.balanceBefore)} to {money(recharge.balanceAfter)}</Typography></Box>
               </Stack>
             ))
           ) : (

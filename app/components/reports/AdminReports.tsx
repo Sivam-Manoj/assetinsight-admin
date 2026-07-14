@@ -1347,8 +1347,8 @@ export default function AdminReports() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [debouncedUserEmail, setDebouncedUserEmail] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 5 });
-  const [pageSizeMode, setPageSizeMode] = useState<"5" | "20" | "50" | "100" | "all" | "custom">("5");
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 50 });
+  const [pageSizeMode, setPageSizeMode] = useState<"5" | "20" | "50" | "100" | "all" | "custom">("50");
   const [customPageSizeInput] = useState("150");
   const [archiveMode, setArchiveMode] = useState<"active" | "archived">("active");
   const [sameContractOpen, setSameContractOpen] = useState(false);
