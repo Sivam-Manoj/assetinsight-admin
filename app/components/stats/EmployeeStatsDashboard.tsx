@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@mui/material";
 import {
   AlertTriangle,
+  ArrowLeft,
   BarChart3,
   Clock3,
   Download,
@@ -35,6 +37,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import DashboardTabs from "@/app/components/dashboard/DashboardTabs";
 import type { EmployeeDetailPayload, PerformancePayload, WorkflowStage } from "./types";
 import { STAGE_LABELS } from "./types";
 
@@ -258,9 +261,19 @@ export default function EmployeeStatsDashboard() {
   return (
     <Box className="desktop-admin-page" sx={{ p: { xs: 2, lg: 3 } }}>
       <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={2} sx={{ mb: 2 }}>
-        <Box><h1 className="desktop-page-title">Stats</h1><p className="desktop-page-subtitle">Employee throughput, report lifecycle timing, failures, and current workflow backlog.</p></Box>
+        <Box>
+          <Button component={Link} href="/dashboard" startIcon={<ArrowLeft size={16} />} sx={{ mb: 0.75, ml: -1, color: "text.secondary" }}>
+            Back to Dashboard
+          </Button>
+          <h1 className="desktop-page-title">Stats</h1>
+          <p className="desktop-page-subtitle">Employee throughput, report lifecycle timing, failures, and current workflow backlog.</p>
+        </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Button variant="outlined" startIcon={<Download size={16} />} disabled={!data} onClick={exportEmployees}>Employees CSV</Button><Button variant="outlined" startIcon={<Download size={16} />} disabled={!data} onClick={exportDaily}>Daily CSV</Button><Button variant="contained" startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <RefreshCcw size={16} />} onClick={() => void load()}>Refresh</Button></Stack>
       </Stack>
+
+      <Box sx={{ mb: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+        <DashboardTabs active="stats" />
+      </Box>
 
       <Box className="desktop-flat-panel" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0,1fr))", lg: "repeat(6, minmax(0,1fr))" }, gap: 1.25, p: 1.5, mb: 1.5 }}>
         <TextField size="small" type="date" label="From" value={from} onChange={(event) => setFrom(event.target.value)} InputLabelProps={{ shrink: true }} />

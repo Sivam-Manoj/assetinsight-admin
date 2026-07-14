@@ -28,6 +28,7 @@ import {
   Tooltip as ChartTooltip,
 } from "chart.js";
 import { Doughnut, Line } from "react-chartjs-2";
+import DashboardTabs from "@/app/components/dashboard/DashboardTabs";
 import {
   Alert,
   Box,
@@ -308,6 +309,10 @@ export default function DashboardShellV2() {
           </IconButton>
         </Stack>
       </Stack>
+
+      <Box sx={{ mb: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+        <DashboardTabs active="overview" />
+      </Box>
 
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
