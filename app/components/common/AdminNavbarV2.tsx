@@ -10,6 +10,7 @@ import {
   ListChecks,
   LogOut,
   Menu,
+  MonitorSmartphone,
   Search,
   Shield,
   Smartphone,
@@ -38,15 +39,16 @@ import {
   Typography,
 } from "@mui/material";
 import ThemeModeToggle from "@/app/components/common/ThemeModeToggle";
+import { ADMIN_MOBILE_TITLEBAR_HEIGHT } from "@/app/components/common/adminLayout.constants";
 
 const SIDEBAR_WIDTH = 208;
 const MOBILE_DRAWER_WIDTH = 280;
-const MOBILE_TITLEBAR_HEIGHT = 56;
 
 type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
+  badge?: number;
 };
 
 type AdminProfile = {
@@ -64,6 +66,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [deviceRequestCount, setDeviceRequestCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -113,6 +116,28 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
   const displayName = profile?.username || profile?.companyName || profile?.email || "Administrator";
   const homeHref = role === "superadmin" || role === "admin" ? "/dashboard" : "/reports";
 
+  useEffect(() => {
+    if (role !== "admin" && role !== "superadmin") return;
+    let active = true;
+    const loadCount = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const response = await fetch("/api/admin/devices/summary", { cache: "no-store" });
+        if (!response.ok || !active) return;
+        const body = await response.json().catch(() => ({}));
+        if (active) setDeviceRequestCount(Number(body?.summary?.requests || 0));
+      } catch {
+        // The Devices page will surface actionable API errors.
+      }
+    };
+    void loadCount();
+    const interval = window.setInterval(loadCount, 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [role]);
+
   const items = useMemo<NavItem[]>(() => {
     if (role === "user") return [{ href: "/reports", label: "Approved Reports", icon: FileCheck2 }];
     if (role !== "superadmin" && role !== "admin") return [];
@@ -121,6 +146,12 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
       { href: "/reports", label: "Approved Reports", icon: FileCheck2 },
       { href: "/users", label: "Users", icon: Users },
+      {
+        href: "/devices",
+        label: "Devices",
+        icon: MonitorSmartphone,
+        badge: deviceRequestCount,
+      },
       ...(role === "superadmin" ? [{ href: "/admins", label: "Admins", icon: Shield }] : []),
       { href: "/crm", label: "CRM", icon: Headphones },
       { href: "/spec-sheet", label: "CR Management", icon: ListChecks },
@@ -129,7 +160,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       { href: "/apk-manager", label: "APK Manager", icon: Smartphone },
       { href: "/api", label: "API", icon: KeyRound },
     ];
-  }, [role]);
+  }, [deviceRequestCount, role]);
 
   const filteredItems = useMemo(() => {
     const normalized = searchValue.trim().toLowerCase();
@@ -170,7 +201,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       </Box>
 
       <List component="nav" aria-label="Admin navigation" sx={{ flex: 1, overflow: "hidden", px: 1, py: 1 }}>
-        {items.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon, badge }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <ListItemButton
@@ -196,6 +227,26 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
                 <Icon size={19} strokeWidth={2} />
               </ListItemIcon>
               <ListItemText primary={label} primaryTypographyProps={{ fontSize: 13.5, fontWeight: active ? 650 : 500, noWrap: true }} />
+              {badge ? (
+                <Box
+                  component="span"
+                  aria-label={`${badge} device requests`}
+                  sx={{
+                    display: "inline-grid",
+                    minWidth: 20,
+                    height: 20,
+                    placeItems: "center",
+                    borderRadius: "10px",
+                    bgcolor: active ? "#fff" : "#df111b",
+                    color: active ? "#df111b" : "#fff",
+                    px: 0.65,
+                    fontSize: 10.5,
+                    fontWeight: 750,
+                  }}
+                >
+                  {badge > 99 ? "99+" : badge}
+                </Box>
+              ) : null}
             </ListItemButton>
           );
         })}
@@ -233,7 +284,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
           inset: "0 0 auto 0",
           zIndex: (currentTheme) => currentTheme.zIndex.drawer + 2,
           display: { xs: "flex", lg: "none" },
-          height: MOBILE_TITLEBAR_HEIGHT,
+          height: ADMIN_MOBILE_TITLEBAR_HEIGHT,
           alignItems: "center",
           borderBottom: "1px solid #454745",
           bgcolor: "#0c0d0c",
@@ -258,12 +309,12 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
         ModalProps={{ keepMounted: true }}
-        PaperProps={{ sx: { top: MOBILE_TITLEBAR_HEIGHT, width: MOBILE_DRAWER_WIDTH, height: `calc(100% - ${MOBILE_TITLEBAR_HEIGHT}px)`, border: 0 } }}
+        PaperProps={{ sx: { top: ADMIN_MOBILE_TITLEBAR_HEIGHT, width: MOBILE_DRAWER_WIDTH, height: `calc(100% - ${ADMIN_MOBILE_TITLEBAR_HEIGHT}px)`, border: 0 } }}
       >
         {sidebarContent(true)}
       </Drawer>
 
-      <Box component="main" sx={{ ml: { xs: 0, lg: `${SIDEBAR_WIDTH}px` }, pt: { xs: `${MOBILE_TITLEBAR_HEIGHT}px`, lg: 0 }, minWidth: 0, maxWidth: "100%", minHeight: "100vh", overflowX: "hidden" }}>
+      <Box component="main" sx={{ ml: { xs: 0, lg: `${SIDEBAR_WIDTH}px` }, pt: { xs: `${ADMIN_MOBILE_TITLEBAR_HEIGHT}px`, lg: 0 }, minWidth: 0, maxWidth: "100%", minHeight: "100vh", overflowX: "hidden" }}>
         {children}
       </Box>
 

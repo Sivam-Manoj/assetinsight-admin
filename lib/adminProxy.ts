@@ -32,7 +32,12 @@ export async function proxyJsonWithAdminAuth(
   targetPath: string,
   init: { method?: string; headers?: Record<string, string>; body?: BodyInit | undefined } = {}
 ) {
-  const token = request.cookies.get("cv_admin")?.value;
+  let token = request.cookies.get("cv_admin")?.value;
+  let refreshedInitially = false;
+  if (!token) {
+    token = (await tryRefresh(request)) || undefined;
+    refreshedInitially = Boolean(token);
+  }
   if (!token) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
 
   const headers: Record<string, string> = {
@@ -48,9 +53,15 @@ export async function proxyJsonWithAdminAuth(
   });
 
   if (res.status !== 401) {
-    if (res.status === 204) return new NextResponse(null, { status: 204 });
+    if (res.status === 204) {
+      const response = new NextResponse(null, { status: 204 });
+      if (refreshedInitially) setAccessCookie(response, token);
+      return response;
+    }
     const data = await res.json().catch(() => ({}));
-    return NextResponse.json(data, { status: res.status });
+    const response = NextResponse.json(data, { status: res.status });
+    if (refreshedInitially) setAccessCookie(response, token);
+    return response;
   }
 
   // Attempt refresh
@@ -82,7 +93,12 @@ export async function proxyStreamWithAdminAuth(
   request: NextRequest,
   targetPath: string
 ) {
-  const token = request.cookies.get("cv_admin")?.value;
+  let token = request.cookies.get("cv_admin")?.value;
+  let refreshedInitially = false;
+  if (!token) {
+    token = (await tryRefresh(request)) || undefined;
+    refreshedInitially = Boolean(token);
+  }
   if (!token) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
 
   const doFetch = (auth: string) =>
@@ -117,5 +133,7 @@ export async function proxyStreamWithAdminAuth(
   const cd = res.headers.get("content-disposition");
   headers.set("content-type", ct);
   if (cd) headers.set("content-disposition", cd);
-  return new NextResponse(buffer, { status: res.status, headers });
+  const response = new NextResponse(buffer, { status: res.status, headers });
+  if (refreshedInitially) setAccessCookie(response, token);
+  return response;
 }
