@@ -10,6 +10,7 @@ import {
   Network,
   RotateCcw,
   ShieldCheck,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -38,7 +39,7 @@ type Props = {
   detail: DeviceDetailResponse | null;
   onClose: () => void;
   onAction: (
-    action: "approve" | "approve_all" | "reject" | "revoke" | "restore" | "disable_all",
+    action: "approve" | "approve_all" | "reject" | "revoke" | "restore" | "disable_all" | "delete_device",
     device: DeviceRegistration
   ) => void;
   onIpAction: (ip: IpObservation, blocked: boolean) => void;
@@ -80,6 +81,23 @@ function dateTime(value?: string) {
       }).format(parsed);
 }
 
+function isInfrastructureIp(ip: string) {
+  return ip === "127.0.0.1" || ip === "::1" || ip === "unknown";
+}
+
+function platformLabel(device: DeviceRegistration, os: Record<string, unknown>) {
+  const rawName = text(os.name, "");
+  const invalidNativeName =
+    device.platform !== "web" &&
+    (!rawName || rawName.length > 30 || rawName.includes("/") || rawName.includes("release-keys"));
+  const name = invalidNativeName
+    ? device.platform === "android"
+      ? "Android"
+      : "iOS"
+    : rawName || device.platform;
+  return `${name} ${text(os.version, "")}`.trim();
+}
+
 function DetailSection({
   icon: Icon,
   title,
@@ -116,18 +134,40 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 function cameraSummary(metadata: Record<string, unknown>) {
   const camera = asRecord(metadata.camera);
+  const hardware = asRecord(metadata.hardwareProfile);
+  const hardwareCamera = asRecord(hardware.camera);
+  const specifiedLenses = Array.isArray(hardwareCamera.lenses) ? hardwareCamera.lenses : [];
   const devices = Array.isArray(camera.devices) ? camera.devices : [];
   const first = asRecord(devices[0]);
   const capability = asRecord(first.capabilities);
   const width = asRecord(capability.width);
   const height = asRecord(capability.height);
+  const photoResolution = asRecord(first.photoResolution);
   const maxResolution =
-    width.max && height.max ? `${text(width.max)} × ${text(height.max)}` : text(first.maxResolution);
+    text(first.maxPhotoResolution, "") ||
+    (photoResolution.width && photoResolution.height
+      ? `${text(photoResolution.width)} × ${text(photoResolution.height)}${first.maxPhotoMegapixels ? ` · ${text(first.maxPhotoMegapixels)} MP` : ""}`
+      : width.max && height.max
+        ? `${text(width.max)} × ${text(height.max)}`
+        : text(first.maxResolution));
+  const specifiedLensRecords = specifiedLenses.map(asRecord);
+  const primarySpecifiedLens =
+    specifiedLensRecords.find((lens) => lens.position === "back" && lens.lens === "Wide") ||
+    specifiedLensRecords[0];
+  const rearCount = specifiedLensRecords.filter((lens) => lens.position === "back").length;
+  const frontCount = specifiedLensRecords.filter((lens) => lens.position === "front").length;
   return {
     verification: text(camera.verification),
-    count: text(camera.count ?? devices.length, "0"),
-    lens: text(first.label || first.position || first.name),
-    resolution: maxResolution,
+    count: text(hardwareCamera.lensCount ?? camera.count ?? devices.length, "0"),
+    layout: specifiedLensRecords.length
+      ? `${rearCount} rear · ${frontCount} front`
+      : text(first.physicalLensCount, "Not reported"),
+    lens: primarySpecifiedLens
+      ? `${text(primarySpecifiedLens.lens)} · ${text(primarySpecifiedLens.megapixels)} MP`
+      : text(first.label || first.position || first.name),
+    resolution: hardwareCamera.rearMaximumMegapixels
+      ? `Rear up to ${text(hardwareCamera.rearMaximumMegapixels)} MP · ${text(hardwareCamera.aggregateMegapixels)} MP sensor total`
+      : maxResolution,
   };
 }
 
@@ -215,8 +255,9 @@ export default function DeviceDetailDrawer({
 
             <DetailSection icon={Laptop} title="Device identity">
               <DetailRow label="Installation type" value={device.platform === "web" ? "Web browser" : "Native app"} />
-              <DetailRow label="Platform" value={`${text(os.name, device.platform)} ${text(os.version, "")}`.trim()} />
-              <DetailRow label="Model" value={text(metadata.model || metadata.deviceModel || device.displayName)} />
+              <DetailRow label="Platform" value={platformLabel(device, os)} />
+              <DetailRow label="Model" value={text(metadata.marketingName || metadata.deviceModel || device.displayName)} />
+              {metadata.model ? <DetailRow label="Hardware code" value={text(metadata.model)} /> : null}
               <DetailRow
                 label="Browser / App"
                 value={
@@ -234,6 +275,7 @@ export default function DeviceDetailDrawer({
             <DetailSection icon={Camera} title="Camera">
               <DetailRow label="Verification" value={camera.verification.replaceAll("_", " ")} />
               <DetailRow label="Camera count" value={camera.count} />
+              <DetailRow label="Lens layout" value={camera.layout} />
               <DetailRow label="Primary lens" value={camera.lens} />
               <DetailRow label="Capability range" value={camera.resolution} />
             </DetailSection>
@@ -259,8 +301,9 @@ export default function DeviceDetailDrawer({
                           <Typography sx={{ color: "text.secondary", fontSize: 11.5 }}>
                             First seen {dateTime(ip.firstSeenAt)} · Last seen {dateTime(ip.lastSeenAt)} · {ip.count || 0} requests
                           </Typography>
+                          {isInfrastructureIp(ip.ip) ? <Typography sx={{ mt: 0.35, color: "warning.main", fontSize: 11.5, fontWeight: 650 }}>Legacy reverse-proxy address — not the user device IP</Typography> : null}
                         </Box>
-                        <Button
+                        {!isInfrastructureIp(ip.ip) ? <Button
                           size="small"
                           color={ip.blocked ? "success" : "error"}
                           variant="text"
@@ -268,7 +311,7 @@ export default function DeviceDetailDrawer({
                           onClick={() => onIpAction(ip, !ip.blocked)}
                         >
                           {ip.blocked ? "Unblock" : "Block"}
-                        </Button>
+                        </Button> : null}
                       </Stack>
                       {ip.blockReason ? <Typography sx={{ mt: 0.5, color: "text.secondary", fontSize: 11.5 }}>Reason: {ip.blockReason}</Typography> : null}
                     </Box>
@@ -301,24 +344,27 @@ export default function DeviceDetailDrawer({
 
         {device ? (
           <Box sx={{ position: "sticky", bottom: 0, zIndex: 2, flexShrink: 0, borderTop: "1px solid", borderColor: "divider", bgcolor: (theme) => alpha(theme.palette.background.paper, 0.97), p: 1.75, backdropFilter: "blur(8px)" }}>
-            {canDecide ? (
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                <Button fullWidth color="error" variant="outlined" startIcon={<Ban size={16} />} onClick={() => onAction("reject", device)}>Reject</Button>
-                <Button fullWidth color="secondary" variant="outlined" startIcon={<ShieldCheck size={16} />} onClick={() => onAction("approve_all", device)}>Approve all</Button>
-                <Button fullWidth variant="contained" startIcon={<Check size={16} />} onClick={() => onAction("approve", device)}>Approve device</Button>
-              </Stack>
-            ) : (
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                {device.status === "approved" ? (
-                  <Button fullWidth color="error" variant="outlined" startIcon={<Ban size={16} />} onClick={() => onAction("revoke", device)}>Revoke device</Button>
-                ) : (
-                  <Button fullWidth variant="contained" startIcon={<RotateCcw size={16} />} onClick={() => onAction("restore", device)}>Restore device</Button>
-                )}
-                {device.user.deviceApprovalMode === "all_devices" ? (
-                  <Button fullWidth color="secondary" variant="outlined" onClick={() => onAction("disable_all", device)}>Require per-device approval</Button>
-                ) : null}
-              </Stack>
-            )}
+            <Stack spacing={0.75}>
+              {canDecide ? (
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <Button fullWidth color="error" variant="outlined" startIcon={<Ban size={16} />} onClick={() => onAction("reject", device)}>Reject</Button>
+                  <Button fullWidth color="secondary" variant="outlined" startIcon={<ShieldCheck size={16} />} onClick={() => onAction("approve_all", device)}>Approve all</Button>
+                  <Button fullWidth variant="contained" startIcon={<Check size={16} />} onClick={() => onAction("approve", device)}>Approve device</Button>
+                </Stack>
+              ) : (
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  {device.status === "approved" ? (
+                    <Button fullWidth color="error" variant="outlined" startIcon={<Ban size={16} />} onClick={() => onAction("revoke", device)}>Revoke device</Button>
+                  ) : (
+                    <Button fullWidth variant="contained" startIcon={<RotateCcw size={16} />} onClick={() => onAction("restore", device)}>Restore device</Button>
+                  )}
+                  {device.user.deviceApprovalMode === "all_devices" ? (
+                    <Button fullWidth color="secondary" variant="outlined" onClick={() => onAction("disable_all", device)}>Require per-device approval</Button>
+                  ) : null}
+                </Stack>
+              )}
+              <Button fullWidth color="error" variant="text" startIcon={<Trash2 size={16} />} onClick={() => onAction("delete_device", device)}>Delete registration</Button>
+            </Stack>
           </Box>
         ) : null}
       </Box>

@@ -14,6 +14,7 @@ import {
   Settings,
   ShieldCheck,
   Smartphone,
+  Trash2,
 } from "lucide-react";
 import {
   Alert,
@@ -56,6 +57,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DeviceDetailDrawer from "./DeviceDetailDrawer";
+import ManualIpBlockDialog, { validIpAddress } from "./ManualIpBlockDialog";
 import type {
   DeviceDetailResponse,
   DeviceRegistration,
@@ -72,6 +74,7 @@ type ConfirmAction =
   | "reject"
   | "revoke"
   | "restore"
+  | "delete_device"
   | "disable_all"
   | "block_ip"
   | "unblock_ip";
@@ -161,22 +164,45 @@ function platformSummary(device: DeviceRegistration) {
     device.platform === "web"
       ? `${valueText(browser.name, "Web")} ${valueText(browser.version, "")}`.trim()
       : `${device.platform === "ios" ? "iOS app" : "Android app"} ${valueText(app.version, "")}`.trim();
-  return `${primary} · ${valueText(os.name, device.platform)} ${valueText(os.version, "")}`.trim();
+  const rawOsName = valueText(os.name, "");
+  const osName =
+    device.platform !== "web" &&
+    (!rawOsName || rawOsName.length > 30 || rawOsName.includes("/") || rawOsName.includes("release-keys"))
+      ? device.platform === "android"
+        ? "Android"
+        : "iOS"
+      : rawOsName || device.platform;
+  return `${primary} · ${osName} ${valueText(os.version, "")}`.trim();
 }
 
 function cameraStorageSummary(device: DeviceRegistration) {
   const metadata = record(device.metadata);
   const camera = record(metadata.camera);
+  const hardware = record(metadata.hardwareProfile);
+  const hardwareCamera = record(hardware.camera);
   const cameras = Array.isArray(camera.devices) ? camera.devices : [];
   const first = record(cameras[0]);
   const storage = record(metadata.storage || metadata.disk);
+  const cameraCount = valueText(hardwareCamera.lensCount ?? camera.count ?? cameras.length, "0");
+  const runtimeResolution = valueText(first.maxPhotoResolution || first.maxResolution, "");
   const cameraLine =
     camera.verification === "no_camera"
       ? "No camera detected"
-      : `${valueText(first.label || first.position, `${valueText(camera.count ?? cameras.length, "0")} camera(s)`)}${first.maxResolution ? ` · ${valueText(first.maxResolution)}` : ""}`;
+      : hardwareCamera.rearMaximumMegapixels
+        ? `${cameraCount} cameras · rear up to ${valueText(hardwareCamera.rearMaximumMegapixels)} MP`
+        : `${cameraCount} camera(s)${runtimeResolution ? ` · ${runtimeResolution}` : ""}`;
   const available = storage.availableBytes ?? storage.freeBytes;
   const storageLine = `${device.platform === "web" ? "Browser-origin quota" : "Device disk"} · ${formatBytes(available)} free`;
   return { cameraLine, storageLine };
+}
+
+function deviceIpSummary(device: DeviceRegistration) {
+  const usable = device.ips
+    .map((item) => item.ip)
+    .filter((ip) => ip && ip !== "127.0.0.1" && ip !== "::1" && ip !== "unknown");
+  if (usable.length) return usable.join(", ");
+  if (device.lastIp && !["127.0.0.1", "::1", "unknown"].includes(device.lastIp)) return device.lastIp;
+  return "Awaiting client IP";
 }
 
 function StatusChip({ status }: { status: DeviceStatus }) {
@@ -223,6 +249,9 @@ export default function AdminDevices() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [support, setSupport] = useState<SupportContact>({ name: "", email: "", phone: "" });
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [manualIpOpen, setManualIpOpen] = useState(false);
+  const [manualIpBusy, setManualIpBusy] = useState(false);
+  const [manualIp, setManualIp] = useState({ userEmail: "", ip: "", reason: "" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DeviceDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -342,8 +371,9 @@ export default function AdminDevices() {
 
   async function actionRequest(
     url: string,
-    options: { method?: "POST" | "PATCH"; body?: Record<string, unknown> },
-    successMessage: string
+    options: { method?: "POST" | "PATCH" | "DELETE"; body?: Record<string, unknown> },
+    successMessage: string,
+    refreshSelectedDetail = true
   ) {
     const response = await fetch(url, {
       method: options.method || "POST",
@@ -358,7 +388,8 @@ export default function AdminDevices() {
       throw new Error(String(body.message || "The device operation failed"));
     }
     setFeedback({ severity: "success", message: successMessage });
-    refresh();
+    setRefreshVersion((value) => value + 1);
+    if (refreshSelectedDetail && selectedId) void loadDetail(selectedId);
   }
 
   async function approveOne(device: DeviceRegistration) {
@@ -375,7 +406,7 @@ export default function AdminDevices() {
   }
 
   function requestDeviceAction(
-    action: "approve" | "approve_all" | "reject" | "revoke" | "restore" | "disable_all",
+    action: "approve" | "approve_all" | "reject" | "revoke" | "restore" | "disable_all" | "delete_device",
     device: DeviceRegistration
   ) {
     if (action === "approve") {
@@ -419,6 +450,12 @@ export default function AdminDevices() {
         await actionRequest(`/api/admin/device-ips/${ip.id || ip._id}/${action === "block_ip" ? "block" : "unblock"}`, {
           body: { reason: reason.trim() },
         }, `${ip.ip} ${action === "block_ip" ? "blocked" : "unblocked"} for this user.`);
+      } else if (action === "delete_device" && device) {
+        await actionRequest(`/api/admin/devices/${device.id}`, {
+          method: "DELETE",
+          body: { reason: reason.trim() },
+        }, `${device.displayName} was deleted. Its next sign-in will create a new device registration.`, false);
+        closeDetail();
       }
       setConfirmation(null);
       setReason("");
@@ -460,6 +497,38 @@ export default function AdminDevices() {
     }
   }
 
+  async function submitManualIpBlock() {
+    if (
+      !validSupportEmail(manualIp.userEmail) ||
+      !validIpAddress(manualIp.ip) ||
+      !manualIp.reason.trim()
+    ) return;
+    setManualIpBusy(true);
+    try {
+      const response = await fetch("/api/admin/device-ips/block", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userEmail: manualIp.userEmail.trim(),
+          ip: manualIp.ip.trim(),
+          reason: manualIp.reason.trim(),
+        }),
+      });
+      const body = await responseBody(response);
+      if (!response.ok) throw new Error(String(body.message || "Unable to block this IP address"));
+      setManualIpOpen(false);
+      setManualIp({ userEmail: "", ip: "", reason: "" });
+      setTab("blocked_ips");
+      setPage(1);
+      setFeedback({ severity: "success", message: "IP address blocked for this user." });
+      setRefreshVersion((value) => value + 1);
+    } catch (error) {
+      setFeedback({ severity: "error", message: (error as Error).message });
+    } finally {
+      setManualIpBusy(false);
+    }
+  }
+
   function openMenu(event: React.MouseEvent<HTMLElement>, device: DeviceRegistration) {
     event.stopPropagation();
     setMenuAnchor(event.currentTarget);
@@ -476,6 +545,7 @@ export default function AdminDevices() {
     reject: "Reject device",
     revoke: "Revoke device",
     restore: "Restore device",
+    delete_device: "Delete device registration",
     disable_all: "Require per-device approval",
     block_ip: "Block IP address",
     unblock_ip: "Unblock IP address",
@@ -486,6 +556,7 @@ export default function AdminDevices() {
     reject: "The user will see the rejection and can submit a new request. A reason is optional.",
     revoke: "Refresh tokens for this device are removed immediately and outstanding access is blocked.",
     restore: "The device is restored, but the user must authenticate again before access resumes.",
+    delete_device: "This permanently removes the registration, invalidates its sessions, and makes this installation register again at its next sign-in. If the user has the all-devices policy, the new registration will follow that policy.",
     disable_all: "Existing approved devices remain approved. Only future installations will require individual review.",
     block_ip: "This exact address is blocked only for this user. Other accounts on the same network are unaffected.",
     unblock_ip: "This user can access Asset Insight from the exact address again.",
@@ -521,7 +592,8 @@ export default function AdminDevices() {
           <Typography component="h1" sx={{ fontSize: { xs: 34, lg: 38 }, fontWeight: 650, letterSpacing: "-0.04em", lineHeight: 1.05 }}>Devices</Typography>
           <Typography sx={{ mt: 1.15, color: "text.secondary", fontSize: { xs: 14, sm: 15 } }}>Review device access requests, trusted devices, and blocked IPs.</Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+          <Button variant="contained" color="error" startIcon={<Ban size={16} />} onClick={() => setManualIpOpen(true)}>Block IP</Button>
           <Button variant="outlined" color="secondary" startIcon={<RefreshCw size={16} />} onClick={refresh} disabled={loading}>Refresh</Button>
           <Button sx={{ display: { xs: "none", sm: "inline-flex" } }} variant="outlined" color="secondary" startIcon={<Settings size={16} />} onClick={() => void openSettings()}>Security settings</Button>
         </Stack>
@@ -625,7 +697,7 @@ export default function AdminDevices() {
                     <TableCell><Typography sx={{ fontSize: 13, fontWeight: 650 }}>{userName(device)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11.5 }}>{device.user.email}</Typography></TableCell>
                     <TableCell><Typography sx={{ fontSize: 13, fontWeight: 600 }}>{device.displayName}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11.5 }}>{platformSummary(device)}</Typography></TableCell>
                     <TableCell><Typography sx={{ fontSize: 12 }}>{details.cameraLine}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11.5 }}>{details.storageLine}</Typography></TableCell>
-                    <TableCell sx={{ maxWidth: 190, fontFamily: "var(--font-geist-mono)", fontSize: 11.5 }}>{device.ips.map((item) => item.ip).join(", ") || device.lastIp || "Not recorded"}</TableCell>
+                    <TableCell sx={{ maxWidth: 190, fontFamily: "var(--font-geist-mono)", fontSize: 11.5 }}>{deviceIpSummary(device)}</TableCell>
                     <TableCell sx={{ fontSize: 12 }}>{formatRelative(device.requestedAt)}</TableCell>
                     <TableCell><StatusChip status={device.status} /></TableCell>
                     <TableCell align="right"><IconButton aria-label={`Actions for ${device.displayName}`} size="small" onClick={(event) => openMenu(event, device)}><MoreHorizontal size={18} /></IconButton></TableCell>
@@ -649,7 +721,7 @@ export default function AdminDevices() {
                   <Divider />
                   <Box sx={{ p: 2.25 }}>
                     <Stack direction="row" spacing={1.75}><DeviceGlyph device={device} /><Box sx={{ minWidth: 0 }}><Typography sx={{ fontSize: 16, fontWeight: 700 }}>{device.displayName}</Typography><Typography sx={{ mt: 0.3, color: "text.secondary", fontSize: 12.5 }}>{platformSummary(device)}</Typography><Typography sx={{ mt: 0.3, color: "text.secondary", fontSize: 12.5 }}>{details.cameraLine}</Typography><Typography sx={{ mt: 0.3, color: "text.secondary", fontSize: 12.5 }}>{details.storageLine}</Typography></Box></Stack>
-                    <Stack spacing={0.8} sx={{ mt: 2 }}><Stack direction="row" alignItems="center" spacing={1}><Globe2 size={16} /><Typography sx={{ color: "text.secondary", fontFamily: "var(--font-geist-mono)", fontSize: 12 }}>{device.ips.map((item) => item.ip).join(", ") || device.lastIp || "Not recorded"}</Typography></Stack><Stack direction="row" alignItems="center" spacing={1}><Clock3 size={16} /><Typography sx={{ color: "text.secondary", fontSize: 12 }}>{device.status === "rerequest_pending" ? "Requested again" : "Requested"} {formatRelative(device.requestedAt)}</Typography></Stack></Stack>
+                    <Stack spacing={0.8} sx={{ mt: 2 }}><Stack direction="row" alignItems="center" spacing={1}><Globe2 size={16} /><Typography sx={{ color: "text.secondary", fontFamily: "var(--font-geist-mono)", fontSize: 12 }}>{deviceIpSummary(device)}</Typography></Stack><Stack direction="row" alignItems="center" spacing={1}><Clock3 size={16} /><Typography sx={{ color: "text.secondary", fontSize: 12 }}>{device.status === "rerequest_pending" ? "Requested again" : "Requested"} {formatRelative(device.requestedAt)}</Typography></Stack></Stack>
                     {pending ? <Stack spacing={0.85} sx={{ mt: 2.25 }}><Button fullWidth variant="contained" startIcon={<Check size={16} />} onClick={() => void approveOne(device)}>Approve device</Button><Button fullWidth color="secondary" variant="outlined" startIcon={<ShieldCheck size={16} />} onClick={() => requestDeviceAction("approve_all", device)}>Approve all devices</Button><Button fullWidth color="error" variant="text" startIcon={<Ban size={16} />} onClick={() => requestDeviceAction("reject", device)}>Reject</Button></Stack> : <Stack direction="row" spacing={1} sx={{ mt: 2.25 }}>{device.status === "approved" ? <Button fullWidth color="error" variant="outlined" onClick={() => requestDeviceAction("revoke", device)}>Revoke</Button> : <Button fullWidth variant="outlined" onClick={() => requestDeviceAction("restore", device)}>Restore</Button>}</Stack>}
                     <Button fullWidth color="secondary" variant="text" sx={{ mt: 1 }} onClick={() => void loadDetail(device.id)}>View details</Button>
                   </Box>
@@ -677,6 +749,8 @@ export default function AdminDevices() {
         ] : null}
         {menuDevice?.status === "approved" ? <MenuItem sx={{ color: "error.main" }} onClick={() => { requestDeviceAction("revoke", menuDevice); closeMenu(); }}>Revoke</MenuItem> : null}
         {menuDevice && ["rejected", "revoked"].includes(menuDevice.status) ? <MenuItem onClick={() => { requestDeviceAction("restore", menuDevice); closeMenu(); }}>Restore</MenuItem> : null}
+        {menuDevice ? <Divider /> : null}
+        {menuDevice ? <MenuItem sx={{ color: "error.main" }} onClick={() => { requestDeviceAction("delete_device", menuDevice); closeMenu(); }}><Trash2 size={16} style={{ marginRight: 10 }} />Delete registration</MenuItem> : null}
       </Menu>
 
       <DeviceDetailDrawer open={Boolean(selectedId)} loading={detailLoading} detail={detail} onClose={closeDetail} onAction={requestDeviceAction} onIpAction={requestIpAction} />
@@ -685,9 +759,18 @@ export default function AdminDevices() {
         <Dialog open onClose={busy ? undefined : () => setConfirmation(null)} fullWidth maxWidth="xs">
           <DialogTitle>{actionLabel[confirmation.action]}</DialogTitle>
           <DialogContent><Typography sx={{ color: "text.secondary", fontSize: 13.5 }}>{actionCopy[confirmation.action]}</Typography><TextField autoFocus fullWidth multiline minRows={3} value={reason} onChange={(event) => setReason(event.target.value)} label={reasonRequired ? "Audit reason" : "Rejection reason (optional)"} placeholder={reasonRequired ? "Explain why this change is required" : "Optional note shown to the user"} sx={{ mt: 2.5 }} inputProps={{ maxLength: 1000 }} /></DialogContent>
-          <DialogActions><Button color="secondary" onClick={() => setConfirmation(null)} disabled={busy}>Cancel</Button><Button variant="contained" color={["reject", "revoke", "block_ip"].includes(confirmation.action) ? "error" : "primary"} onClick={() => void confirmAction()} disabled={busy || (reasonRequired && !reason.trim())}>{busy ? <CircularProgress size={18} color="inherit" /> : actionLabel[confirmation.action]}</Button></DialogActions>
+          <DialogActions><Button color="secondary" onClick={() => setConfirmation(null)} disabled={busy}>Cancel</Button><Button variant="contained" color={["reject", "revoke", "block_ip", "delete_device"].includes(confirmation.action) ? "error" : "primary"} onClick={() => void confirmAction()} disabled={busy || (reasonRequired && !reason.trim())}>{busy ? <CircularProgress size={18} color="inherit" /> : actionLabel[confirmation.action]}</Button></DialogActions>
         </Dialog>
       ) : null}
+
+      <ManualIpBlockDialog
+        open={manualIpOpen}
+        busy={manualIpBusy}
+        value={manualIp}
+        onChange={setManualIp}
+        onClose={() => setManualIpOpen(false)}
+        onSubmit={() => void submitManualIpBlock()}
+      />
 
       <Dialog open={settingsOpen} onClose={settingsBusy ? undefined : () => setSettingsOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Device security settings</DialogTitle><DialogContent><Alert severity="info" sx={{ mb: 2 }}>All three support fields must be valid before device approval enforcement can be enabled.</Alert><Stack spacing={2}><TextField autoFocus label="Support name" value={support.name} onChange={(event) => setSupport((current) => ({ ...current, name: event.target.value }))} inputProps={{ maxLength: 120 }} error={Boolean(support.name) && support.name.trim().length < 2} helperText={Boolean(support.name) && support.name.trim().length < 2 ? "Enter at least 2 characters" : " "} /><TextField type="email" label="Support email" value={support.email} onChange={(event) => setSupport((current) => ({ ...current, email: event.target.value }))} inputProps={{ maxLength: 200 }} error={Boolean(support.email) && !validSupportEmail(support.email)} helperText={Boolean(support.email) && !validSupportEmail(support.email) ? "Enter a valid email address" : " "} /><TextField type="tel" label="Support phone" value={support.phone} onChange={(event) => setSupport((current) => ({ ...current, phone: event.target.value }))} inputProps={{ maxLength: 30 }} error={Boolean(support.phone) && !validSupportPhone(support.phone)} helperText={Boolean(support.phone) && !validSupportPhone(support.phone) ? "Use 7–30 digits and phone punctuation" : " "} /></Stack></DialogContent><DialogActions><Button color="secondary" onClick={() => setSettingsOpen(false)} disabled={settingsBusy}>Cancel</Button><Button variant="contained" onClick={() => void saveSettings()} disabled={settingsBusy || support.name.trim().length < 2 || !validSupportEmail(support.email) || !validSupportPhone(support.phone)}>{settingsBusy ? <CircularProgress size={18} color="inherit" /> : "Save settings"}</Button></DialogActions>

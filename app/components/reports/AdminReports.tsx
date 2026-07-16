@@ -1,10 +1,7 @@
 "use client";
 
-import { memo, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { FileText as FileTextIcon, Pilcrow, Save as SaveIcon, Send } from "lucide-react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import TextAlign from "@tiptap/extension-text-align";
+import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   type ColumnDef,
   flexRender,
@@ -25,15 +22,11 @@ import {
   Card,
   CardContent,
   Chip,
-  Checkbox,
   CircularProgress,
   Dialog,
-  DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControl,
-  FormControlLabel,
   Grid,
   InputAdornment,
   IconButton,
@@ -57,31 +50,23 @@ import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CollectionsRoundedIcon from "@mui/icons-material/CollectionsRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
-import FormatAlignCenterRoundedIcon from "@mui/icons-material/FormatAlignCenterRounded";
-import FormatAlignJustifyRoundedIcon from "@mui/icons-material/FormatAlignJustifyRounded";
-import FormatAlignLeftRoundedIcon from "@mui/icons-material/FormatAlignLeftRounded";
-import FormatAlignRightRoundedIcon from "@mui/icons-material/FormatAlignRightRounded";
-import FormatBoldRoundedIcon from "@mui/icons-material/FormatBoldRounded";
-import FormatClearRoundedIcon from "@mui/icons-material/FormatClearRounded";
-import FormatItalicRoundedIcon from "@mui/icons-material/FormatItalicRounded";
-import FormatListBulletedRoundedIcon from "@mui/icons-material/FormatListBulletedRounded";
-import FormatListNumberedRoundedIcon from "@mui/icons-material/FormatListNumberedRounded";
-import FormatUnderlinedRoundedIcon from "@mui/icons-material/FormatUnderlinedRounded";
-import HorizontalRuleRoundedIcon from "@mui/icons-material/HorizontalRuleRounded";
 import NoteAddRoundedIcon from "@mui/icons-material/NoteAddRounded";
-import NotesRoundedIcon from "@mui/icons-material/NotesRounded";
-import OpenInFullRoundedIcon from "@mui/icons-material/OpenInFullRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
-import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
-import StrikethroughSRoundedIcon from "@mui/icons-material/StrikethroughSRounded";
 import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
 import TableRowsRoundedIcon from "@mui/icons-material/TableRowsRounded";
-import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+
+const ExcelConditionReportEditorDialog = dynamic(
+  () => import("@/app/components/reports/ExcelConditionReportEditorDialog"),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 type ReportItem = {
   _id: string;
@@ -147,1002 +132,6 @@ type ReportFileLink = {
   href?: string;
   download?: boolean;
 };
-
-type CrDisclaimerSettings = {
-  smallsOnsite: boolean;
-  smallsOffsite: boolean;
-  rollingStockOnsite: boolean;
-  rollingStockOffsite: boolean;
-  customText: string;
-  unreserved: boolean;
-  closingDate: string | null;
-  closingTime: string | null;
-  closingTimePeriod: "AM" | "PM" | null;
-  bidIncrement: 5 | 25 | 100 | 1000 | null;
-  openingBid: 5 | 25 | 100 | 1000 | null;
-};
-
-type CrDisclaimerFlagKey =
-  | "smallsOnsite"
-  | "smallsOffsite"
-  | "rollingStockOnsite"
-  | "rollingStockOffsite";
-
-type CrDisclaimerOption = {
-  key: CrDisclaimerFlagKey;
-  label: string;
-};
-
-type CrDisclaimerLot = {
-  lotKey: string;
-  lotNumber: string;
-  title: string;
-  imageUrls?: string[];
-  settings: CrDisclaimerSettings;
-  activeCount?: number;
-};
-
-type CrDisclaimersPayload = {
-  settings: CrDisclaimerSettings;
-  lots: CrDisclaimerLot[];
-};
-
-const emptyCrDisclaimers: CrDisclaimerSettings = {
-  smallsOnsite: false,
-  smallsOffsite: false,
-  rollingStockOnsite: false,
-  rollingStockOffsite: false,
-  customText: "",
-  unreserved: false,
-  closingDate: null,
-  closingTime: null,
-  closingTimePeriod: null,
-  bidIncrement: null,
-  openingBid: null,
-};
-
-const auctionBidOptions = [5, 25, 100, 1000] as const;
-
-const fallbackCrDisclaimerOptions: CrDisclaimerOption[] = [
-  { key: "smallsOnsite", label: "Smalls - Notice on Every Lot - Onsite" },
-  { key: "smallsOffsite", label: "Smalls - Notice on Every Lot - Offsite" },
-  { key: "rollingStockOnsite", label: "Rolling Stock - Damage Disclaimer - Onsite" },
-  { key: "rollingStockOffsite", label: "Rolling Stock - Damage Disclaimer - Offsite" },
-];
-
-const richNoteHelpText =
-  "Use the toolbar for bold, italic, lists, paragraphs, and rules. Saved output becomes clean CR HTML.";
-
-const richEditorExtensions = [
-  StarterKit.configure({
-    heading: { levels: [1, 2, 3] },
-    blockquote: false,
-    codeBlock: false,
-    bulletList: { keepMarks: true },
-    orderedList: { keepMarks: true },
-  }),
-  TextAlign.configure({
-    types: ["heading", "paragraph"],
-    alignments: ["left", "center", "right", "justify"],
-    defaultAlignment: "left",
-  }),
-];
-
-type RichCrNoteSurfaceProps = {
-  value: string;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-  minHeight?: number;
-  autoFocus?: boolean;
-  onExpand?: () => void;
-  desktopMode?: boolean;
-};
-
-function RichCrNoteSurface({
-  value,
-  disabled,
-  onChange,
-  minHeight = 120,
-  autoFocus,
-  onExpand,
-  desktopMode = false,
-}: RichCrNoteSurfaceProps) {
-  const [, setToolbarTick] = useState(0);
-  const editor = useEditor({
-    extensions: richEditorExtensions,
-    content: value || "",
-    editable: !disabled,
-    immediatelyRender: false,
-    onUpdate: ({ editor: activeEditor }) => {
-      onChange(activeEditor.isEmpty ? "" : activeEditor.getHTML());
-    },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    const refreshToolbar = () => setToolbarTick((tick) => tick + 1);
-    editor.on("selectionUpdate", refreshToolbar);
-    editor.on("transaction", refreshToolbar);
-    editor.on("update", refreshToolbar);
-    return () => {
-      editor.off("selectionUpdate", refreshToolbar);
-      editor.off("transaction", refreshToolbar);
-      editor.off("update", refreshToolbar);
-    };
-  }, [editor]);
-
-  useEffect(() => {
-    if (!editor) return;
-    editor.setEditable(!disabled);
-  }, [disabled, editor]);
-
-  useEffect(() => {
-    if (!editor || !autoFocus || disabled) return;
-    const timeout = window.setTimeout(() => editor.commands.focus("end"), 50);
-    return () => window.clearTimeout(timeout);
-  }, [autoFocus, disabled, editor]);
-
-  useEffect(() => {
-    if (!editor) return;
-    const nextValue = value || "";
-    if (nextValue !== editor.getHTML()) {
-      editor.commands.setContent(nextValue, { emitUpdate: false });
-    }
-  }, [editor, value]);
-
-  const run = (command: () => boolean) => {
-    if (!editor || disabled) return;
-    command();
-  };
-
-  const toolbarButton = (
-    buttonLabel: string,
-    icon: ReactNode,
-    active: boolean,
-    onClick: () => void,
-    forceDisabled = false
-  ) => (
-    <Tooltip key={buttonLabel} title={buttonLabel}>
-      <span>
-        <IconButton
-          size="small"
-          disabled={disabled || !editor || forceDisabled}
-          onClick={onClick}
-          aria-label={buttonLabel}
-          sx={{
-            width: 28,
-            height: 28,
-            borderRadius: "3px",
-            border: "1px solid",
-            borderColor: active ? "#df111b" : "transparent",
-            bgcolor: active ? "#df111b" : "transparent",
-            color: active ? "#fff" : "#3e423e",
-            boxShadow: "none",
-            "&:hover": {
-              borderColor: active ? "#c91019" : "transparent",
-              bgcolor: active ? "#c91019" : "#eceeed",
-            },
-            "& svg": { width: 16, height: 16, fontSize: 16 },
-            "&.Mui-disabled": {
-              bgcolor: "#f8fafc",
-              color: "#94a3b8",
-            },
-          }}
-        >
-          {icon}
-        </IconButton>
-      </span>
-    </Tooltip>
-  );
-
-  const blockValue = editor?.isActive("heading", { level: 1 })
-    ? "heading1"
-    : editor?.isActive("heading", { level: 2 })
-      ? "heading2"
-      : editor?.isActive("heading", { level: 3 })
-        ? "heading3"
-        : "paragraph";
-
-  const setBlockValue = (nextValue: string) => {
-    if (!editor || disabled) return;
-    const chain = editor.chain().focus();
-    if (nextValue === "heading1") chain.toggleHeading({ level: 1 }).run();
-    else if (nextValue === "heading2") chain.toggleHeading({ level: 2 }).run();
-    else if (nextValue === "heading3") chain.toggleHeading({ level: 3 }).run();
-    else chain.setParagraph().run();
-  };
-
-  return (
-    <Box
-      sx={{
-        border: "1px solid #dedfe1",
-        borderRadius: "3px",
-        bgcolor: disabled ? "#f7f8f8" : "#fff",
-        overflow: "hidden",
-        boxShadow: "none",
-      }}
-    >
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={0.5}
-        useFlexGap
-        flexWrap="wrap"
-        sx={{
-          p: 1,
-          borderBottom: "1px solid #dedfe1",
-          bgcolor: "#f7f8f8",
-        }}
-      >
-        {desktopMode ? (
-          <>
-            {toolbarButton("Bold", <FormatBoldRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bold")), () => run(() => editor!.chain().focus().toggleBold().run()))}
-            {toolbarButton("Italic", <FormatItalicRoundedIcon fontSize="small" />, Boolean(editor?.isActive("italic")), () => run(() => editor!.chain().focus().toggleItalic().run()))}
-            {toolbarButton("Underline", <FormatUnderlinedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("underline")), () => run(() => editor!.chain().focus().toggleUnderline().run()))}
-            {toolbarButton("Paragraph", <Pilcrow size={16} />, Boolean(editor?.isActive("paragraph")), () => run(() => editor!.chain().focus().setParagraph().run()))}
-            {toolbarButton("Bullet list", <FormatListBulletedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bulletList")), () => run(() => editor!.chain().focus().toggleBulletList().run()))}
-            {toolbarButton("Numbered list", <FormatListNumberedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("orderedList")), () => run(() => editor!.chain().focus().toggleOrderedList().run()))}
-            {toolbarButton("Horizontal rule", <HorizontalRuleRoundedIcon fontSize="small" />, false, () => run(() => editor!.chain().focus().setHorizontalRule().run()))}
-            {toolbarButton("Clear formatting", <FormatClearRoundedIcon fontSize="small" />, false, () => run(() => editor!.chain().focus().unsetAllMarks().clearNodes().run()))}
-          </>
-        ) : (
-          <>
-        <FormControl size="small" sx={{ minWidth: 142 }}>
-          <Select
-            value={blockValue}
-            disabled={disabled || !editor}
-            onChange={(event) => setBlockValue(String(event.target.value))}
-            sx={{
-              height: 34,
-              borderRadius: 1,
-              bgcolor: "#fff",
-              fontSize: "0.82rem",
-              fontWeight: 800,
-              "& .MuiSelect-select": { py: 0.75 },
-            }}
-          >
-            <MenuItem value="paragraph">Paragraph</MenuItem>
-            <MenuItem value="heading1">Title</MenuItem>
-            <MenuItem value="heading2">Heading</MenuItem>
-            <MenuItem value="heading3">Subheading</MenuItem>
-          </Select>
-        </FormControl>
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
-        {toolbarButton("Undo", <UndoRoundedIcon fontSize="small" />, false, () =>
-          run(() => editor!.chain().focus().undo().run()),
-          !editor?.can().undo()
-        )}
-        {toolbarButton("Redo", <RedoRoundedIcon fontSize="small" />, false, () =>
-          run(() => editor!.chain().focus().redo().run()),
-          !editor?.can().redo()
-        )}
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
-        {toolbarButton("Bold", <FormatBoldRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bold")), () =>
-          run(() => editor!.chain().focus().toggleBold().run())
-        )}
-        {toolbarButton(
-          "Italic",
-          <FormatItalicRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive("italic")),
-          () => run(() => editor!.chain().focus().toggleItalic().run())
-        )}
-        {toolbarButton(
-          "Underline",
-          <FormatUnderlinedRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive("underline")),
-          () => run(() => editor!.chain().focus().toggleUnderline().run())
-        )}
-        {toolbarButton(
-          "Strikethrough",
-          <StrikethroughSRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive("strike")),
-          () => run(() => editor!.chain().focus().toggleStrike().run())
-        )}
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
-        {toolbarButton(
-          "Bullet list",
-          <FormatListBulletedRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive("bulletList")),
-          () => run(() => editor!.chain().focus().toggleBulletList().run())
-        )}
-        {toolbarButton(
-          "Numbered list",
-          <FormatListNumberedRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive("orderedList")),
-          () => run(() => editor!.chain().focus().toggleOrderedList().run())
-        )}
-        {toolbarButton("Paragraph", <NotesRoundedIcon fontSize="small" />, Boolean(editor?.isActive("paragraph")), () =>
-          run(() => editor!.chain().focus().setParagraph().run())
-        )}
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
-        {toolbarButton(
-          "Align left",
-          <FormatAlignLeftRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive({ textAlign: "left" })),
-          () => run(() => editor!.chain().focus().setTextAlign("left").run())
-        )}
-        {toolbarButton(
-          "Align center",
-          <FormatAlignCenterRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive({ textAlign: "center" })),
-          () => run(() => editor!.chain().focus().setTextAlign("center").run())
-        )}
-        {toolbarButton(
-          "Align right",
-          <FormatAlignRightRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive({ textAlign: "right" })),
-          () => run(() => editor!.chain().focus().setTextAlign("right").run())
-        )}
-        {toolbarButton(
-          "Justify",
-          <FormatAlignJustifyRoundedIcon fontSize="small" />,
-          Boolean(editor?.isActive({ textAlign: "justify" })),
-          () => run(() => editor!.chain().focus().setTextAlign("justify").run())
-        )}
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.35, borderColor: "#cbd5e1" }} />
-        {toolbarButton("Horizontal rule", <HorizontalRuleRoundedIcon fontSize="small" />, false, () =>
-          run(() => editor!.chain().focus().setHorizontalRule().run())
-        )}
-        {toolbarButton("Clear formatting", <FormatClearRoundedIcon fontSize="small" />, false, () =>
-          run(() => editor!.chain().focus().unsetAllMarks().clearNodes().run())
-        )}
-        {onExpand ? (
-          <>
-            <Box sx={{ flex: 1, minWidth: 8 }} />
-            {toolbarButton("Open large editor", <OpenInFullRoundedIcon fontSize="small" />, false, onExpand)}
-          </>
-        ) : null}
-          </>
-        )}
-      </Stack>
-      <Box
-        sx={{
-          minHeight,
-          px: 1.35,
-          py: 1.1,
-          cursor: disabled ? "not-allowed" : "text",
-          "& .ProseMirror": {
-            minHeight: Math.max(80, minHeight - 28),
-            outline: "none",
-            color: "#0f172a",
-            fontSize: "0.95rem",
-            lineHeight: 1.55,
-            whiteSpace: "pre-wrap",
-          },
-          "& .ProseMirror p": { margin: "0.35rem 0" },
-          "& .ProseMirror h1": {
-            fontSize: "1.35rem",
-            lineHeight: 1.25,
-            margin: "0.55rem 0 0.35rem",
-            fontWeight: 950,
-          },
-          "& .ProseMirror h2": {
-            fontSize: "1.12rem",
-            lineHeight: 1.3,
-            margin: "0.5rem 0 0.3rem",
-            fontWeight: 900,
-          },
-          "& .ProseMirror h3": {
-            fontSize: "1rem",
-            lineHeight: 1.35,
-            margin: "0.45rem 0 0.25rem",
-            fontWeight: 850,
-          },
-          "& .ProseMirror ul": {
-            listStyleType: "disc",
-            paddingLeft: "1.6rem",
-            margin: "0.55rem 0",
-          },
-          "& .ProseMirror ol": {
-            listStyleType: "decimal",
-            paddingLeft: "1.6rem",
-            margin: "0.55rem 0",
-          },
-          "& .ProseMirror li": {
-            display: "list-item",
-            margin: "0.25rem 0",
-          },
-          "& .ProseMirror li p": { margin: 0 },
-          "& .ProseMirror hr": {
-            border: 0,
-            borderTop: "2px solid #cbd5e1",
-            margin: "0.9rem 0",
-          },
-        }}
-      >
-        <EditorContent editor={editor} />
-      </Box>
-    </Box>
-  );
-}
-
-function RichCrNoteEditor({
-  label,
-  value,
-  disabled,
-  onChange,
-  desktopMode = false,
-}: {
-  label: string;
-  value: string;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-  desktopMode?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [expandedValue, setExpandedValue] = useState(value || "");
-
-  const openExpanded = () => {
-    setExpandedValue(value || "");
-    setExpanded(true);
-  };
-
-  const saveExpanded = () => {
-    onChange(expandedValue);
-    setExpanded(false);
-  };
-
-  return (
-    <Stack spacing={desktopMode ? 1 : 0.75}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-        <Typography variant="caption" sx={desktopMode ? { color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" } : { color: "#17191d", fontWeight: 650 }}>
-          {label}
-        </Typography>
-        {!desktopMode ? <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 700 }}>CR HTML editor</Typography> : null}
-      </Stack>
-      <RichCrNoteSurface
-        value={value}
-        disabled={disabled}
-        onChange={onChange}
-        minHeight={desktopMode ? 280 : 124}
-        onExpand={desktopMode ? undefined : openExpanded}
-        desktopMode={desktopMode}
-      />
-      {!desktopMode ? <Typography variant="caption" color="text.secondary">{richNoteHelpText}</Typography> : null}
-
-      <Dialog
-        open={expanded}
-        onClose={() => setExpanded(false)}
-        fullWidth
-        maxWidth="lg"
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            width: "min(1240px, calc(100vw - 28px))",
-            maxHeight: "calc(100vh - 28px)",
-          },
-        }}
-      >
-        <DialogTitle sx={{ pb: 1.25 }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 950, letterSpacing: 0 }}>
-                {label}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Edit the CR note with Word-style formatting.
-              </Typography>
-            </Box>
-            <IconButton onClick={() => setExpanded(false)} aria-label="Close editor" sx={{ border: "1px solid #e2e8f0" }}>
-              <CloseRoundedIcon />
-            </IconButton>
-          </Stack>
-        </DialogTitle>
-        <DialogContent dividers sx={{ bgcolor: "#f8fafc", p: 2 }}>
-          <RichCrNoteSurface
-            value={expandedValue}
-            disabled={disabled}
-            onChange={setExpandedValue}
-            minHeight={520}
-            autoFocus
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 2, py: 1.5 }}>
-          <Button onClick={() => setExpanded(false)} variant="outlined" sx={{ borderRadius: 1.25 }}>
-            Cancel
-          </Button>
-          <Button onClick={saveExpanded} variant="contained" disabled={disabled} sx={{ borderRadius: 1.25, px: 2.5 }}>
-            Save note
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Stack>
-  );
-}
-type CrDisclaimersDialogProps = {
-  open: boolean;
-  loading: boolean;
-  saving: boolean;
-  error: string | null;
-  filesBusy: boolean;
-  initialSettings: CrDisclaimerSettings;
-  initialLots: CrDisclaimerLot[];
-  options: CrDisclaimerOption[];
-  onClose: () => void;
-  onSave: (payload: CrDisclaimersPayload) => Promise<void>;
-  onResubmit: (payload: CrDisclaimersPayload) => Promise<void>;
-};
-
-function normalizeDialogLot(lot: CrDisclaimerLot, fallbackSettings: CrDisclaimerSettings): CrDisclaimerLot {
-  return {
-    ...lot,
-    settings: { ...emptyCrDisclaimers, ...fallbackSettings, ...(lot.settings || {}) },
-  };
-}
-
-function getCrSettingsActiveCount(settings: CrDisclaimerSettings) {
-  return Number(Boolean(settings.smallsOnsite)) +
-    Number(Boolean(settings.smallsOffsite)) +
-    Number(Boolean(settings.rollingStockOnsite)) +
-    Number(Boolean(settings.rollingStockOffsite)) +
-    Number(Boolean(settings.customText?.trim())) +
-    Number(Boolean(settings.unreserved)) +
-    Number(Boolean(settings.closingDate || settings.closingTime)) +
-    Number(Boolean(settings.bidIncrement)) +
-    Number(Boolean(settings.openingBid));
-}
-
-function parseAuctionBidValue(value: unknown): CrDisclaimerSettings["bidIncrement"] {
-  const numeric = Number(String(value ?? "").replace(/[$,\s]/g, ""));
-  return auctionBidOptions.includes(numeric as (typeof auctionBidOptions)[number])
-    ? (numeric as CrDisclaimerSettings["bidIncrement"])
-    : null;
-}
-
-function splitClosingTime(value: string | null) {
-  const match = String(value || "").trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/);
-  if (!match) return { hour: "", minute: "00" };
-  const hour = Number(match[1]);
-  const minute = Number(match[2] ?? 0);
-  if (!Number.isInteger(hour) || hour < 1 || hour > 12 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
-    return { hour: "", minute: "00" };
-  }
-  return { hour: String(hour), minute: String(minute).padStart(2, "0") };
-}
-
-function closingDateTimeValue(settings: CrDisclaimerSettings) {
-  if (!settings.closingDate) return "";
-  const { hour, minute } = splitClosingTime(settings.closingTime);
-  if (!hour) return settings.closingDate;
-  let hour24 = Number(hour) % 12;
-  if (settings.closingTimePeriod === "PM") hour24 += 12;
-  return `${settings.closingDate}T${String(hour24).padStart(2, "0")}:${minute}`;
-}
-
-function parseClosingDateTime(value: string): Partial<CrDisclaimerSettings> {
-  if (!value) return { closingDate: null, closingTime: null, closingTimePeriod: null };
-  const [date, time = ""] = value.split("T");
-  const [hourText = "0", minute = "00"] = time.split(":");
-  const hour24 = Number(hourText);
-  const period: "AM" | "PM" = hour24 >= 12 ? "PM" : "AM";
-  const hour12 = hour24 % 12 || 12;
-  return { closingDate: date || null, closingTime: time ? `${hour12}:${minute}` : null, closingTimePeriod: time ? period : null };
-}
-
-function ClosingDateTimePicker({
-  settings,
-  disabled,
-  onChange,
-}: {
-  settings: CrDisclaimerSettings;
-  disabled?: boolean;
-  onChange: (patch: Partial<CrDisclaimerSettings>) => void;
-}) {
-  return (
-    <Stack spacing={0.75}>
-      <Typography sx={{ color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" }}>Closing date &amp; time</Typography>
-      <TextField
-        fullWidth
-        size="small"
-        type="datetime-local"
-        value={closingDateTimeValue(settings)}
-        disabled={disabled}
-        onChange={(event) => onChange(parseClosingDateTime(event.target.value))}
-        inputProps={{ step: 60, "aria-label": "Closing date & time" }}
-        sx={{ "& .MuiInputBase-root": { height: 32, borderRadius: "3px", bgcolor: "#fff", fontSize: 13 } }}
-      />
-    </Stack>
-  );
-}
-
-function CrAuctionControls({
-  settings,
-  disabled,
-  onChange,
-}: {
-  settings: CrDisclaimerSettings;
-  disabled?: boolean;
-  onChange: (patch: Partial<CrDisclaimerSettings>) => void;
-}) {
-  return (
-    <Stack spacing={2.5}>
-      <FormControlLabel
-        sx={{ m: 0, minHeight: 42, width: "100%", border: "1px solid #dedfe1", borderRadius: "3px", px: 1.5, py: 1.5, bgcolor: "#fff", "& .MuiCheckbox-root": { width: 16, height: 16, p: 0, mr: 1 }, "& .MuiSvgIcon-root": { fontSize: 18 }, "& .MuiFormControlLabel-label": { color: "#17191d", fontSize: 13, fontWeight: 600, lineHeight: "16px", textTransform: "uppercase" } }}
-        control={<Checkbox size="small" disabled={disabled} checked={Boolean(settings.unreserved)} onChange={(event) => onChange({ unreserved: event.target.checked })} />}
-        label="Unreserved"
-      />
-      <ClosingDateTimePicker settings={settings} disabled={disabled} onChange={onChange} />
-      <Grid container spacing={1.5}>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Stack spacing={0.75} alignItems="flex-start">
-            <Typography sx={{ color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" }}>Bid increment</Typography>
-            <FormControl size="small">
-              <Select
-                displayEmpty
-                value={settings.bidIncrement ?? ""}
-                disabled={disabled}
-                onChange={(event) => onChange({ bidIncrement: parseAuctionBidValue(event.target.value) })}
-                renderValue={(value) => value ? `$${Number(value).toLocaleString()}` : "Blank"}
-                sx={{ minWidth: 78, height: 32, borderRadius: "3px", bgcolor: "#fff", fontSize: 13, "& .MuiSelect-select": { py: 0.75, pl: 1.25 } }}
-              >
-                <MenuItem value="">Blank</MenuItem>
-                {auctionBidOptions.map((value) => <MenuItem key={`bid-${value}`} value={value}>${value.toLocaleString()}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Stack>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Stack spacing={0.75} alignItems="flex-start">
-            <Typography sx={{ color: "#17191d", fontSize: 14, fontWeight: 500, lineHeight: "14px" }}>Opening bid</Typography>
-            <FormControl size="small">
-              <Select
-                displayEmpty
-                value={settings.openingBid ?? ""}
-                disabled={disabled}
-                onChange={(event) => onChange({ openingBid: parseAuctionBidValue(event.target.value) })}
-                renderValue={(value) => value ? `$${Number(value).toLocaleString()}` : "Blank"}
-                sx={{ minWidth: 78, height: 32, borderRadius: "3px", bgcolor: "#fff", fontSize: 13, "& .MuiSelect-select": { py: 0.75, pl: 1.25 } }}
-              >
-                <MenuItem value="">Blank</MenuItem>
-                {auctionBidOptions.map((value) => <MenuItem key={`opening-${value}`} value={value}>${value.toLocaleString()}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Stack>
-        </Grid>
-      </Grid>
-    </Stack>
-  );
-}
-
-const CrLotDisclaimerRow = memo(function CrLotDisclaimerRow({
-  lot,
-  options,
-  disabled,
-  onChange,
-  onPreviewImage,
-}: {
-  lot: CrDisclaimerLot;
-  options: CrDisclaimerOption[];
-  disabled: boolean;
-  onChange: (lotKey: string, settings: CrDisclaimerSettings) => void;
-  onPreviewImage: (url: string, lot: CrDisclaimerLot) => void;
-}) {
-  const images = Array.isArray(lot.imageUrls) ? lot.imageUrls.filter(Boolean) : [];
-  const update = (patch: Partial<CrDisclaimerSettings>) => onChange(lot.lotKey, { ...lot.settings, ...patch });
-
-  return (
-    <Stack spacing={2.5} sx={{ minWidth: 0 }}>
-      <Box>
-        <Typography component="h3" sx={{ color: "#17191d", fontSize: 20, fontWeight: 600, lineHeight: "28px" }}>Lot {lot.lotNumber}</Typography>
-        <Typography sx={{ color: "#737773", fontSize: 14, lineHeight: "20px" }}>{lot.title || "Untitled lot"} | {images.length} image{images.length === 1 ? "" : "s"}</Typography>
-      </Box>
-
-      {images.length ? (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(3, minmax(0, 1fr))", md: "repeat(5, minmax(0, 1fr))", xl: "repeat(8, minmax(0, 1fr))" }, gap: 1 }}>
-          {images.map((url, index) => (
-            <Box
-              key={`${lot.lotKey}-img-${index}-${url}`}
-              component="button"
-              type="button"
-              aria-label={`Open Lot ${lot.lotNumber} image ${index + 1}`}
-              onClick={() => onPreviewImage(url, lot)}
-              disabled={disabled}
-              sx={{ minWidth: 0, overflow: "hidden", border: "1px solid #dedfe1", borderRadius: 0, bgcolor: "#f4f5f5", p: 0, aspectRatio: "4 / 3", cursor: disabled ? "default" : "zoom-in" }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={`Lot ${lot.lotNumber} image ${index + 1}`} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-            </Box>
-          ))}
-        </Box>
-      ) : null}
-
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", xl: "360px minmax(0, 1fr)" }, gap: 3 }}>
-        <Stack spacing={2.5}>
-          <Box component="fieldset" sx={{ display: "flex", flexDirection: "column", gap: 1, border: 0, m: 0, p: 0 }}>
-            <Typography component="legend" sx={{ mb: 0.5, color: "#17191d", fontSize: 14, fontWeight: 600, lineHeight: "14px" }}>Disclaimer blocks</Typography>
-            {options.map((option) => (
-              <FormControlLabel
-                key={`${lot.lotKey}-${option.key}`}
-                sx={{ m: 0, minHeight: 42, alignItems: "flex-start", border: "1px solid #dedfe1", borderRadius: "3px", px: 1.5, py: 1.5, bgcolor: "#fff", "& .MuiCheckbox-root": { width: 16, height: 16, p: 0, mt: 0.25, mr: 1 }, "& .MuiSvgIcon-root": { fontSize: 18 }, "& .MuiFormControlLabel-label": { color: "#17191d", fontSize: 14, lineHeight: "16px" } }}
-                control={<Checkbox size="small" disabled={disabled} checked={Boolean(lot.settings[option.key])} onChange={(event) => update({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)} />}
-                label={option.label}
-              />
-            ))}
-          </Box>
-          <CrAuctionControls settings={lot.settings} disabled={disabled} onChange={update} />
-        </Stack>
-
-        <Box sx={{ minWidth: 0 }}>
-          <RichCrNoteEditor label="Custom note" value={lot.settings.customText} onChange={(value) => update({ customText: value })} disabled={disabled} desktopMode />
-        </Box>
-      </Box>
-    </Stack>
-  );
-});
-
-function CrDisclaimersDialog({
-  open,
-  loading,
-  saving,
-  error,
-  filesBusy,
-  initialSettings,
-  initialLots,
-  options,
-  onClose,
-  onSave,
-  onResubmit,
-}: CrDisclaimersDialogProps) {
-  const [localLots, setLocalLots] = useState<CrDisclaimerLot[]>([]);
-  const [selectedLotKeys, setSelectedLotKeys] = useState<Set<string>>(new Set());
-  const [bulkSettings, setBulkSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
-  const [previewImage, setPreviewImage] = useState<{ url: string; lot: CrDisclaimerLot } | null>(null);
-  const [activeLotIndex, setActiveLotIndex] = useState(0);
-  const [lotSearch, setLotSearch] = useState("");
-  const [bulkOpen, setBulkOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    const nextLots =
-      initialLots.length
-        ? initialLots.map((lot) => normalizeDialogLot(lot, initialSettings))
-        : [
-            {
-              lotKey: "global",
-              lotNumber: "All",
-              title: "All visible lots",
-              settings: { ...emptyCrDisclaimers, ...initialSettings },
-            },
-          ];
-    setLocalLots(nextLots);
-    setSelectedLotKeys(new Set(nextLots.map((lot) => lot.lotKey)));
-    setBulkSettings({ ...emptyCrDisclaimers });
-    setActiveLotIndex(0);
-    setLotSearch("");
-    setBulkOpen(false);
-  }, [initialLots, initialSettings, open]);
-
-  const payload: CrDisclaimersPayload = {
-    settings: emptyCrDisclaimers,
-    lots: localLots,
-  };
-
-  const updateLotSettings = useCallback((lotKey: string, settings: CrDisclaimerSettings) => {
-    setLocalLots((prev) =>
-      prev.map((lot) => (lot.lotKey === lotKey ? { ...lot, settings } : lot))
-    );
-  }, []);
-
-  const clearLotSettings = useCallback((lotKey: string) => {
-    setLocalLots((prev) =>
-      prev.map((lot) =>
-        lot.lotKey === lotKey ? { ...lot, settings: { ...emptyCrDisclaimers } } : lot
-      )
-    );
-  }, []);
-
-  const selectedCount = selectedLotKeys.size;
-  const allSelected = localLots.length > 0 && selectedCount === localLots.length;
-  const toggleLotSelection = useCallback((lotKey: string, selected: boolean) => {
-    setSelectedLotKeys((prev) => {
-      const next = new Set(prev);
-      if (selected) next.add(lotKey);
-      else next.delete(lotKey);
-      return next;
-    });
-  }, []);
-  const selectAllLots = useCallback(() => {
-    setSelectedLotKeys(new Set(localLots.map((lot) => lot.lotKey)));
-  }, [localLots]);
-  const clearSelectedLots = useCallback(() => setSelectedLotKeys(new Set()), []);
-  const updateBulkSettings = useCallback((patch: Partial<CrDisclaimerSettings>) => {
-    setBulkSettings((prev) => ({ ...prev, ...patch }));
-  }, []);
-  const applyBulkToSelected = useCallback(() => {
-    if (!selectedLotKeys.size) return;
-    setLocalLots((prev) =>
-      prev.map((lot) =>
-        selectedLotKeys.has(lot.lotKey)
-          ? { ...lot, settings: { ...emptyCrDisclaimers, ...bulkSettings } }
-          : lot
-      )
-    );
-  }, [bulkSettings, selectedLotKeys]);
-
-  const visibleLots = useMemo(
-    () => localLots.map((lot, index) => ({ lot, index })).filter(({ lot }) => !lotSearch.trim() || `${lot.lotNumber} ${lot.title}`.toLowerCase().includes(lotSearch.trim().toLowerCase())),
-    [localLots, lotSearch]
-  );
-  const activeLot = localLots[Math.min(activeLotIndex, Math.max(localLots.length - 1, 0))];
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      fullWidth
-      maxWidth={false}
-      slotProps={{ backdrop: { sx: { bgcolor: "rgba(0,0,0,0.10)", backdropFilter: "blur(2px)" } } }}
-      PaperProps={{
-        sx: {
-          width: { xs: "calc(100vw - 16px)", sm: "min(1480px, calc(100vw - 32px))" },
-          height: { xs: "94vh", sm: "92vh" },
-          maxHeight: { xs: "94vh", sm: "92vh" },
-          m: { xs: 1, sm: 2 },
-          borderRadius: "4px",
-          overflow: "hidden",
-          bgcolor: "#fff",
-          backgroundImage: "none",
-        },
-      }}
-    >
-      <DialogTitle sx={{ position: "relative", flex: "0 0 auto", borderBottom: "1px solid #dedfe1", px: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 2.5 }, pb: { xs: 2, sm: 2.25 } }}>
-        <Stack direction="row" spacing={2} alignItems="flex-start" justifyContent="space-between">
-          <Box>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <FileTextIcon size={24} color="#df111b" />
-              <Typography component="h2" sx={{ color: "#17191d", fontSize: 16, fontWeight: 500, lineHeight: 1 }}>CR Notes by Lot</Typography>
-            </Stack>
-            <Typography sx={{ mt: 1, color: "#737773", fontSize: 14, lineHeight: "20px" }}>Review images, disclaimers, notes, and auction controls for each lot.</Typography>
-          </Box>
-          <IconButton aria-label="Close CR notes" onClick={onClose} sx={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, border: "1px solid #dedfe1", borderRadius: "3px", color: "#555955" }}><CloseRoundedIcon sx={{ fontSize: 17 }} /></IconButton>
-        </Stack>
-      </DialogTitle>
-      <DialogContent sx={{ display: "flex", minHeight: 0, flex: 1, flexDirection: "column", overflow: "hidden", p: 0 }}>
-        {loading ? <Box sx={{ display: "grid", minHeight: 0, flex: 1, placeItems: "center" }}><CircularProgress size={26} sx={{ color: "#df111b" }} /></Box> : null}
-        {error ? <Alert severity="error" sx={{ m: 2, borderRadius: "3px" }}>{error}</Alert> : null}
-        {!loading && !error ? (
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "280px minmax(0, 1fr)" }, minHeight: 0, flex: 1, overflow: "hidden" }}>
-            <Box component="aside" sx={{ display: "flex", minHeight: 0, flexDirection: "column", borderRight: { lg: "1px solid #dedfe1" }, borderBottom: { xs: "1px solid #dedfe1", lg: 0 }, bgcolor: "#f7f8f8" }}>
-              <Box sx={{ position: "relative", flex: "0 0 auto", borderBottom: "1px solid #dedfe1", p: 1.5 }}>
-                <TextField
-                  autoFocus
-                  fullWidth
-                  size="small"
-                  value={lotSearch}
-                  onChange={(event) => setLotSearch(event.target.value)}
-                  placeholder="Find a lot"
-                  inputProps={{ "aria-label": "Find a lot" }}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 17, color: "#737773" }} /></InputAdornment> }}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: "3px", bgcolor: "#fff", fontSize: 13, "&.Mui-focused": { boxShadow: "0 0 0 3px rgba(223,17,27,0.25)" } } }}
-                />
-              </Box>
-              <Stack spacing={0.75} sx={{ minHeight: 0, flex: 1, overflowY: "auto", p: 1.5 }}>
-                {visibleLots.map(({ lot, index }) => {
-                  const selected = activeLotIndex === index;
-                  const thumbnail = lot.imageUrls?.[0];
-                  return (
-                    <Box key={lot.lotKey} sx={{ display: "flex", alignItems: "center", border: selected ? "1px solid #df111b" : "1px solid #dedfe1", bgcolor: selected ? "rgba(223,17,27,0.06)" : "#fff" }}>
-                      <Box component="button" type="button" onClick={() => setActiveLotIndex(index)} sx={{ display: "flex", minWidth: 0, flex: 1, alignItems: "center", gap: 1.25, border: 0, bgcolor: "transparent", p: 1, color: "#17191d", font: "inherit", textAlign: "left", cursor: "pointer" }}>
-                        {thumbnail ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={thumbnail} alt="" loading="lazy" style={{ width: 48, height: 48, flex: "0 0 auto", border: "1px solid #dedfe1", objectFit: "cover" }} />
-                        ) : <Box sx={{ display: "grid", width: 48, height: 48, flex: "0 0 auto", placeItems: "center", border: "1px solid #dedfe1", bgcolor: "#f4f5f5", color: "#737773", fontSize: 10 }}>No image</Box>}
-                        <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontSize: 13, fontWeight: 650 }}>Lot {lot.lotNumber || index + 1}</Typography><Typography noWrap sx={{ mt: 0.25, color: "#737773", fontSize: 11 }}>{lot.title || "Untitled"}</Typography></Box>
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </Stack>
-              {localLots.length > 1 ? <Box sx={{ flex: "0 0 auto", borderTop: "1px solid #dedfe1", p: 1.5 }}>
-                <Button fullWidth variant="outlined" onClick={() => setBulkOpen(true)} disabled={saving || !localLots.length} sx={{ minHeight: 36, borderRadius: "3px", borderColor: "#c7c9ca", color: "#17191d", fontSize: 12, fontWeight: 600, textTransform: "none" }}>Bulk apply ({selectedCount} selected)</Button>
-              </Box> : null}
-            </Box>
-
-            <Box sx={{ minHeight: 0, minWidth: 0, overflowX: "hidden", overflowY: "auto" }}>
-              <Stack spacing={2} sx={{ minWidth: 0, p: { xs: 2, sm: 3 }, pb: 5 }}>
-                {filesBusy ? <Alert severity="warning" sx={{ borderRadius: "3px" }}>This report is already generating files. Save is available, but resubmit is disabled until it finishes.</Alert> : null}
-                {activeLot ? (
-                  <>
-                    <CrLotDisclaimerRow lot={activeLot} options={options} disabled={saving} onChange={updateLotSettings} onPreviewImage={(url, selectedLot) => setPreviewImage({ url, lot: selectedLot })} />
-                    {getCrSettingsActiveCount(activeLot.settings) > 0 ? <Button size="small" color="inherit" disabled={saving} onClick={() => clearLotSettings(activeLot.lotKey)} sx={{ alignSelf: "flex-end", color: "#737773", fontSize: 12, fontWeight: 600, textTransform: "none" }}>Clear lot notes</Button> : null}
-                  </>
-                ) : <Typography sx={{ color: "#737773", fontSize: 13 }}>No lots are available.</Typography>}
-              </Stack>
-            </Box>
-          </Box>
-        ) : null}
-      </DialogContent>
-      <DialogActions sx={{ flex: "0 0 auto", p: { xs: 1.5, sm: 2 }, gap: 1, flexWrap: "wrap", borderTop: "1px solid #dedfe1", bgcolor: "#fff" }}>
-        <Button onClick={onClose} disabled={saving} variant="outlined" sx={{ height: 32, minHeight: 32, py: 0, borderRadius: "3px", borderColor: "#c7c9ca", color: "#17191d", textTransform: "none" }}>
-          Cancel
-        </Button>
-        <Button
-          variant="outlined"
-          startIcon={<SaveIcon size={16} />}
-          onClick={() => void onSave(payload)}
-          disabled={loading || saving}
-          sx={{ height: 32, minHeight: 32, py: 0, borderRadius: "3px", borderColor: "#c7c9ca", color: "#17191d", textTransform: "none" }}
-        >
-          Save
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<Send size={16} />}
-          onClick={() => void onResubmit(payload)}
-          disabled={loading || saving || filesBusy}
-          sx={{ height: 32, minHeight: 32, py: 0, borderRadius: "3px", bgcolor: "#df111b", color: "#fff", textTransform: "none", boxShadow: "none", "&:hover": { bgcolor: "#c91019", boxShadow: "none" } }}
-        >
-          {saving ? "Working..." : "Save & Resubmit"}
-        </Button>
-      </DialogActions>
-      <Dialog open={bulkOpen} onClose={() => setBulkOpen(false)} fullWidth maxWidth="md" PaperProps={{ sx: { borderRadius: "4px", backgroundImage: "none" } }}>
-        <DialogTitle sx={{ borderBottom: "1px solid #dedfe1", px: 3, py: 2 }}>
-          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
-            <Box><Typography component="h3" sx={{ color: "#17191d", fontSize: 17, fontWeight: 650 }}>Bulk apply</Typography><Typography sx={{ mt: 0.5, color: "#737773", fontSize: 12 }}>Apply one set of CR notes to the selected lots.</Typography></Box>
-            <IconButton aria-label="Close bulk apply" onClick={() => setBulkOpen(false)} sx={{ width: 32, height: 32, borderRadius: "3px" }}><CloseRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
-          </Stack>
-        </DialogTitle>
-        <DialogContent sx={{ p: 3 }}>
-          <Stack spacing={2.5}>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-              <Chip size="small" label={`${selectedCount} selected`} sx={{ bgcolor: "#eef0f1", color: "#4b4f4b", fontSize: 11, fontWeight: 650 }} />
-              <Button size="small" variant="outlined" disabled={saving || allSelected} onClick={selectAllLots} sx={{ borderRadius: "3px", color: "#17191d", textTransform: "none" }}>Select all</Button>
-              <Button size="small" color="inherit" disabled={saving || selectedCount === 0} onClick={clearSelectedLots} sx={{ color: "#737773", textTransform: "none" }}>Clear selection</Button>
-            </Stack>
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" }, maxHeight: 176, overflowY: "auto", border: "1px solid #dedfe1", p: 1 }}>
-              {localLots.map((lot) => <FormControlLabel key={`bulk-select-${lot.lotKey}`} sx={{ m: 0, minWidth: 0, px: 0.5, "& .MuiFormControlLabel-label": { minWidth: 0, overflow: "hidden", color: "#17191d", fontSize: 12, textOverflow: "ellipsis", whiteSpace: "nowrap" } }} control={<Checkbox size="small" disabled={saving} checked={selectedLotKeys.has(lot.lotKey)} onChange={(event) => toggleLotSelection(lot.lotKey, event.target.checked)} />} label={`Lot ${lot.lotNumber} — ${lot.title || "Untitled"}`} />)}
-            </Box>
-            <Box component="fieldset" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" }, gap: 1, border: 0, m: 0, p: 0 }}>
-              <Typography component="legend" sx={{ gridColumn: "1 / -1", mb: 0.5, color: "#17191d", fontSize: 13, fontWeight: 650 }}>Disclaimer blocks</Typography>
-              {options.map((option) => <FormControlLabel key={`bulk-${option.key}`} sx={{ m: 0, minHeight: 46, border: "1px solid #dedfe1", borderRadius: "3px", px: 1.25, py: 0.75, "& .MuiFormControlLabel-label": { fontSize: 12.5, lineHeight: 1.35 } }} control={<Checkbox size="small" disabled={saving} checked={Boolean(bulkSettings[option.key])} onChange={(event) => updateBulkSettings({ [option.key]: event.target.checked } as Partial<CrDisclaimerSettings>)} />} label={option.label} />)}
-            </Box>
-            <CrAuctionControls settings={bulkSettings} disabled={saving} onChange={updateBulkSettings} />
-            <RichCrNoteEditor label="Bulk custom note" value={bulkSettings.customText} onChange={(value) => updateBulkSettings({ customText: value })} disabled={saving} />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: "1px solid #dedfe1", px: 3, py: 2 }}>
-          <Button variant="outlined" onClick={() => setBulkOpen(false)} sx={{ borderRadius: "3px", color: "#17191d", textTransform: "none" }}>Cancel</Button>
-          <Button variant="contained" disabled={saving || selectedCount === 0} onClick={() => { applyBulkToSelected(); setBulkOpen(false); }} sx={{ borderRadius: "3px", bgcolor: "#df111b", textTransform: "none", boxShadow: "none", "&:hover": { bgcolor: "#c91019", boxShadow: "none" } }}>Apply to selected</Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog
-        open={Boolean(previewImage)}
-        onClose={() => setPreviewImage(null)}
-        fullWidth
-        maxWidth="lg"
-        PaperProps={{ sx: { bgcolor: "#020617", borderRadius: 2, overflow: "hidden" } }}
-      >
-        <DialogTitle sx={{ color: "#fff", fontWeight: 900, pb: 1 }}>
-          Lot {previewImage?.lot.lotNumber}
-          <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.72)" }}>
-            {previewImage?.lot.title || "Lot image"}
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ p: 0, bgcolor: "#020617" }}>
-          {previewImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={previewImage.url}
-              alt={`Lot ${previewImage.lot.lotNumber}`}
-              style={{
-                width: "100%",
-                maxHeight: "78vh",
-                objectFit: "contain",
-                display: "block",
-                background: "#020617",
-              }}
-            />
-          ) : null}
-        </DialogContent>
-        <DialogActions sx={{ bgcolor: "#020617" }}>
-          <Button onClick={() => setPreviewImage(null)} sx={{ color: "#fff" }}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Dialog>
-  );
-}
 
 const LARGE_PAGE_SIZE = 500;
 
@@ -1375,17 +364,8 @@ export default function AdminReports() {
   const [previewSaveError, setPreviewSaveError] = useState<string | null>(null);
   const [previewSaveSuccess, setPreviewSaveSuccess] = useState<string | null>(null);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
-  const [crDialogOpen, setCrDialogOpen] = useState(false);
-  const [crDialogLoading, setCrDialogLoading] = useState(false);
-  const [crDialogSaving, setCrDialogSaving] = useState(false);
-  const [crDialogError, setCrDialogError] = useState<string | null>(null);
-  const [crDialogTarget, setCrDialogTarget] = useState<ReportGroup | null>(null);
-  const [crDialogFilesBusy, setCrDialogFilesBusy] = useState(false);
-  const [crInitialSettings, setCrInitialSettings] = useState<CrDisclaimerSettings>(emptyCrDisclaimers);
-  const [crInitialLots, setCrInitialLots] = useState<CrDisclaimerLot[]>([]);
-  const [crOptions, setCrOptions] = useState<CrDisclaimerOption[]>(fallbackCrDisclaimerOptions);
-  const [crCounts, setCrCounts] = useState<Record<string, number>>({});
   const [crSubmitSuccess, setCrSubmitSuccess] = useState<string | null>(null);
+  const [excelCrTarget, setExcelCrTarget] = useState<ReportGroup | null>(null);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -1559,97 +539,19 @@ export default function AdminReports() {
     }
   }
 
-  function canUseCrDisclaimers(group: ReportGroup) {
+  function canUseExcelCrEditor(group: ReportGroup) {
     return Boolean(group.isAssetReport || group.isLotListingReport);
   }
 
-  function getCrCount(group: ReportGroup) {
-    return crCounts[group.key] ?? Number(group.crDisclaimerCount || 0);
-  }
-
-  function closeCrDialog() {
-    setCrDialogOpen(false);
-    setCrDialogTarget(null);
-    setCrDialogError(null);
-    setCrDialogFilesBusy(false);
-    setCrInitialSettings(emptyCrDisclaimers);
-    setCrInitialLots([]);
-    setCrOptions(fallbackCrDisclaimerOptions);
-  }
-
-  async function openCrDisclaimers(group: ReportGroup) {
-    if (!canUseCrDisclaimers(group)) return;
-    setCrDialogTarget(group);
-    setCrDialogOpen(true);
-    setCrDialogLoading(true);
-    setCrDialogError(null);
+  function openExcelCrEditor(group: ReportGroup) {
+    if (!canUseExcelCrEditor(group)) return;
     setCrSubmitSuccess(null);
-    try {
-      const res = await fetch(`/api/admin/reports/${group.key}/cr-disclaimers`, {
-        cache: "no-store",
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || "Failed to load CR disclaimers");
-      const payload = json?.data || {};
-      setCrInitialSettings({ ...emptyCrDisclaimers, ...(payload.settings || {}) });
-      setCrInitialLots(
-        Array.isArray(payload.lots)
-          ? payload.lots.map((lot: any, index: number) => ({
-              lotKey: String(lot?.lotKey || `index:${index}`),
-              lotNumber: String(lot?.lotNumber || index + 1),
-              title: String(lot?.title || `Lot ${lot?.lotNumber || index + 1}`),
-              imageUrls: Array.isArray(lot?.imageUrls)
-                ? lot.imageUrls.map((url: unknown) => String(url || "").trim()).filter(Boolean)
-                : [],
-              settings: { ...emptyCrDisclaimers, ...(payload.settings || {}), ...(lot?.settings || {}) },
-              activeCount: Number(lot?.activeCount || 0),
-            }))
-          : []
-      );
-      setCrOptions(Array.isArray(payload.options) && payload.options.length ? payload.options : fallbackCrDisclaimerOptions);
-      setCrCounts((prev) => ({ ...prev, [group.key]: Number(payload.activeLotCount ?? payload.activeCount ?? 0) }));
-      setCrDialogFilesBusy(Boolean(payload.files_regenerating || payload.files_generating));
-    } catch (e: unknown) {
-      setCrDialogError(e instanceof Error ? e.message : "Failed to load CR disclaimers");
-    } finally {
-      setCrDialogLoading(false);
-    }
+    setExcelCrTarget(group);
   }
 
-  async function saveCrDisclaimers(payload: CrDisclaimersPayload, resubmit: boolean) {
-    if (!crDialogTarget) return;
-    try {
-      setCrDialogSaving(true);
-      setCrDialogError(null);
-      setCrSubmitSuccess(null);
-      const endpoint = resubmit
-        ? `/api/admin/reports/${crDialogTarget.key}/rerun-excel-cr`
-        : `/api/admin/reports/${crDialogTarget.key}/cr-disclaimers`;
-      const res = await fetch(endpoint, {
-        method: resubmit ? "POST" : "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          settings: payload.settings,
-          lots: payload.lots.map((lot) => ({
-            lotKey: lot.lotKey,
-            settings: lot.settings,
-          })),
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || (resubmit ? "Failed to resubmit Excel/CR" : "Failed to save CR disclaimers"));
-      const activeCount = Number(json?.data?.activeLotCount ?? json?.data?.activeCount ?? 0);
-      setCrCounts((prev) => ({ ...prev, [crDialogTarget.key]: activeCount }));
-      if (resubmit) {
-        await load();
-        setCrSubmitSuccess("Excel/CR resubmitted successfully. The CR and Excel buttons now point to refreshed files.");
-      }
-      closeCrDialog();
-    } catch (e: unknown) {
-      setCrDialogError(e instanceof Error ? e.message : resubmit ? "Failed to resubmit Excel/CR" : "Failed to save CR disclaimers");
-    } finally {
-      setCrDialogSaving(false);
-    }
+  async function handleExcelCrSaved(result: { regenerated: boolean; message: string }) {
+    setCrSubmitSuccess(result.message);
+    if (result.regenerated) await load();
   }
 
   function onReset() {
@@ -1825,14 +727,14 @@ export default function AdminReports() {
           );
         })}
 
-        {canUseCrDisclaimers(group) ? (
-          <Tooltip title="Select CR disclaimers and resubmit Excel/CR">
+        {canUseExcelCrEditor(group) ? (
+          <Tooltip title="Edit structured Excel Condition Reports">
             <span>
               <Button
                 size="small"
                 variant="outlined"
                 disabled={actionBusyId === group.key}
-                startIcon={<NoteAddRoundedIcon />}
+                startIcon={<TableChartRoundedIcon />}
                 sx={{
                   ...actionButtonSx,
                   borderColor: "#a78bfa",
@@ -1843,23 +745,9 @@ export default function AdminReports() {
                     bgcolor: "#f3e8ff",
                   },
                 }}
-                onClick={() => void openCrDisclaimers(group)}
+                onClick={() => openExcelCrEditor(group)}
               >
-                Notes
-                {getCrCount(group) > 0 ? (
-                  <Chip
-                    size="small"
-                    label={String(getCrCount(group))}
-                    sx={{
-                      ml: 0.35,
-                      height: 14,
-                      fontSize: "0.52rem",
-                      fontWeight: 900,
-                      bgcolor: "#ede9fe",
-                      color: "#5b21b6",
-                    }}
-                  />
-                ) : null}
+                Excel CR
               </Button>
             </span>
           </Tooltip>
@@ -2038,9 +926,9 @@ export default function AdminReports() {
             Same Contract
           </Button>
         ) : null}
-        {canUseCrDisclaimers(group) ? (
-          <Button variant="outlined" startIcon={<NoteAddRoundedIcon />} sx={desktopActionSx} disabled={actionBusyId === group.key} onClick={() => void openCrDisclaimers(group)}>
-            CR Notes
+        {canUseExcelCrEditor(group) ? (
+          <Button variant="outlined" startIcon={<TableChartRoundedIcon />} sx={desktopActionSx} disabled={actionBusyId === group.key} onClick={() => openExcelCrEditor(group)}>
+            Excel CR
           </Button>
         ) : null}
         {group.release_status === "pending_release" ? (
@@ -2587,19 +1475,15 @@ export default function AdminReports() {
           setPreviewSaveSuccess(null);
         }}
       />
-      <CrDisclaimersDialog
-        open={crDialogOpen}
-        loading={crDialogLoading}
-        saving={crDialogSaving}
-        error={crDialogError}
-        filesBusy={crDialogFilesBusy}
-        initialSettings={crInitialSettings}
-        initialLots={crInitialLots}
-        options={crOptions}
-        onClose={closeCrDialog}
-        onSave={(settings) => saveCrDisclaimers(settings, false)}
-        onResubmit={(settings) => saveCrDisclaimers(settings, true)}
-      />
+      {excelCrTarget ? (
+        <ExcelConditionReportEditorDialog
+          open
+          reportId={excelCrTarget.key}
+          reportTitle={excelCrTarget.title}
+          onClose={() => setExcelCrTarget(null)}
+          onSaved={handleExcelCrSaved}
+        />
+      ) : null}
     </div>
   );
 }

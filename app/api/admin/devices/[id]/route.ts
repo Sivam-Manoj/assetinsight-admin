@@ -10,3 +10,15 @@ export async function GET(
     method: "GET",
   });
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  return proxyJsonWithAdminAuth(request, `/api/admin/devices/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: await request.text(),
+  });
+}

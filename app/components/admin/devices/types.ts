@@ -25,6 +25,7 @@ export type IpObservation = {
   firstSeenAt?: string;
   lastSeenAt?: string;
   count?: number;
+  source?: "observed" | "admin";
   user?: DeviceUser;
   devices?: Array<{
     _id: string;
