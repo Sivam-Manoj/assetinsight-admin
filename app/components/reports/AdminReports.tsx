@@ -728,7 +728,7 @@ export default function AdminReports() {
         })}
 
         {canUseExcelCrEditor(group) ? (
-          <Tooltip title="Edit structured Excel Condition Reports">
+          <Tooltip title="Edit CR notes">
             <span>
               <Button
                 size="small"
@@ -747,7 +747,7 @@ export default function AdminReports() {
                 }}
                 onClick={() => openExcelCrEditor(group)}
               >
-                Excel CR
+                CR Notes
               </Button>
             </span>
           </Tooltip>
@@ -928,7 +928,7 @@ export default function AdminReports() {
         ) : null}
         {canUseExcelCrEditor(group) ? (
           <Button variant="outlined" startIcon={<TableChartRoundedIcon />} sx={desktopActionSx} disabled={actionBusyId === group.key} onClick={() => openExcelCrEditor(group)}>
-            Excel CR
+            CR Notes
           </Button>
         ) : null}
         {group.release_status === "pending_release" ? (
