@@ -42,6 +42,7 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 import FormatAlignCenterRoundedIcon from "@mui/icons-material/FormatAlignCenterRounded";
@@ -90,6 +91,7 @@ type ExcelCrSpec = {
 
 type ExcelCrRow = {
   rowKey: string;
+  disclaimerLotKey: string;
   lotNumber: string;
   title: string;
   category: string;
@@ -173,6 +175,9 @@ function normalisePayload(input: ExcelCrPayload): ExcelCrPayload {
       ? input.rows.map((row, index) => ({
           ...row,
           rowKey: String(row?.rowKey || `row-${index}`),
+          disclaimerLotKey: String(
+            row?.disclaimerLotKey || `lot-number:${String(row?.lotNumber || index).trim().toLowerCase()}`
+          ),
           lotNumber: String(row?.lotNumber || ""),
           title: String(row?.title || ""),
           category: String(row?.category || ""),
@@ -505,6 +510,10 @@ export default function ExcelConditionReportEditorDialog({
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+  const [applyAllSource, setApplyAllSource] = useState<{
+    lotNumber: string;
+    disclaimers: ExcelCrDisclaimers;
+  } | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; label: string } | null>(null);
   const deferredSearch = useDeferredValue(search);
 
@@ -539,7 +548,10 @@ export default function ExcelConditionReportEditorDialog({
   }, [reportId]);
 
   useEffect(() => {
-    if (!open || !reportId) return;
+    if (!open || !reportId) {
+      setApplyAllSource(null);
+      return;
+    }
     const controller = new AbortController();
     setPayload(null);
     setRows([]);
@@ -547,6 +559,7 @@ export default function ExcelConditionReportEditorDialog({
     setSelectedRowKey("");
     setSearch("");
     setConfirmCloseOpen(false);
+    setApplyAllSource(null);
     void loadEditor(controller.signal);
     return () => controller.abort();
   }, [loadEditor, open, reportId]);
@@ -599,13 +612,35 @@ export default function ExcelConditionReportEditorDialog({
 
   const updateDisclaimers = useCallback((patch: Partial<ExcelCrDisclaimers>) => {
     if (!activeRow) return;
-    const matchingLotNumber = activeRow.lotNumber;
+    const matchingLotKey = activeRow.disclaimerLotKey;
     setRows((current) => current.map((row) => (
-      row.lotNumber === matchingLotNumber
+      row.disclaimerLotKey === matchingLotKey
         ? { ...row, disclaimers: { ...row.disclaimers, ...patch } }
         : row
     )));
   }, [activeRow]);
+
+  const disclaimerLotCount = useMemo(
+    () => new Set(rows.map((row) => row.disclaimerLotKey)).size,
+    [rows]
+  );
+
+  const applyActiveCrNotesToAllLots = useCallback(() => {
+    if (!applyAllSource) return;
+    const sourceDisclaimers: ExcelCrDisclaimers = {
+      ...emptyDisclaimers,
+      ...applyAllSource.disclaimers,
+    };
+    setRows((current) => current.map((row) => ({
+      ...row,
+      disclaimers: { ...sourceDisclaimers },
+    })));
+    setApplyAllSource(null);
+    setFeedback({
+      severity: "success",
+      message: `CR Notes from Lot ${applyAllSource.lotNumber || "—"} were applied to ${disclaimerLotCount} lots. Save changes to keep them.`,
+    });
+  }, [applyAllSource, disclaimerLotCount]);
 
   const updateSpec = useCallback((specIndex: number, patch: Partial<ExcelCrSpec>) => {
     updateActiveRow((row) => ({
@@ -912,6 +947,50 @@ export default function ExcelConditionReportEditorDialog({
                 ) : null}
                 {activeRow ? (
                   <Stack spacing={2}>
+                    {disclaimerLotCount > 1 ? (
+                      <Box
+                        sx={{
+                          border: "1px solid #f0c7c9",
+                          bgcolor: "#fff7f7",
+                          p: { xs: 1.5, sm: 2 },
+                        }}
+                      >
+                        <Stack
+                          direction={{ xs: "column", sm: "row" }}
+                          spacing={1.25}
+                          alignItems={{ xs: "stretch", sm: "center" }}
+                          justifyContent="space-between"
+                        >
+                          <Box>
+                            <Typography sx={{ color: "#17191d", fontSize: 14, fontWeight: 800 }}>
+                              Apply CR Notes to all lots
+                            </Typography>
+                            <Typography sx={{ mt: 0.25, color: "#686c68", fontSize: 12.5, lineHeight: 1.45 }}>
+                              Use Lot {activeRow.lotNumber || "—"} as the template for all {disclaimerLotCount} lots. Only CR Notes and auction controls are copied.
+                            </Typography>
+                          </Box>
+                          <Button
+                            variant="contained"
+                            startIcon={<ContentCopyRoundedIcon />}
+                            disabled={saving}
+                            onClick={() => setApplyAllSource({
+                              lotNumber: activeRow.lotNumber,
+                              disclaimers: { ...emptyDisclaimers, ...activeRow.disclaimers },
+                            })}
+                            sx={{
+                              flexShrink: 0,
+                              alignSelf: { xs: "stretch", sm: "center" },
+                              bgcolor: "#df111b",
+                              boxShadow: "none",
+                              "&:hover": { bgcolor: "#c91019", boxShadow: "none" },
+                            }}
+                          >
+                            Apply to all lots
+                          </Button>
+                        </Stack>
+                      </Box>
+                    ) : null}
+
                     <Box sx={{ border: "1px solid #dedfe1", bgcolor: "#fff", p: { xs: 1.5, sm: 2 } }}>
                       <SectionHeading title="Row identity" description="These values appear in the Excel lot row." />
                       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "140px minmax(0, 1fr)", lg: "140px minmax(0, 1.4fr) minmax(180px, 0.8fr)" }, gap: 1.25, mt: 1.5 }}>
@@ -1162,6 +1241,48 @@ export default function ExcelConditionReportEditorDialog({
           <Button onClick={() => setConfirmCloseOpen(false)}>Keep editing</Button>
           <Button color="error" variant="contained" onClick={() => { setConfirmCloseOpen(false); onClose(); }}>
             Discard changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={open && Boolean(applyAllSource)}
+        onClose={() => setApplyAllSource(null)}
+        maxWidth="sm"
+        fullWidth
+        aria-labelledby="apply-cr-notes-to-all-title"
+        PaperProps={{
+          sx: {
+            bgcolor: "#fff",
+            color: "#17191d",
+            colorScheme: "light",
+          },
+        }}
+      >
+        <DialogTitle id="apply-cr-notes-to-all-title">Apply CR Notes to every lot?</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            <Typography sx={{ color: "#4f534f", fontSize: 14, lineHeight: 1.6 }}>
+              CR Notes and auction controls from <strong>Lot {applyAllSource?.lotNumber || "—"}</strong> will replace the existing CR Notes on all {disclaimerLotCount} lots.
+            </Typography>
+            <Alert severity="info">
+              Specifications, Damage Analysis, lot details, and images will not be changed.
+            </Alert>
+            <Typography sx={{ color: "#737773", fontSize: 12.5, lineHeight: 1.5 }}>
+              The change stays in this editor until you choose Save changes or Save &amp; regenerate Excel.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setApplyAllSource(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            startIcon={<ContentCopyRoundedIcon />}
+            disabled={!applyAllSource}
+            onClick={applyActiveCrNotesToAllLots}
+            sx={{ bgcolor: "#df111b", boxShadow: "none", "&:hover": { bgcolor: "#c91019", boxShadow: "none" } }}
+          >
+            Apply to all lots
           </Button>
         </DialogActions>
       </Dialog>
