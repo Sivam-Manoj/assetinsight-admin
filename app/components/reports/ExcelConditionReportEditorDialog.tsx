@@ -214,7 +214,7 @@ function isDamagePolicyEligible(lotNumber: string) {
   const match = compact.match(/\d+/);
   if (!match) return true;
   const number = Number(match[0]);
-  return !Number.isFinite(number) || number >= 1000;
+  return !Number.isFinite(number) || number <= 1000;
 }
 
 function isCheckedSpec(value: string) {
@@ -1014,7 +1014,7 @@ export default function ExcelConditionReportEditorDialog({
                     </Box>
 
                     <Box sx={{ border: "1px solid #dedfe1", bgcolor: "#fff", p: { xs: 1.5, sm: 2 } }}>
-                      <SectionHeading title="Damage Analysis" description="Damage Analysis is available only when the report switch is enabled and the numeric lot number is 1000 or above." />
+                      <SectionHeading title="Damage Analysis" description="Damage Analysis is available only when the report switch is enabled and the numeric lot number is 1000 or below." />
                       {activeRow.damageEligible ? (
                         <TextField
                           fullWidth
@@ -1031,7 +1031,7 @@ export default function ExcelConditionReportEditorDialog({
                         <Alert severity="info" sx={{ mt: 1.5 }}>
                           {!masterDamageEnabled
                             ? "Damage Analysis is disabled by the report-level switch."
-                            : "This lot is below 1000, so Damage Analysis is not included. Changing it back to 1000 or above starts with a blank editor."}
+                            : "This lot is above 1000, so Damage Analysis is not included. Changing it back to 1000 or below starts with a blank editor."}
                         </Alert>
                       )}
                     </Box>
