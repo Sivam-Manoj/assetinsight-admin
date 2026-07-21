@@ -734,27 +734,33 @@ export default function ExcelConditionReportEditorDialog({
       }
 
       if (savedPayload.filesBusy) {
-        throw new Error("This report is already generating files. Try Excel regeneration again when it finishes.");
+        throw new Error("This report is already generating files. Try file regeneration again when it finishes.");
       }
 
       try {
-        const response = await fetch(`/api/admin/reports/${reportId}/regenerate-excel`, {
+        const response = await fetch(`/api/admin/reports/${reportId}/rerun-excel-cr`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ revision: savedPayload.revision }),
         });
         const json = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(extractError(json, "Excel regeneration failed"));
-        const message = "Changes saved and Excel regenerated. PDF and DOCX files were not changed.";
+        if (!response.ok) {
+          throw new Error(extractError(json, "Excel, CR PDF, and CR DOCX regeneration failed"));
+        }
+        const message = "Changes saved and Excel, CR PDF, and CR DOCX regenerated.";
         setFeedback({ severity: "success", message });
         await onSaved?.({ regenerated: true, message });
       } catch (regenerationError) {
-        const detail = regenerationError instanceof Error ? regenerationError.message : "Excel regeneration failed";
+        const detail = regenerationError instanceof Error
+          ? regenerationError.message
+          : "Excel, CR PDF, and CR DOCX regeneration failed";
         const message = savedChanges
-          ? `Changes saved; Excel regeneration failed. ${detail}`
-          : `Excel regeneration failed. ${detail}`;
+          ? `Changes saved; file regeneration failed. ${detail}`
+          : `File regeneration failed. ${detail}`;
         setFeedback({ severity: "warning", message });
-        if (savedChanges) await onSaved?.({ regenerated: false, message: "Changes saved; Excel regeneration failed." });
+        if (savedChanges) {
+          await onSaved?.({ regenerated: false, message: "Changes saved; file regeneration failed." });
+        }
       }
     } catch (error) {
       setFeedback({ severity: "error", message: error instanceof Error ? error.message : "Failed to save Excel Condition Reports" });
@@ -942,7 +948,7 @@ export default function ExcelConditionReportEditorDialog({
                 ) : null}
                 {payload?.filesBusy ? (
                   <Alert severity="info" icon={<RefreshRoundedIcon />} sx={{ mb: 2 }}>
-                    This report is currently generating files. You can edit and save, but Excel regeneration is temporarily unavailable.
+                    This report is currently generating files. You can edit and save, but file regeneration is temporarily unavailable.
                   </Alert>
                 ) : null}
                 {activeRow ? (
@@ -1213,7 +1219,7 @@ export default function ExcelConditionReportEditorDialog({
           <Stack direction="row" spacing={1} alignItems="center" sx={{ display: { xs: "none", md: "flex" } }}>
             <DescriptionRoundedIcon sx={{ color: "#737773", fontSize: 18 }} />
             <Typography sx={{ color: "#5d615d", fontSize: 12.5 }}>
-              This action updates Excel only. Existing PDF and DOCX files remain unchanged.
+              Regenerates Excel, CR PDF, and CR DOCX. Images ZIP and Asset appraisal DOCX remain unchanged.
             </Typography>
           </Stack>
           <Stack direction={{ xs: "column-reverse", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", md: "auto" }, ml: "auto" }}>
@@ -1224,7 +1230,7 @@ export default function ExcelConditionReportEditorDialog({
               Save changes
             </Button>
             <Button variant="contained" startIcon={saving ? <CircularProgress size={15} color="inherit" /> : <TableChartRoundedIcon />} disabled={saving || loading || !payload || Boolean(payload?.filesBusy)} onClick={() => void save(true)} sx={{ bgcolor: "#df111b", boxShadow: "none", "&:hover": { bgcolor: "#c91019", boxShadow: "none" } }}>
-              Save &amp; regenerate Excel
+              Save &amp; regenerate files
             </Button>
           </Stack>
         </DialogActions>
@@ -1234,7 +1240,7 @@ export default function ExcelConditionReportEditorDialog({
         <DialogTitle>Discard unsaved changes?</DialogTitle>
         <DialogContent>
           <Typography sx={{ color: "#5d615d", fontSize: 14, lineHeight: 1.55 }}>
-            Your edits have not been saved. Closing now will leave the report and its Excel file unchanged.
+            Your edits have not been saved. Closing now will leave the report files unchanged.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -1269,7 +1275,7 @@ export default function ExcelConditionReportEditorDialog({
               Specifications, Damage Analysis, lot details, and images will not be changed.
             </Alert>
             <Typography sx={{ color: "#737773", fontSize: 12.5, lineHeight: 1.5 }}>
-              The change stays in this editor until you choose Save changes or Save &amp; regenerate Excel.
+              The change stays in this editor until you choose Save changes or Save &amp; regenerate files.
             </Typography>
           </Stack>
         </DialogContent>
