@@ -14,6 +14,24 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Alert,
   Box,
   Button,
@@ -45,6 +63,7 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import DragIndicatorRoundedIcon from "@mui/icons-material/DragIndicatorRounded";
 import FormatAlignCenterRoundedIcon from "@mui/icons-material/FormatAlignCenterRounded";
 import FormatAlignLeftRoundedIcon from "@mui/icons-material/FormatAlignLeftRounded";
 import FormatAlignRightRoundedIcon from "@mui/icons-material/FormatAlignRightRounded";
@@ -80,6 +99,7 @@ type ExcelCrDisclaimers = {
 };
 
 type ExcelCrSpec = {
+  editorId: string;
   field: string;
   value: string;
   type?: string;
@@ -172,32 +192,36 @@ function normalisePayload(input: ExcelCrPayload): ExcelCrPayload {
   return {
     ...input,
     rows: Array.isArray(input?.rows)
-      ? input.rows.map((row, index) => ({
-          ...row,
-          rowKey: String(row?.rowKey || `row-${index}`),
-          disclaimerLotKey: String(
-            row?.disclaimerLotKey || `lot-number:${String(row?.lotNumber || index).trim().toLowerCase()}`
-          ),
-          lotNumber: String(row?.lotNumber || ""),
-          title: String(row?.title || ""),
-          category: String(row?.category || ""),
-          imageUrls: Array.isArray(row?.imageUrls) ? row.imageUrls.filter(Boolean) : [],
-          specs: Array.isArray(row?.specs)
-            ? row.specs.map((spec) => ({
-                ...spec,
-                field: String(spec?.field || ""),
-                value: String(spec?.value || ""),
-                options: Array.isArray(spec?.options) ? spec.options.map(String) : [],
-              }))
-            : [],
-          damageAnalysis: String(row?.damageAnalysis || ""),
-          damageEligible: Boolean(row?.damageEligible),
-          damagePolicyEligible: row?.damagePolicyEligible !== false,
-          disclaimers: { ...emptyDisclaimers, ...(row?.disclaimers || {}) },
-          normalizationWarnings: Array.isArray(row?.normalizationWarnings)
-            ? row.normalizationWarnings
-            : [],
-        }))
+      ? input.rows.map((row, index) => {
+          const rowKey = String(row?.rowKey || `row-${index}`);
+          return {
+            ...row,
+            rowKey,
+            disclaimerLotKey: String(
+              row?.disclaimerLotKey || `lot-number:${String(row?.lotNumber || index).trim().toLowerCase()}`
+            ),
+            lotNumber: String(row?.lotNumber || ""),
+            title: String(row?.title || ""),
+            category: String(row?.category || ""),
+            imageUrls: Array.isArray(row?.imageUrls) ? row.imageUrls.filter(Boolean) : [],
+            specs: Array.isArray(row?.specs)
+              ? row.specs.map((spec, specIndex) => ({
+                  ...spec,
+                  editorId: String(spec?.editorId || `${rowKey}:spec:${specIndex}`),
+                  field: String(spec?.field || ""),
+                  value: String(spec?.value || ""),
+                  options: Array.isArray(spec?.options) ? spec.options.map(String) : [],
+                }))
+              : [],
+            damageAnalysis: String(row?.damageAnalysis || ""),
+            damageEligible: Boolean(row?.damageEligible),
+            damagePolicyEligible: row?.damagePolicyEligible !== false,
+            disclaimers: { ...emptyDisclaimers, ...(row?.disclaimers || {}) },
+            normalizationWarnings: Array.isArray(row?.normalizationWarnings)
+              ? row.normalizationWarnings
+              : [],
+          };
+        })
       : [],
   };
 }
@@ -477,6 +501,144 @@ function SpecValueControl({
   );
 }
 
+type VisibleSpecEntry = {
+  spec: ExcelCrSpec;
+  index: number;
+};
+
+function SortableSpecRow({
+  entry,
+  visibleIndex,
+  total,
+  disabled,
+  onChange,
+  onMove,
+  onDelete,
+}: {
+  entry: VisibleSpecEntry;
+  visibleIndex: number;
+  total: number;
+  disabled: boolean;
+  onChange: (index: number, patch: Partial<ExcelCrSpec>) => void;
+  onMove: (index: number, direction: -1 | 1) => void;
+  onDelete: (index: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: entry.spec.editorId,
+    disabled,
+  });
+
+  return (
+    <Box
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        position: "relative",
+        zIndex: isDragging ? 2 : "auto",
+      }}
+      sx={{
+        display: "grid",
+        gridTemplateColumns: { xs: "1fr auto", sm: "minmax(150px, 0.8fr) minmax(180px, 1.2fr) auto" },
+        alignItems: "center",
+        gap: 1,
+        border: "1px solid",
+        borderColor: isDragging ? "#df111b" : "#e2e4e2",
+        bgcolor: "#fafbfa",
+        p: 1,
+        boxShadow: isDragging ? "0 10px 24px rgba(23,25,29,0.16)" : "none",
+      }}
+    >
+      <TextField
+        size="small"
+        label="Field"
+        value={entry.spec.field}
+        disabled={disabled}
+        required={Boolean(entry.spec.required)}
+        onChange={(event) => onChange(entry.index, { field: event.target.value })}
+        sx={{ gridColumn: { xs: "1", sm: "auto" }, "& .MuiInputBase-root": { bgcolor: "#fff", fontSize: 13 } }}
+      />
+      <Box sx={{ gridColumn: { xs: "1 / -1", sm: "auto" }, gridRow: { xs: 2, sm: "auto" } }}>
+        <SpecValueControl
+          spec={entry.spec}
+          disabled={disabled}
+          onChange={(value) => onChange(entry.index, { value })}
+        />
+      </Box>
+      <Stack direction="row" spacing={0.25} sx={{ gridColumn: { xs: 2, sm: "auto" }, gridRow: { xs: 1, sm: "auto" } }}>
+        <Tooltip title="Drag to reorder">
+          <span>
+            <IconButton
+              size="small"
+              aria-label={`Drag ${entry.spec.field} to reorder`}
+              disabled={disabled}
+              {...attributes}
+              {...listeners}
+              sx={{ cursor: isDragging ? "grabbing" : "grab", touchAction: "none" }}
+            >
+              <DragIndicatorRoundedIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Move up"><span><IconButton size="small" aria-label={`Move ${entry.spec.field} up`} disabled={disabled || visibleIndex === 0} onClick={() => onMove(entry.index, -1)}><ArrowUpwardRoundedIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Move down"><span><IconButton size="small" aria-label={`Move ${entry.spec.field} down`} disabled={disabled || visibleIndex === total - 1} onClick={() => onMove(entry.index, 1)}><ArrowDownwardRoundedIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Delete specification"><span><IconButton size="small" color="error" aria-label={`Delete ${entry.spec.field}`} disabled={disabled} onClick={() => onDelete(entry.index)}><DeleteOutlineRoundedIcon fontSize="small" /></IconButton></span></Tooltip>
+      </Stack>
+    </Box>
+  );
+}
+
+function SortableSpecsList({
+  entries,
+  disabled,
+  onChange,
+  onMove,
+  onDelete,
+  onReorder,
+}: {
+  entries: VisibleSpecEntry[];
+  disabled: boolean;
+  onChange: (index: number, patch: Partial<ExcelCrSpec>) => void;
+  onMove: (index: number, direction: -1 | 1) => void;
+  onDelete: (index: number) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    if (!event.over || event.active.id === event.over.id) return;
+    const from = entries.find((entry) => entry.spec.editorId === event.active.id);
+    const to = entries.find((entry) => entry.spec.editorId === event.over?.id);
+    if (!from || !to) return;
+    onReorder(from.index, to.index);
+  }, [entries, onReorder]);
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={entries.map((entry) => entry.spec.editorId)} strategy={verticalListSortingStrategy}>
+        <Stack spacing={1} sx={{ mt: 1.5 }}>
+          {entries.map((entry, visibleIndex) => (
+            <SortableSpecRow
+              key={entry.spec.editorId}
+              entry={entry}
+              visibleIndex={visibleIndex}
+              total={entries.length}
+              disabled={disabled}
+              onChange={onChange}
+              onMove={onMove}
+              onDelete={onDelete}
+            />
+          ))}
+        </Stack>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 function SectionHeading({ title, description }: { title: string; description?: string }) {
   return (
     <Box>
@@ -663,12 +825,36 @@ export default function ExcelConditionReportEditorDialog({
     });
   }, [updateActiveRow]);
 
+  const reorderSpec = useCallback((fromIndex: number, toIndex: number) => {
+    updateActiveRow((row) => {
+      const visibleIndexes = row.specs
+        .map((spec, index) => (spec.deleted ? -1 : index))
+        .filter((index) => index >= 0);
+      const fromPosition = visibleIndexes.indexOf(fromIndex);
+      const toPosition = visibleIndexes.indexOf(toIndex);
+      if (fromPosition < 0 || toPosition < 0 || fromPosition === toPosition) return row;
+
+      // Reorder only visible rows so deleted-field history retains its original slots.
+      const reorderedVisibleSpecs = arrayMove(
+        visibleIndexes.map((index) => row.specs[index]),
+        fromPosition,
+        toPosition
+      );
+      const next = [...row.specs];
+      visibleIndexes.forEach((index, position) => {
+        next[index] = reorderedVisibleSpecs[position];
+      });
+      return { ...row, specs: next };
+    });
+  }, [updateActiveRow]);
+
   const addSpec = useCallback(() => {
     updateActiveRow((row) => ({
       ...row,
       specs: [
         ...row.specs,
         {
+          editorId: `${row.rowKey}:spec:new:${globalThis.crypto?.randomUUID?.() || Date.now()}`,
           field: "New specification",
           value: "",
           type: "text",
@@ -1067,35 +1253,18 @@ export default function ExcelConditionReportEditorDialog({
                           {activeRow.normalizationWarnings.map((warning) => `${warning.removedField} was consolidated into ${warning.keptField}`).join(" · ")}
                         </Alert>
                       ) : null}
-                      <Stack spacing={1} sx={{ mt: 1.5 }}>
-                        {visibleSpecs.map(({ spec, index }, visibleIndex) => (
-                          <Box
-                            key={`${activeRow.rowKey}-${index}`}
-                            sx={{ display: "grid", gridTemplateColumns: { xs: "1fr auto", sm: "minmax(150px, 0.8fr) minmax(180px, 1.2fr) auto" }, alignItems: "center", gap: 1, border: "1px solid #e2e4e2", bgcolor: "#fafbfa", p: 1 }}
-                          >
-                            <TextField
-                              size="small"
-                              label="Field"
-                              value={spec.field}
-                              disabled={saving}
-                              required={Boolean(spec.required)}
-                              onChange={(event) => updateSpec(index, { field: event.target.value })}
-                              sx={{ gridColumn: { xs: "1", sm: "auto" }, "& .MuiInputBase-root": { bgcolor: "#fff", fontSize: 13 } }}
-                            />
-                            <Box sx={{ gridColumn: { xs: "1 / -1", sm: "auto" }, gridRow: { xs: 2, sm: "auto" } }}>
-                              <SpecValueControl spec={spec} disabled={saving} onChange={(value) => updateSpec(index, { value })} />
-                            </Box>
-                            <Stack direction="row" spacing={0.25} sx={{ gridColumn: { xs: 2, sm: "auto" }, gridRow: { xs: 1, sm: "auto" } }}>
-                              <Tooltip title="Move up"><span><IconButton size="small" aria-label={`Move ${spec.field} up`} disabled={saving || visibleIndex === 0} onClick={() => moveSpec(index, -1)}><ArrowUpwardRoundedIcon fontSize="small" /></IconButton></span></Tooltip>
-                              <Tooltip title="Move down"><span><IconButton size="small" aria-label={`Move ${spec.field} down`} disabled={saving || visibleIndex === visibleSpecs.length - 1} onClick={() => moveSpec(index, 1)}><ArrowDownwardRoundedIcon fontSize="small" /></IconButton></span></Tooltip>
-                              <Tooltip title="Delete specification"><span><IconButton size="small" color="error" aria-label={`Delete ${spec.field}`} disabled={saving} onClick={() => updateSpec(index, { deleted: true })}><DeleteOutlineRoundedIcon fontSize="small" /></IconButton></span></Tooltip>
-                            </Stack>
-                          </Box>
-                        ))}
-                        {visibleSpecs.length === 0 ? (
-                          <Alert severity="info">No specification rows remain. Add a specification to include one in Excel.</Alert>
-                        ) : null}
-                      </Stack>
+                      {visibleSpecs.length > 0 ? (
+                        <SortableSpecsList
+                          entries={visibleSpecs}
+                          disabled={saving}
+                          onChange={updateSpec}
+                          onMove={moveSpec}
+                          onDelete={(index) => updateSpec(index, { deleted: true })}
+                          onReorder={reorderSpec}
+                        />
+                      ) : (
+                        <Alert severity="info" sx={{ mt: 1.5 }}>No specification rows remain. Add a specification to include one in Excel.</Alert>
+                      )}
                     </Box>
 
                     <Box sx={{ border: "1px solid #dedfe1", bgcolor: "#fff", p: { xs: 1.5, sm: 2 } }}>
