@@ -4,6 +4,7 @@ import {
   BarChart3,
   CheckCircle2,
   FileCheck2,
+  FileClock,
   Grid2X2,
   Headphones,
   KeyRound,
@@ -144,6 +145,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
 
     return [
       { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
+      { href: "/preview-reports", label: "Preview Reports", icon: FileClock },
       { href: "/reports", label: "Approved Reports", icon: FileCheck2 },
       { href: "/users", label: "Users", icon: Users },
       {
