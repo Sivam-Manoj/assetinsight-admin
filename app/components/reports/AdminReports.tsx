@@ -551,7 +551,9 @@ export default function AdminReports() {
 
   async function handleExcelCrSaved(result: { regenerated: boolean; message: string }) {
     setCrSubmitSuccess(result.message);
-    if (result.regenerated) await load();
+    // Refresh the table after both save modes so reopening Data/CR Notes cannot
+    // show a stale report snapshot after a successful editor save.
+    await load();
   }
 
   function onReset() {

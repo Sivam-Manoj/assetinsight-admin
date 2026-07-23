@@ -881,41 +881,47 @@ export default function ExcelConditionReportEditorDialog({
     setFeedback(null);
     let savedPayload = payload;
     let savedChanges = false;
+    const editorBody = {
+      revision: payload.revision,
+      rows: rows.map((row) => ({
+        rowKey: row.rowKey,
+        lotNumber: row.lotNumber,
+        title: row.title,
+        category: row.category,
+        specs: row.specs.map((spec) => ({
+          field: spec.field,
+          value: spec.value,
+          deleted: Boolean(spec.deleted),
+        })),
+        damageAnalysis: row.damageEligible ? row.damageAnalysis : "",
+        disclaimers: row.disclaimers,
+      })),
+    };
+    const acceptSavedEditor = (value: unknown) => {
+      if (!value || typeof value !== "object") return false;
+      const next = normalisePayload(value as ExcelCrPayload);
+      setPayload(next);
+      setRows(next.rows);
+      setInitialSnapshot(rowsSnapshot(next.rows));
+      savedPayload = next;
+      savedChanges = true;
+      return true;
+    };
     try {
-      if (dirty) {
+      if (!regenerate) {
         const response = await fetch(`/api/admin/reports/${reportId}/excel-condition-reports`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            revision: payload.revision,
-            rows: rows.map((row) => ({
-              rowKey: row.rowKey,
-              lotNumber: row.lotNumber,
-              title: row.title,
-              category: row.category,
-              specs: row.specs.map((spec) => ({
-                field: spec.field,
-                value: spec.value,
-                deleted: Boolean(spec.deleted),
-              })),
-              damageAnalysis: row.damageEligible ? row.damageAnalysis : "",
-              disclaimers: row.disclaimers,
-            })),
-          }),
+          body: JSON.stringify(editorBody),
         });
         const json = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(extractError(json, "Failed to save Excel Condition Reports"));
-        savedPayload = normalisePayload((json as { data: ExcelCrPayload }).data);
-        setPayload(savedPayload);
-        setRows(savedPayload.rows);
-        setInitialSnapshot(rowsSnapshot(savedPayload.rows));
-        savedChanges = true;
-      }
-
-      if (!regenerate) {
-        const message = savedChanges ? "Changes saved." : "There are no unsaved changes.";
+        if (!acceptSavedEditor((json as { data?: ExcelCrPayload }).data)) {
+          throw new Error("The server did not return the saved report snapshot.");
+        }
+        const message = "Changes saved.";
         setFeedback({ severity: "success", message });
-        if (savedChanges) await onSaved?.({ regenerated: false, message });
+        await onSaved?.({ regenerated: false, message });
         return;
       }
 
@@ -923,37 +929,38 @@ export default function ExcelConditionReportEditorDialog({
         throw new Error("This report is already generating files. Try file regeneration again when it finishes.");
       }
 
-      try {
-        const response = await fetch(`/api/admin/reports/${reportId}/rerun-excel-cr`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ revision: savedPayload.revision }),
-        });
-        const json = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(extractError(json, "Excel, CR PDF, and CR DOCX regeneration failed"));
-        }
-        const message = "Changes saved and Excel, CR PDF, and CR DOCX regenerated.";
-        setFeedback({ severity: "success", message });
-        await onSaved?.({ regenerated: true, message });
-      } catch (regenerationError) {
-        const detail = regenerationError instanceof Error
-          ? regenerationError.message
-          : "Excel, CR PDF, and CR DOCX regeneration failed";
-        const message = savedChanges
-          ? `Changes saved; file regeneration failed. ${detail}`
-          : `File regeneration failed. ${detail}`;
-        setFeedback({ severity: "warning", message });
-        if (savedChanges) {
+      const response = await fetch(`/api/admin/reports/${reportId}/rerun-excel-cr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editorBody),
+      });
+      const json = await response.json().catch(() => ({}));
+      const responseData = (json as {
+        data?: { editor?: ExcelCrPayload; saved?: boolean };
+      }).data;
+      if (responseData?.editor) acceptSavedEditor(responseData.editor);
+      if (!response.ok) {
+        const detail = extractError(json, "Excel, CR PDF, and CR DOCX regeneration failed");
+        if (responseData?.saved || savedChanges) {
+          const message = `Changes saved; file regeneration failed. ${detail}`;
+          setFeedback({ severity: "warning", message });
           await onSaved?.({ regenerated: false, message: "Changes saved; file regeneration failed." });
+          return;
         }
+        throw new Error(detail);
       }
+      if (!savedChanges) {
+        throw new Error("The server regenerated files without confirming the saved editor snapshot.");
+      }
+      const message = "Changes saved and Excel, CR PDF, and CR DOCX regenerated.";
+      setFeedback({ severity: "success", message });
+      await onSaved?.({ regenerated: true, message });
     } catch (error) {
       setFeedback({ severity: "error", message: error instanceof Error ? error.message : "Failed to save Excel Condition Reports" });
     } finally {
       setSaving(false);
     }
-  }, [dirty, onSaved, payload, reportId, rows]);
+  }, [onSaved, payload, reportId, rows]);
 
   const visibleSpecs = activeRow?.specs
     .map((spec, index) => ({ spec, index }))
