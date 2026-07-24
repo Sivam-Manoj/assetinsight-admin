@@ -335,7 +335,12 @@ export default function PreviewReportsPage() {
         </Stack>
       ) : null}
 
-      <PreviewReportDrawer open={Boolean(selectedReportId)} reportId={selectedReportId} onClose={() => setSelectedReportId(null)} />
+      <PreviewReportDrawer
+        open={Boolean(selectedReportId)}
+        reportId={selectedReportId}
+        onClose={() => setSelectedReportId(null)}
+        onTransferred={() => setReloadToken((value) => value + 1)}
+      />
     </Box>
   );
 }

@@ -42,6 +42,14 @@ export type PreviewReportSummary = {
   filesReady: boolean;
   jobStatus: string;
   jobError: string;
+  transferEligible: boolean;
+  transferIneligibleReason: string | null;
+  previewTransferredAt: string | null;
+};
+
+export type PreviewTransferUser = PreviewReportCreator & {
+  role: string;
+  displayName: string;
 };
 
 export type PreviewReportsResponse = {
@@ -73,6 +81,15 @@ export type PreviewReportDetailResponse = {
     files_ready: boolean;
     job_status: string;
     job_error: string;
+    transferEligible: boolean;
+    transferIneligibleReason: string | null;
+    previewTransferredAt: string | null;
+    transferHistory: Array<{
+      fromUser: string;
+      toUser: string;
+      transferredBy: string;
+      transferredAt: string;
+    }>;
   };
   preview: ReportPreviewPayload;
 };

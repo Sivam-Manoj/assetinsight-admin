@@ -3,9 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Autocomplete,
   Box,
+  Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Drawer,
   IconButton,
@@ -13,9 +19,12 @@ import {
   Stack,
   Tab,
   Tabs,
+  TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import {
+  ArrowRight,
   Boxes,
   Clock3,
   Database,
@@ -23,14 +32,19 @@ import {
   FileJson,
   Image as ImageIcon,
   UserRound,
+  UserRoundCog,
   X,
 } from "lucide-react";
-import type { PreviewReportDetailResponse } from "./previewReportTypes";
+import type {
+  PreviewReportDetailResponse,
+  PreviewTransferUser,
+} from "./previewReportTypes";
 
 type Props = {
   open: boolean;
   reportId: string | null;
   onClose: () => void;
+  onTransferred?: () => void;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -153,12 +167,24 @@ function DataValue({ value, fieldKey = "", depth = 0 }: { value: unknown; fieldK
   return <PrimitiveValue value={value} fieldKey={fieldKey} />;
 }
 
-export default function PreviewReportDrawer({ open, reportId, onClose }: Props) {
+export default function PreviewReportDrawer({
+  open,
+  reportId,
+  onClose,
+  onTransferred,
+}: Props) {
   const [payload, setPayload] = useState<PreviewReportDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState(0);
   const [selectedLot, setSelectedLot] = useState(0);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferUsers, setTransferUsers] = useState<PreviewTransferUser[]>([]);
+  const [transferUsersLoading, setTransferUsersLoading] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<PreviewTransferUser | null>(null);
+  const [transferError, setTransferError] = useState("");
+  const [transferSuccess, setTransferSuccess] = useState("");
+  const [transferring, setTransferring] = useState(false);
 
   useEffect(() => {
     if (!open || !reportId) return;
@@ -168,6 +194,10 @@ export default function PreviewReportDrawer({ open, reportId, onClose }: Props) 
     setPayload(null);
     setTab(0);
     setSelectedLot(0);
+    setTransferOpen(false);
+    setTransferTarget(null);
+    setTransferError("");
+    setTransferSuccess("");
 
     fetch(`/api/admin/preview-reports/${encodeURIComponent(reportId)}`, {
       cache: "no-store",
@@ -196,6 +226,79 @@ export default function PreviewReportDrawer({ open, reportId, onClose }: Props) 
   const activeLot = lots[selectedLot] || null;
   const activeImages = useMemo(() => collectImages(activeLot), [activeLot]);
 
+  const openTransfer = async () => {
+    if (!payload?.report.transferEligible || transferUsersLoading) return;
+    setTransferOpen(true);
+    setTransferTarget(null);
+    setTransferError("");
+    if (transferUsers.length > 0) return;
+
+    setTransferUsersLoading(true);
+    try {
+      const response = await fetch("/api/admin/preview-reports/transfer-users?limit=500", {
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message || "Unable to load users.");
+      }
+      setTransferUsers(Array.isArray(body?.users) ? body.users : []);
+    } catch (reason) {
+      setTransferError(
+        reason instanceof Error ? reason.message : "Unable to load users."
+      );
+    } finally {
+      setTransferUsersLoading(false);
+    }
+  };
+
+  const submitTransfer = async () => {
+    if (!reportId || !transferTarget || transferring) return;
+    setTransferring(true);
+    setTransferError("");
+    try {
+      const response = await fetch(
+        `/api/admin/preview-reports/${encodeURIComponent(reportId)}/transfer`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetUserId: transferTarget.id }),
+        }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message || "Unable to reassign this preview.");
+      }
+      const warningCount = Array.isArray(body?.warnings) ? body.warnings.length : 0;
+      setPayload((current) =>
+        current
+          ? {
+              ...current,
+              report: {
+                ...current.report,
+                creator: body.creator || current.report.creator,
+                previewTransferredAt: body.transferredAt || new Date().toISOString(),
+              },
+            }
+          : current
+      );
+      setTransferSuccess(
+        warningCount
+          ? `Preview reassigned. ${warningCount} notification could not be delivered.`
+          : "Preview reassigned and both users were notified."
+      );
+      setTransferOpen(false);
+      setTransferTarget(null);
+      onTransferred?.();
+    } catch (reason) {
+      setTransferError(
+        reason instanceof Error ? reason.message : "Unable to reassign this preview."
+      );
+    } finally {
+      setTransferring(false);
+    }
+  };
+
   return (
     <Drawer
       anchor="right"
@@ -222,9 +325,33 @@ export default function PreviewReportDrawer({ open, reportId, onClose }: Props) 
                 Complete sanitized report data, workflow state, lots, and images.
               </Typography>
             </Box>
-            <IconButton aria-label="Close preview report details" onClick={onClose} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}>
-              <X size={19} />
-            </IconButton>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              {payload ? (
+                <Tooltip
+                  title={
+                    payload.report.transferEligible
+                      ? "Move this unsubmitted preview to another user"
+                      : payload.report.transferIneligibleReason ||
+                        "This preview cannot be reassigned."
+                  }
+                >
+                  <span>
+                    <Button
+                      variant="outlined"
+                      startIcon={<UserRoundCog size={17} />}
+                      disabled={!payload.report.transferEligible}
+                      onClick={openTransfer}
+                      sx={{ borderRadius: "4px", whiteSpace: "nowrap" }}
+                    >
+                      Reassign
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : null}
+              <IconButton aria-label="Close preview report details" onClick={onClose} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}>
+                <X size={19} />
+              </IconButton>
+            </Stack>
           </Stack>
         </Box>
 
@@ -234,6 +361,15 @@ export default function PreviewReportDrawer({ open, reportId, onClose }: Props) 
           <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert></Box>
         ) : payload ? (
           <>
+            {transferSuccess ? (
+              <Alert
+                severity={transferSuccess.includes("could not") ? "warning" : "success"}
+                onClose={() => setTransferSuccess("")}
+                sx={{ flexShrink: 0, borderRadius: 0 }}
+              >
+                {transferSuccess}
+              </Alert>
+            ) : null}
             <Box sx={{ flexShrink: 0, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.paper", px: { xs: 2, md: 3 }, py: 1.5 }}>
               <Stack direction={{ xs: "column", md: "row" }} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between" spacing={1.5}>
                 <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
@@ -339,6 +475,123 @@ export default function PreviewReportDrawer({ open, reportId, onClose }: Props) 
             </Box>
           </>
         ) : null}
+
+        <Dialog
+          open={transferOpen}
+          onClose={() => {
+            if (!transferring) setTransferOpen(false);
+          }}
+          fullWidth
+          maxWidth="sm"
+          PaperProps={{ sx: { borderRadius: "6px" } }}
+        >
+          <DialogTitle sx={{ pb: 1 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <UserRoundCog size={21} />
+              <Typography component="span" sx={{ fontSize: 20, fontWeight: 750 }}>
+                Reassign preview
+              </Typography>
+            </Stack>
+          </DialogTitle>
+          <DialogContent dividers>
+            <Typography sx={{ color: "text.secondary", fontSize: 13.5, lineHeight: 1.6 }}>
+              The current owner will immediately lose access. The selected user will
+              receive the complete preview, images, and editable lot data and can
+              continue from their Previews screen.
+            </Typography>
+
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+                alignItems: "center",
+                gap: 1,
+                my: 2,
+              }}
+            >
+              <Box sx={{ minWidth: 0, border: "1px solid", borderColor: "divider", p: 1.25 }}>
+                <Typography sx={{ color: "text.secondary", fontSize: 11, fontWeight: 750, textTransform: "uppercase" }}>
+                  Current owner
+                </Typography>
+                <Typography noWrap sx={{ mt: 0.35, fontSize: 13.5, fontWeight: 700 }}>
+                  {payload?.report.creator?.username ||
+                    payload?.report.creator?.companyName ||
+                    payload?.report.creator?.email ||
+                    "Unavailable"}
+                </Typography>
+                <Typography noWrap sx={{ color: "text.secondary", fontSize: 12 }}>
+                  {payload?.report.creator?.email || "No email"}
+                </Typography>
+              </Box>
+              <ArrowRight size={18} />
+              <Box sx={{ minWidth: 0, border: "1px solid", borderColor: transferTarget ? "primary.main" : "divider", p: 1.25 }}>
+                <Typography sx={{ color: "text.secondary", fontSize: 11, fontWeight: 750, textTransform: "uppercase" }}>
+                  New owner
+                </Typography>
+                <Typography noWrap sx={{ mt: 0.35, fontSize: 13.5, fontWeight: 700 }}>
+                  {transferTarget?.displayName || "Select below"}
+                </Typography>
+                <Typography noWrap sx={{ color: "text.secondary", fontSize: 12 }}>
+                  {transferTarget?.email || "No user selected"}
+                </Typography>
+              </Box>
+            </Box>
+
+            <Autocomplete
+              options={transferUsers}
+              value={transferTarget}
+              loading={transferUsersLoading}
+              disabled={transferring}
+              getOptionLabel={(option) =>
+                `${option.displayName}${option.email ? ` - ${option.email}` : ""}`
+              }
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              getOptionDisabled={(option) =>
+                option.id === payload?.report.creator?.id
+              }
+              onChange={(_, value) => {
+                setTransferTarget(value);
+                setTransferError("");
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Transfer to"
+                  placeholder="Search by name, company, or email"
+                  error={Boolean(transferError)}
+                  helperText={
+                    transferError ||
+                    "Both the previous and new owner receive an email and in-app notification."
+                  }
+                />
+              )}
+            />
+
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              This action moves ownership. It does not create a copy and does not
+              submit or regenerate the preview.
+            </Alert>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 1.5 }}>
+            <Button
+              color="inherit"
+              disabled={transferring}
+              onClick={() => setTransferOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              disabled={!transferTarget || transferring}
+              onClick={submitTransfer}
+              startIcon={
+                transferring ? <CircularProgress color="inherit" size={16} /> : <UserRoundCog size={17} />
+              }
+            >
+              {transferring ? "Reassigning" : "Confirm reassignment"}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Drawer>
   );
