@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import {
   type ColumnDef,
@@ -14,6 +16,9 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -40,7 +45,6 @@ import type {
   AssetAdminScheduleBuyersPremiumBasis,
   AssetAdminScheduleEvaluatorColumn,
   AssetAdminScheduleFileSummary,
-  AssetAdminScheduleMarketCheck,
   AssetAdminScheduleRow,
   AssetAdminScheduleSheet,
   ReportPreviewPayload,
@@ -63,93 +67,24 @@ type AssetScheduleSheetProps = {
   onClose: () => void;
 };
 
-type AssetSheetTab = "scheduleA" | "marketCheck" | "fileSummary";
+type AssetSheetTab = "scheduleA" | "fileSummary";
 
 type SummaryRow = {
   label: string;
   value: React.ReactNode;
 };
 
-const marketCheckFields: Array<{
-  key: Exclude<keyof AssetAdminScheduleMarketCheck, "notes">;
-  label: string;
-  options: string[];
-}> = [
-  { key: "comparable_count", label: "Comparable Count", options: ["", "High", "Moderate", "Low"] },
-  { key: "avg_retail_asking_price", label: "Avg Retail Asking Price ($)", options: ["", "High", "Moderate", "Low"] },
-  { key: "market_saturation", label: "Market Saturation", options: ["", "Low", "Moderate", "High"] },
-  { key: "market_velocity", label: "Market Velocity", options: ["", "Fast", "Normal", "Slow"] },
-  { key: "regional_demand", label: "Regional Demand", options: ["", "Strong", "Average", "Weak"] },
-];
-
-function parseNumberInput(value: string) {
-  if (!value.trim()) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function readOnlyValue(value: string | number | null | undefined) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
-}
-
-function marketCheckEditor(
-  value: AssetAdminScheduleMarketCheck,
-  onChange: (next: AssetAdminScheduleMarketCheck) => void
-) {
-  return (
-    <Box sx={{ minWidth: 220 }}>
-      {marketCheckFields.map((field, index) => (
-        <Stack
-          key={field.key}
-          direction="row"
-          spacing={0.75}
-          alignItems="center"
-          sx={{
-            py: 0.5,
-            borderBottom: index === marketCheckFields.length - 1 ? "none" : "1px solid",
-            borderColor: "divider",
-          }}
-        >
-          <Typography variant="caption" sx={{ minWidth: 110, color: "text.secondary", fontWeight: 600 }}>
-            {field.label}
-          </Typography>
-          <FormControl size="small" fullWidth>
-            <Select
-              value={value[field.key]}
-              displayEmpty
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  [field.key]: event.target.value as AssetAdminScheduleMarketCheck[typeof field.key],
-                })
-              }
-              sx={{
-                borderRadius: 0,
-                bgcolor: "common.white",
-                fontSize: 12,
-                minHeight: 32,
-                "& .MuiSelect-select": { py: 0.75 },
-              }}
-            >
-              {field.options.map((option) => (
-                <MenuItem key={option || "blank"} value={option}>
-                  {option || "-"}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Stack>
-      ))}
-    </Box>
-  );
 }
 
 function CompactReadOnlyCell({ value }: { value: string | number | null | undefined }) {
   return (
     <Box
       sx={{
+        minWidth: 80,
         fontSize: 13,
-        lineHeight: 1.35,
+        lineHeight: 1.45,
         color: "text.primary",
         whiteSpace: "normal",
         wordBreak: "break-word",
@@ -160,6 +95,457 @@ function CompactReadOnlyCell({ value }: { value: string | number | null | undefi
   );
 }
 
+function numericDraftValue(value: number | null) {
+  return value === null ? "" : String(value);
+}
+
+function parseNumericDraft(value: string): number | null | undefined {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized === "-" || normalized === "." || normalized === "-.") return undefined;
+
+  const unsigned = normalized.startsWith("-") ? normalized.slice(1) : normalized;
+  const integerPart = unsigned.split(".")[0];
+  if (integerPart.includes(",") && !/^\d{1,3}(?:,\d{3})+$/.test(integerPart)) {
+    return undefined;
+  }
+
+  const parsed = Number(normalized.replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+const NumericDraftField = memo(function NumericDraftField({
+  value,
+  onCommit,
+  ariaLabel,
+  suffix,
+  minWidth = 112,
+}: {
+  value: number | null;
+  onCommit: (next: number | null) => void;
+  ariaLabel: string;
+  suffix?: string;
+  minWidth?: number | string;
+}) {
+  const [draft, setDraft] = useState(() => numericDraftValue(value));
+  const [focused, setFocused] = useState(false);
+  const revertOnBlurRef = useRef(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(numericDraftValue(value));
+  }, [focused, value]);
+
+  const commitDraft = useCallback(() => {
+    setFocused(false);
+    if (revertOnBlurRef.current) {
+      revertOnBlurRef.current = false;
+      setDraft(numericDraftValue(value));
+      return;
+    }
+    const parsed = parseNumericDraft(draft);
+    if (parsed === undefined) {
+      setDraft(numericDraftValue(value));
+      return;
+    }
+    setDraft(numericDraftValue(parsed));
+    if (parsed !== value) onCommit(parsed);
+  }, [draft, onCommit, value]);
+
+  return (
+    <TextField
+      type="text"
+      size="small"
+      value={draft}
+      onFocus={() => {
+        revertOnBlurRef.current = false;
+        setFocused(true);
+      }}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (/^-?[\d,]*(?:\.\d*)?$/.test(next)) setDraft(next);
+      }}
+      onBlur={commitDraft}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          revertOnBlurRef.current = true;
+          setDraft(numericDraftValue(value));
+          event.currentTarget.blur();
+        }
+      }}
+      placeholder="0.00"
+      autoComplete="off"
+      inputProps={{
+        inputMode: "decimal",
+        "aria-label": ariaLabel,
+      }}
+      InputProps={{
+        endAdornment: suffix ? (
+          <Typography sx={{ ml: 1, color: "text.secondary", fontSize: 12 }}>
+            {suffix}
+          </Typography>
+        ) : undefined,
+      }}
+      sx={{
+        width: "100%",
+        minWidth,
+        "& .MuiOutlinedInput-root": {
+          minHeight: 44,
+          borderRadius: 1,
+          bgcolor: "background.paper",
+        },
+        "& .MuiOutlinedInput-input": {
+          px: 1.25,
+          py: 1,
+          fontSize: { xs: 16, md: 13 },
+          fontVariantNumeric: "tabular-nums",
+        },
+      }}
+    />
+  );
+});
+
+const EvaluatorNameField = memo(function EvaluatorNameField({
+  value,
+  onCommit,
+  ariaLabel,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const revertOnBlurRef = useRef(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(value);
+  }, [focused, value]);
+
+  const commitDraft = useCallback(() => {
+    setFocused(false);
+    if (revertOnBlurRef.current) {
+      revertOnBlurRef.current = false;
+      setDraft(value);
+      return;
+    }
+
+    const next = draft.trim();
+    setDraft(next);
+    if (next !== value) onCommit(next);
+  }, [draft, onCommit, value]);
+
+  return (
+    <TextField
+      value={draft}
+      onFocus={() => {
+        revertOnBlurRef.current = false;
+        setFocused(true);
+      }}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commitDraft}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          revertOnBlurRef.current = true;
+          setDraft(value);
+          event.currentTarget.blur();
+        }
+      }}
+      size="small"
+      fullWidth
+      autoComplete="off"
+      inputProps={{ "aria-label": ariaLabel }}
+      sx={{
+        "& .MuiOutlinedInput-root": {
+          minHeight: 44,
+          borderRadius: 1,
+          bgcolor: "background.paper",
+        },
+        "& .MuiOutlinedInput-input": {
+          px: 1,
+          py: 0.75,
+          fontSize: { xs: 16, md: 13 },
+        },
+      }}
+    />
+  );
+});
+
+function LabeledValue({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+}) {
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography
+        component="dt"
+        sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        component="dd"
+        sx={{
+          m: 0,
+          minHeight: 44,
+          px: 1.25,
+          py: 1.15,
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 1,
+          bgcolor: "action.hover",
+          color: "text.primary",
+          fontSize: 14,
+          lineHeight: 1.4,
+          wordBreak: "break-word",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {readOnlyValue(value)}
+      </Typography>
+    </Box>
+  );
+}
+
+function MobileSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box
+      component="section"
+      sx={{
+        px: { xs: 2, sm: 2.5 },
+        py: 2,
+        borderTop: "1px solid",
+        borderColor: "divider",
+      }}
+    >
+      <Typography sx={{ mb: 1.5, fontSize: 15, fontWeight: 700 }}>{title}</Typography>
+      {children}
+    </Box>
+  );
+}
+
+type UpdateRowField = <T extends keyof AssetAdminScheduleRow>(
+  lotId: string,
+  key: T,
+  value: AssetAdminScheduleRow[T]
+) => void;
+
+const MobileLotCard = memo(function MobileLotCard({
+  row,
+  index,
+  evaluatorColumns,
+  onUpdateRow,
+  onOpenGallery,
+}: {
+  row: AssetAdminScheduleRow;
+  index: number;
+  evaluatorColumns: AssetAdminScheduleEvaluatorColumn[];
+  onUpdateRow: UpdateRowField;
+  onOpenGallery: (title: string, urls: string[]) => void;
+}) {
+  const pictureCount = row.picture_urls.length || row.pictures;
+
+  return (
+    <Accordion
+      defaultExpanded={index === 0}
+      disableGutters
+      elevation={0}
+      sx={{
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: "8px !important",
+        overflow: "hidden",
+        bgcolor: "background.paper",
+        "&::before": { display: "none" },
+      }}
+    >
+      <AccordionSummary
+        expandIcon={<ExpandMoreRoundedIcon />}
+        sx={{
+          minHeight: 68,
+          px: 2,
+          "& .MuiAccordionSummary-content": { my: 1.25 },
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontSize: 17, fontWeight: 700 }}>{row.asset_id || row.lot_id}</Typography>
+          <Typography noWrap sx={{ color: "text.secondary", fontSize: 13 }}>
+            {row.asset_category || "Uncategorized asset"}
+          </Typography>
+        </Box>
+      </AccordionSummary>
+      <AccordionDetails sx={{ p: 0 }}>
+        <MobileSection title="Asset details">
+          <Box
+            component="dl"
+            sx={{
+              m: 0,
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 1.25,
+            }}
+          >
+            <LabeledValue label="Year" value={row.year} />
+            <LabeledValue label="Make" value={row.make} />
+            <LabeledValue label="Model" value={row.model} />
+            <LabeledValue label="Serial Number" value={row.serial_number} />
+            <LabeledValue label="CR Details" value={row.cr_details} />
+            <LabeledValue label="Condition (1-5)" value={row.condition_score} />
+          </Box>
+          <Box sx={{ mt: 1.25 }}>
+            <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
+              Location (City, State/Prov)
+            </Typography>
+            <TextField
+              value={row.location}
+              onChange={(event) => onUpdateRow(row.lot_id, "location", event.target.value)}
+              placeholder="City, State/Prov"
+              size="small"
+              fullWidth
+              inputProps={{ "aria-label": `Location for ${row.asset_id || row.lot_id}` }}
+              sx={{
+                "& .MuiOutlinedInput-root": { minHeight: 44, borderRadius: 1 },
+                "& .MuiOutlinedInput-input": { fontSize: 16 },
+              }}
+            />
+          </Box>
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<PhotoLibraryOutlinedIcon />}
+            disabled={!row.picture_urls.length}
+            onClick={() => onOpenGallery(`Lot ${row.asset_id}`, row.picture_urls)}
+            fullWidth
+            sx={{ mt: 1.25, minHeight: 44, borderRadius: 1, textTransform: "none" }}
+          >
+            {pictureCount
+              ? `View ${pictureCount} picture${pictureCount === 1 ? "" : "s"}`
+              : "No pictures"}
+          </Button>
+          {row.asset_insight ? (
+            <Box sx={{ mt: 1.25 }}>
+              <LabeledValue label="Asset Insight" value={row.asset_insight} />
+            </Box>
+          ) : null}
+        </MobileSection>
+
+        <MobileSection title="Evaluator values">
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 1.25,
+            }}
+          >
+            {evaluatorColumns.map((column) => (
+              <Box key={column.id} sx={{ minWidth: 0 }}>
+                <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
+                  {column.name || "Evaluator"}
+                </Typography>
+                <NumericDraftField
+                  value={row.evaluator_values[column.id] ?? null}
+                  onCommit={(next) =>
+                    onUpdateRow(row.lot_id, "evaluator_values", {
+                      ...row.evaluator_values,
+                      [column.id]: next,
+                    })
+                  }
+                  ariaLabel={`${column.name || "Evaluator"} value for ${row.asset_id || row.lot_id}`}
+                  minWidth={0}
+                />
+              </Box>
+            ))}
+          </Box>
+        </MobileSection>
+
+        <MobileSection title="Estimated values">
+          <Box
+            component="dl"
+            sx={{
+              m: 0,
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 1.25,
+            }}
+          >
+            <LabeledValue label="Low Est. Sale Value ($)" value={formatCurrencyCell(row.low_est_sale_value)} />
+            <LabeledValue label="High Est. Sale Value ($)" value={formatCurrencyCell(row.high_est_sale_value)} />
+            <LabeledValue label="Buyer Premium %" value={`${row.buyer_premium_percent}%`} />
+            <LabeledValue label="Buyer Premium ($)" value={formatCurrencyCell(row.buyer_premium_amount)} />
+            <LabeledValue label="Total Expected Gross ($)" value={formatCurrencyCell(row.total_expected_gross)} />
+            <LabeledValue label="Allocated Value ($)" value={formatCurrencyCell(row.allocated_value)} />
+          </Box>
+        </MobileSection>
+
+        <MobileSection title="Costs & notes">
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 1.25,
+            }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
+                Lien Search
+              </Typography>
+              <NumericDraftField
+                value={row.lien_search}
+                onCommit={(next) => onUpdateRow(row.lot_id, "lien_search", next)}
+                ariaLabel={`Lien search cost for ${row.asset_id || row.lot_id}`}
+                minWidth={0}
+              />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
+                Video Cost
+              </Typography>
+              <NumericDraftField
+                value={row.video_cost}
+                onCommit={(next) => onUpdateRow(row.lot_id, "video_cost", next)}
+                ariaLabel={`Video cost for ${row.asset_id || row.lot_id}`}
+                minWidth={0}
+              />
+            </Box>
+            <LabeledValue label="Cleaning" value={formatCurrencyCell(row.cleaning)} />
+            <LabeledValue label="Lotting Fee" value={formatCurrencyCell(row.lotting_fee)} />
+            <LabeledValue label="Advertising" value={formatCurrencyCell(row.advertising)} />
+          </Box>
+          <Box sx={{ mt: 1.25 }}>
+            <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
+              Notes
+            </Typography>
+            <TextField
+              multiline
+              minRows={3}
+              value={row.notes}
+              onChange={(event) => onUpdateRow(row.lot_id, "notes", event.target.value)}
+              placeholder="Notes"
+              size="small"
+              fullWidth
+              inputProps={{ "aria-label": `Notes for ${row.asset_id || row.lot_id}` }}
+              sx={{
+                "& .MuiOutlinedInput-root": { borderRadius: 1 },
+                "& .MuiOutlinedInput-input": { fontSize: 16 },
+              }}
+            />
+          </Box>
+        </MobileSection>
+      </AccordionDetails>
+    </Accordion>
+  );
+});
+
 function SummaryTable({
   title,
   rows,
@@ -168,63 +554,59 @@ function SummaryTable({
   rows: SummaryRow[];
 }) {
   return (
-    <Box sx={{ minWidth: 340, flex: 1 }}>
+    <Paper
+      variant="outlined"
+      sx={{ minWidth: 0, overflow: "hidden", borderRadius: 1, bgcolor: "background.paper" }}
+    >
       <Box
         sx={{
-          px: 1.5,
-          py: 1,
+          px: 2,
+          py: 1.5,
           borderBottom: "1px solid",
           borderColor: "divider",
-          bgcolor: "#f3f4f6",
+          bgcolor: "action.hover",
         }}
       >
-        <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{title}</Typography>
+        <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{title}</Typography>
       </Box>
-      <TableContainer component={Paper} square elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderTop: "none" }}>
+      <TableContainer>
         <Table size="small">
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.label}>
-                <TableCell sx={{ width: "56%", fontSize: 13, fontWeight: 600, borderColor: "divider" }}>
+                <TableCell sx={{ width: "52%", px: 2, py: 1.25, fontSize: 13, fontWeight: 600, borderColor: "divider" }}>
                   {row.label}
                 </TableCell>
-                <TableCell sx={{ fontSize: 13, borderColor: "divider" }}>{row.value}</TableCell>
+                <TableCell sx={{ px: 2, py: 1.25, fontSize: 13, borderColor: "divider", fontVariantNumeric: "tabular-nums" }}>
+                  {row.value}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </TableContainer>
-    </Box>
+    </Paper>
   );
 }
 
 function SummaryInput({
   value,
   onChange,
+  ariaLabel,
   suffix,
 }: {
   value: number | null;
   onChange: (next: number | null) => void;
+  ariaLabel: string;
   suffix?: string;
 }) {
   return (
-    <TextField
-      type="number"
-      size="small"
-      value={value ?? ""}
-      onChange={(event) => onChange(parseNumberInput(event.target.value))}
-      placeholder="0.00"
-      inputProps={{ step: "0.01" }}
-      InputProps={{
-        endAdornment: suffix ? (
-          <Typography sx={{ fontSize: 12, color: "text.secondary", ml: 1 }}>{suffix}</Typography>
-        ) : undefined,
-      }}
-      sx={{
-        width: "100%",
-        "& .MuiOutlinedInput-root": { borderRadius: 0 },
-        "& .MuiOutlinedInput-input": { px: 1.25, py: 0.85, fontSize: 13 },
-      }}
+    <NumericDraftField
+      value={value}
+      onCommit={onChange}
+      ariaLabel={ariaLabel}
+      suffix={suffix}
+      minWidth={0}
     />
   );
 }
@@ -248,12 +630,6 @@ export default function AssetScheduleSheet({
     setActiveTab("scheduleA");
   }, [preview]);
 
-  const serializedInitial = useMemo(
-    () => JSON.stringify(preview.assetScheduleSheet || null),
-    [preview.assetScheduleSheet]
-  );
-  const serializedCurrent = useMemo(() => JSON.stringify(sheet || null), [sheet]);
-  const isDirty = serializedCurrent !== serializedInitial;
   const derivedSummary = useMemo(() => (sheet ? deriveAssetScheduleSummary(sheet) : null), [sheet]);
 
   const updateSheet = useCallback((mutator: (draft: AssetAdminScheduleSheet) => AssetAdminScheduleSheet) => {
@@ -414,9 +790,10 @@ export default function AssetScheduleSheet({
               disabled={row.original.picture_urls.length === 0}
               sx={{
                 minWidth: 0,
-                px: 0,
-                py: 0,
-                borderRadius: 0,
+                minHeight: 36,
+                px: 0.5,
+                py: 0.5,
+                borderRadius: 1,
                 textTransform: "none",
                 fontSize: 13,
                 fontWeight: 500,
@@ -428,18 +805,6 @@ export default function AssetScheduleSheet({
           );
         },
       },
-      {
-        id: "market_check",
-        accessorKey: "market_check",
-        header: "Market Check",
-        cell: ({ row }) =>
-          marketCheckEditor(row.original.market_check, (next) =>
-            updateRowField(row.original.lot_id, "market_check", {
-              ...next,
-              notes: row.original.market_check.notes,
-            })
-          ),
-      },
       { id: "asset_insight", accessorKey: "asset_insight", header: "Asset Insight", cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_insight} /> },
     ];
 
@@ -447,15 +812,10 @@ export default function AssetScheduleSheet({
       id: `eval_${column.id}`,
       header: () => (
         <Stack spacing={0.75} sx={{ minWidth: 120 }}>
-          <TextField
+          <EvaluatorNameField
             value={column.name}
-            onChange={(event) => updateEvaluatorName(column.id, event.target.value)}
-            size="small"
-            variant="outlined"
-            sx={{
-              "& .MuiOutlinedInput-root": { borderRadius: 0, bgcolor: "common.white" },
-              "& .MuiOutlinedInput-input": { px: 1, py: 0.75, fontSize: 13 },
-            }}
+            onCommit={(next) => updateEvaluatorName(column.id, next)}
+            ariaLabel={`Name for ${column.name || "evaluator"}`}
           />
           <Button
             size="small"
@@ -468,8 +828,8 @@ export default function AssetScheduleSheet({
               justifyContent: "flex-start",
               minWidth: 0,
               px: 0,
-              py: 0,
-              borderRadius: 0,
+              py: 0.25,
+              borderRadius: 1,
               color: "inherit",
               textTransform: "none",
               fontSize: 12,
@@ -480,23 +840,15 @@ export default function AssetScheduleSheet({
         </Stack>
       ),
       cell: ({ row }) => (
-        <TextField
-          type="number"
-          size="small"
-          value={row.original.evaluator_values[column.id] ?? ""}
-          onChange={(event) =>
+        <NumericDraftField
+          value={row.original.evaluator_values[column.id] ?? null}
+          onCommit={(next) =>
             updateRowField(row.original.lot_id, "evaluator_values", {
               ...row.original.evaluator_values,
-              [column.id]: parseNumberInput(event.target.value),
+              [column.id]: next,
             })
           }
-          placeholder="0.00"
-          inputProps={{ step: "0.01" }}
-          sx={{
-            minWidth: 110,
-            "& .MuiOutlinedInput-root": { borderRadius: 0 },
-            "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
-          }}
+          ariaLabel={`${column.name || "Evaluator"} value for ${row.original.asset_id || row.original.lot_id}`}
         />
       ),
     }));
@@ -535,18 +887,10 @@ export default function AssetScheduleSheet({
         accessorKey: "lien_search",
         header: "Lien Search",
         cell: ({ row }) => (
-          <TextField
-            type="number"
-            size="small"
-            value={row.original.lien_search ?? ""}
-            onChange={(event) => updateRowField(row.original.lot_id, "lien_search", parseNumberInput(event.target.value))}
-            placeholder="0.00"
-            inputProps={{ step: "0.01" }}
-            sx={{
-              minWidth: 110,
-              "& .MuiOutlinedInput-root": { borderRadius: 0 },
-              "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
-            }}
+          <NumericDraftField
+            value={row.original.lien_search ?? null}
+            onCommit={(next) => updateRowField(row.original.lot_id, "lien_search", next)}
+            ariaLabel={`Lien search cost for ${row.original.asset_id || row.original.lot_id}`}
           />
         ),
       },
@@ -555,18 +899,10 @@ export default function AssetScheduleSheet({
         accessorKey: "video_cost",
         header: "Video Cost",
         cell: ({ row }) => (
-          <TextField
-            type="number"
-            size="small"
-            value={row.original.video_cost ?? ""}
-            onChange={(event) => updateRowField(row.original.lot_id, "video_cost", parseNumberInput(event.target.value))}
-            placeholder="0.00"
-            inputProps={{ step: "0.01" }}
-            sx={{
-              minWidth: 110,
-              "& .MuiOutlinedInput-root": { borderRadius: 0 },
-              "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
-            }}
+          <NumericDraftField
+            value={row.original.video_cost ?? null}
+            onCommit={(next) => updateRowField(row.original.lot_id, "video_cost", next)}
+            ariaLabel={`Video cost for ${row.original.asset_id || row.original.lot_id}`}
           />
         ),
       },
@@ -574,7 +910,43 @@ export default function AssetScheduleSheet({
       { id: "advertising", accessorKey: "advertising", header: "Advertising", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.advertising)} /> },
     ];
 
-    return [...staticColumns, ...evaluatorColumns, ...resultColumns];
+    return [
+      {
+        id: "identity",
+        header: "Identity",
+        columns: staticColumns.slice(0, 2),
+      },
+      {
+        id: "asset_details",
+        header: "Asset details",
+        columns: staticColumns.slice(2),
+      },
+      {
+        id: "evaluator_values",
+        header: "Evaluator values",
+        columns: evaluatorColumns,
+      },
+      {
+        id: "estimated_values",
+        header: "Estimated sale values",
+        columns: resultColumns.slice(0, 2),
+      },
+      {
+        id: "buyer_premium",
+        header: "Buyer premium",
+        columns: resultColumns.slice(2, 4),
+      },
+      {
+        id: "totals",
+        header: "Totals",
+        columns: resultColumns.slice(4, 6),
+      },
+      {
+        id: "costs_notes",
+        header: "Costs & notes",
+        columns: resultColumns.slice(6),
+      },
+    ];
   }, [openGallery, removeEvaluator, sheet, updateEvaluatorName, updateRowField]);
 
   const scheduleTable = useReactTable({
@@ -614,6 +986,7 @@ export default function AssetScheduleSheet({
           <SummaryInput
             value={sheet.file_summary.total_risk_weighted_value}
             onChange={(next) => updateFileSummaryField("total_risk_weighted_value", next)}
+            ariaLabel="Total risk-weighted value"
           />
         ),
       },
@@ -623,6 +996,7 @@ export default function AssetScheduleSheet({
           <SummaryInput
             value={sheet.file_summary.file_risk_multiplier}
             onChange={(next) => updateFileSummaryField("file_risk_multiplier", next)}
+            ariaLabel="File risk multiplier"
           />
         ),
       },
@@ -639,6 +1013,7 @@ export default function AssetScheduleSheet({
           <SummaryInput
             value={sheet.file_summary.commission_percent_no_guarantee}
             onChange={(next) => updateFileSummaryField("commission_percent_no_guarantee", next)}
+            ariaLabel="Commission percent with no guarantee"
             suffix="%"
           />
         ),
@@ -651,6 +1026,7 @@ export default function AssetScheduleSheet({
             onChange={(next) =>
               updateFileSummaryField("capped_threshold_percent", (next ?? 0) / 100)
             }
+            ariaLabel="Capped threshold percent"
             suffix="%"
           />
         ),
@@ -718,235 +1094,262 @@ export default function AssetScheduleSheet({
   }
 
   return (
-    <Box sx={{ display: "flex", height: "100%", flexDirection: "column", bgcolor: "common.white" }}>
+    <Box
+      sx={{
+        display: "flex",
+        height: "100%",
+        minHeight: 0,
+        flexDirection: "column",
+        bgcolor: "background.paper",
+      }}
+    >
       <Box
         sx={{
+          flexShrink: 0,
           borderBottom: "1px solid",
           borderColor: "divider",
-          px: 2,
-          py: 1.25,
-          bgcolor: "common.white",
+          bgcolor: "background.paper",
         }}
       >
-        <Stack spacing={1.5}>
-          <Stack
-            direction={{ xs: "column", lg: "row" }}
-            spacing={1.5}
-            justifyContent="space-between"
-            alignItems={{ xs: "flex-start", lg: "center" }}
-          >
-            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: 18, md: 20 } }}>
-              {preview.title}
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {activeTab === "scheduleA" ? (
-                <Button
-                  variant="outlined"
-                  color="inherit"
-                  startIcon={<AddRoundedIcon />}
-                  onClick={addEvaluator}
-                  sx={{ borderRadius: 0, textTransform: "none" }}
-                >
-                  Add Evaluator
-                </Button>
-              ) : null}
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<SaveRoundedIcon />}
-                disabled={saving || !isDirty}
-                onClick={() => void handleSave()}
-                sx={{ borderRadius: 0, textTransform: "none" }}
-              >
-                {saving ? "Saving..." : "Save"}
-              </Button>
-              <Button
-                variant="text"
-                color="inherit"
-                startIcon={<CloseRoundedIcon />}
-                onClick={onClose}
-                sx={{ borderRadius: 0, textTransform: "none" }}
-              >
-                Close
-              </Button>
-            </Stack>
-          </Stack>
+        <Tabs
+          value={activeTab}
+          onChange={(_, next) => setActiveTab(next)}
+          variant="standard"
+          sx={{
+            px: { xs: 1.5, sm: 2.5 },
+            minHeight: 48,
+            "& .MuiTabs-indicator": { height: 3 },
+            "& .MuiTab-root": {
+              flex: { xs: "1 1 0", sm: "0 0 auto" },
+              minHeight: 48,
+              minWidth: { xs: 0, sm: 168 },
+              px: 1.5,
+              textTransform: "none",
+              fontSize: { xs: 14, sm: 15 },
+              fontWeight: 650,
+            },
+          }}
+        >
+          <Tab value="scheduleA" label="Schedule A" />
+          <Tab value="fileSummary" label="File Summary" />
+        </Tabs>
 
-          <Tabs
-            value={activeTab}
-            onChange={(_, next) => setActiveTab(next)}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              minHeight: 40,
-              "& .MuiTab-root": {
-                minHeight: 40,
-                px: 1.5,
-                textTransform: "none",
-                borderRadius: 0,
-                fontSize: 13,
-                fontWeight: 600,
-                alignItems: "flex-start",
-              },
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            display: { xs: "none", lg: "flex" },
+            px: 2.5,
+            py: 1.5,
+            borderTop: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          {activeTab === "scheduleA" ? (
+            <Button
+              variant="outlined"
+              color="inherit"
+              startIcon={<AddRoundedIcon />}
+              onClick={addEvaluator}
+              sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
+            >
+              Add Evaluator
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<SaveRoundedIcon />}
+            disabled={saving}
+            onPointerDown={() => {
+              if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
             }}
+            onClick={() => void handleSave()}
+            sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
           >
-            <Tab value="scheduleA" label="Schedule A" />
-            <Tab value="marketCheck" label="Market Check" />
-            <Tab value="fileSummary" label="File Summary" />
-          </Tabs>
+            {saving ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<CloseRoundedIcon />}
+            onClick={onClose}
+            sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
+          >
+            Close
+          </Button>
         </Stack>
 
-        {saveError ? <Alert severity="error" sx={{ mt: 1, borderRadius: 0 }}>{saveError}</Alert> : null}
-        {saveSuccess ? <Alert severity="success" sx={{ mt: 1, borderRadius: 0 }}>{saveSuccess}</Alert> : null}
+        {saveError ? (
+          <Alert severity="error" sx={{ mx: 2, my: 1, borderRadius: 1 }}>
+            {saveError}
+          </Alert>
+        ) : null}
+        {saveSuccess ? (
+          <Alert severity="success" sx={{ mx: 2, my: 1, borderRadius: 1 }}>
+            {saveSuccess}
+          </Alert>
+        ) : null}
       </Box>
 
-      <Box sx={{ flex: 1, overflow: "hidden", p: 0 }}>
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          bgcolor: "background.default",
+        }}
+      >
         {activeTab === "scheduleA" ? (
-          <TableContainer
-            component={Paper}
-            square
-            elevation={0}
-            sx={{
-              height: "100%",
-              maxHeight: "calc(100vh - 196px)",
-              borderRadius: 0,
-              border: "none",
-            }}
-          >
-            <Table stickyHeader size="small" sx={{ minWidth: 2200 }}>
-              <TableHead>
-                {scheduleTable.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <TableCell
-                        key={header.id}
-                        sx={{
-                          bgcolor: "#f3f4f6",
-                          color: "text.primary",
-                          borderBottom: "1px solid",
-                          borderColor: "divider",
-                          fontWeight: 700,
-                          fontSize: 13,
-                          verticalAlign: "top",
-                          py: 1,
-                          px: 1.25,
-                          minWidth: 90,
-                        }}
-                      >
-                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHead>
-              <TableBody>
-                {scheduleTable.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id} hover>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        sx={{
-                          borderBottom: "1px solid",
-                          borderColor: "divider",
-                          verticalAlign: "top",
-                          py: 1,
-                          px: 1.25,
-                          bgcolor: "common.white",
-                        }}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : null}
-
-        {activeTab === "marketCheck" ? (
-          <TableContainer
-            component={Paper}
-            square
-            elevation={0}
-            sx={{
-              height: "100%",
-              maxHeight: "calc(100vh - 196px)",
-              borderRadius: 0,
-              border: "none",
-            }}
-          >
-            <Table stickyHeader size="small" sx={{ minWidth: 1120 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ bgcolor: "#f3f4f6", fontSize: 13, fontWeight: 700, minWidth: 100 }}>Asset ID</TableCell>
-                  {marketCheckFields.map((field) => (
-                    <TableCell key={field.key} sx={{ bgcolor: "#f3f4f6", fontSize: 13, fontWeight: 700, minWidth: 190 }}>
-                      {field.label}
-                    </TableCell>
-                  ))}
-                  <TableCell sx={{ bgcolor: "#f3f4f6", fontSize: 13, fontWeight: 700, minWidth: 260 }}>Market Notes</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {sheet.rows.map((row) => (
-                  <TableRow key={row.lot_id} hover>
-                    <TableCell sx={{ borderColor: "divider", verticalAlign: "top", fontSize: 13, fontWeight: 600 }}>
-                      {row.asset_id}
-                    </TableCell>
-                    {marketCheckFields.map((field) => (
-                      <TableCell key={field.key} sx={{ borderColor: "divider", verticalAlign: "top" }}>
-                        <FormControl size="small" fullWidth>
-                          <Select
-                            value={row.market_check[field.key]}
-                            displayEmpty
-                            onChange={(event) =>
-                              updateRowField(row.lot_id, "market_check", {
-                                ...row.market_check,
-                                [field.key]: event.target.value as AssetAdminScheduleMarketCheck[typeof field.key],
-                              })
-                            }
-                            sx={{ borderRadius: 0, fontSize: 13 }}
+          <>
+            <TableContainer
+              component={Paper}
+              square
+              elevation={0}
+              sx={{
+                display: { xs: "none", lg: "block" },
+                height: "100%",
+                border: "none",
+                bgcolor: "background.paper",
+              }}
+            >
+              <Table stickyHeader size="small" sx={{ minWidth: 2480 }}>
+                <TableHead>
+                  {scheduleTable.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => {
+                        const stickyAssetId = header.column.id === "asset_id";
+                        return (
+                          <TableCell
+                            key={header.id}
+                            colSpan={header.colSpan}
+                            sx={{
+                              top: headerGroup.depth === 0 ? 0 : 41,
+                              left: stickyAssetId ? 0 : "auto",
+                              zIndex: stickyAssetId ? 5 : 3,
+                              bgcolor: "action.hover",
+                              color: "text.primary",
+                              borderBottom: "1px solid",
+                              borderRight: "1px solid",
+                              borderColor: "divider",
+                              fontWeight: 700,
+                              fontSize: 13,
+                              textAlign: headerGroup.depth === 0 ? "center" : "left",
+                              verticalAlign: "top",
+                              py: 1.25,
+                              px: 1.5,
+                              minWidth: stickyAssetId ? 120 : 100,
+                            }}
                           >
-                            {field.options.map((option) => (
-                              <MenuItem key={option || "blank"} value={option}>
-                                {option || "-"}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </TableCell>
-                    ))}
-                    <TableCell sx={{ borderColor: "divider", verticalAlign: "top" }}>
-                      <TextField
-                        value={row.market_check.notes}
-                        onChange={(event) =>
-                          updateRowField(row.lot_id, "market_check", {
-                            ...row.market_check,
-                            notes: event.target.value,
-                          })
-                        }
-                        multiline
-                        minRows={2}
-                        fullWidth
-                        placeholder="Market notes"
-                        size="small"
-                        sx={{
-                          "& .MuiOutlinedInput-root": { borderRadius: 0 },
-                          "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
-                        }}
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(header.column.columnDef.header, header.getContext())}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableHead>
+                <TableBody>
+                  {scheduleTable.getRowModel().rows.map((row) => (
+                    <TableRow key={row.id} hover>
+                      {row.getVisibleCells().map((cell) => {
+                        const stickyAssetId = cell.column.id === "asset_id";
+                        return (
+                          <TableCell
+                            key={cell.id}
+                            sx={{
+                              position: stickyAssetId ? "sticky" : "static",
+                              left: stickyAssetId ? 0 : "auto",
+                              zIndex: stickyAssetId ? 1 : "auto",
+                              borderBottom: "1px solid",
+                              borderRight: "1px solid",
+                              borderColor: "divider",
+                              verticalAlign: "top",
+                              py: 1.25,
+                              px: 1.5,
+                              bgcolor: "background.paper",
+                            }}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <Box
+              sx={{
+                display: { xs: "block", lg: "none" },
+                p: { xs: 1.5, sm: 2.5 },
+              }}
+            >
+              <Paper
+                variant="outlined"
+                sx={{
+                  mb: 1.5,
+                  p: 1.5,
+                  borderRadius: 1,
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Typography sx={{ mb: 1, fontSize: 13, fontWeight: 700 }}>
+                  Evaluators
+                </Typography>
+                <Stack spacing={1}>
+                  {sheet.evaluator_columns.map((column) => (
+                    <Stack key={column.id} direction="row" spacing={1} alignItems="center">
+                      <EvaluatorNameField
+                        value={column.name}
+                        onCommit={(next) => updateEvaluatorName(column.id, next)}
+                        ariaLabel={`Name for ${column.name || "evaluator"}`}
                       />
-                    </TableCell>
-                  </TableRow>
+                      <IconButton
+                        aria-label={`Remove ${column.name || "evaluator"}`}
+                        disabled={sheet.evaluator_columns.length <= 1}
+                        onClick={() => removeEvaluator(column.id)}
+                        sx={{ width: 44, height: 44, border: "1px solid", borderColor: "divider", borderRadius: 1 }}
+                      >
+                        <DeleteOutlineRoundedIcon />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Paper>
+
+              <Stack spacing={1.5}>
+                {sheet.rows.map((row, index) => (
+                  <MobileLotCard
+                    key={row.lot_id}
+                    row={row}
+                    index={index}
+                    evaluatorColumns={sheet.evaluator_columns}
+                    onUpdateRow={updateRowField}
+                    onOpenGallery={openGallery}
+                  />
                 ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+              </Stack>
+            </Box>
+          </>
         ) : null}
 
         {activeTab === "fileSummary" ? (
-          <Box sx={{ height: "100%", overflow: "auto", p: 2 }}>
-            <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start", minWidth: 1080 }}>
+          <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "minmax(0, 1fr)",
+                  md: "repeat(2, minmax(0, 1fr))",
+                  xl: "repeat(3, minmax(0, 1fr))",
+                },
+                gap: 2,
+                alignItems: "start",
+              }}
+            >
               <SummaryTable title="Metric" rows={metricRows} />
               <SummaryTable title="Uncapped Buyers Premium Scenario" rows={uncappedRows} />
               <SummaryTable title="Capped Buyers Premium Scenario" rows={cappedRows} />
@@ -955,12 +1358,93 @@ export default function AssetScheduleSheet({
         ) : null}
       </Box>
 
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          display: { xs: "flex", lg: "none" },
+          flexShrink: 0,
+          p: 1.25,
+          borderTop: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+          boxShadow: "0 -8px 24px rgba(15, 23, 42, 0.08)",
+        }}
+      >
+        {activeTab === "scheduleA" ? (
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<AddRoundedIcon />}
+            onClick={addEvaluator}
+            sx={{
+              minWidth: 0,
+              minHeight: 46,
+              flex: 1,
+              borderRadius: 1,
+              px: 1,
+              fontSize: 12,
+              textTransform: "none",
+              whiteSpace: "nowrap",
+              "& .MuiButton-startIcon": { ml: 0, mr: 0.5 },
+              "& .MuiSvgIcon-root": { fontSize: 18 },
+            }}
+          >
+            Add Evaluator
+          </Button>
+        ) : null}
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<SaveRoundedIcon />}
+          disabled={saving}
+          onPointerDown={() => {
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          }}
+          onClick={() => void handleSave()}
+          sx={{
+            minWidth: 0,
+            minHeight: 46,
+            flex: 1,
+            borderRadius: 1,
+            px: 1,
+            fontSize: 13,
+            textTransform: "none",
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { ml: 0, mr: 0.5 },
+            "& .MuiSvgIcon-root": { fontSize: 18 },
+          }}
+        >
+          {saving ? "Saving..." : "Save"}
+        </Button>
+        <Button
+          variant="outlined"
+          color="inherit"
+          startIcon={<CloseRoundedIcon />}
+          onClick={onClose}
+          sx={{
+            minWidth: 0,
+            minHeight: 46,
+            flex: 1,
+            borderRadius: 1,
+            px: 1,
+            fontSize: 13,
+            textTransform: "none",
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { ml: 0, mr: 0.5 },
+            "& .MuiSvgIcon-root": { fontSize: 18 },
+          }}
+        >
+          Close
+        </Button>
+      </Stack>
+
       <Dialog
         open={Boolean(gallery)}
         onClose={closeGallery}
         fullWidth
         maxWidth="lg"
-        PaperProps={{ sx: { borderRadius: 0 } }}
+        PaperProps={{ sx: { borderRadius: { xs: 0, sm: 2 }, overflow: "hidden" } }}
       >
         <DialogContent sx={{ p: 0, bgcolor: "#111827" }}>
           {gallery ? (
@@ -984,7 +1468,7 @@ export default function AssetScheduleSheet({
                 <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
                   {gallery.title} ({gallery.index + 1} / {gallery.urls.length})
                 </Typography>
-                <IconButton onClick={closeGallery} sx={{ color: "common.white", borderRadius: 0 }}>
+                <IconButton onClick={closeGallery} sx={{ color: "common.white", borderRadius: 1 }}>
                   <CloseRoundedIcon />
                 </IconButton>
               </Box>
@@ -1013,7 +1497,7 @@ export default function AssetScheduleSheet({
                       transform: "translateY(-50%)",
                       color: "common.white",
                       bgcolor: "rgba(17, 24, 39, 0.72)",
-                      borderRadius: 0,
+                      borderRadius: 1,
                       "&:hover": { bgcolor: "rgba(17, 24, 39, 0.88)" },
                     }}
                   >
@@ -1028,7 +1512,7 @@ export default function AssetScheduleSheet({
                       transform: "translateY(-50%)",
                       color: "common.white",
                       bgcolor: "rgba(17, 24, 39, 0.72)",
-                      borderRadius: 0,
+                      borderRadius: 1,
                       "&:hover": { bgcolor: "rgba(17, 24, 39, 0.88)" },
                     }}
                   >
