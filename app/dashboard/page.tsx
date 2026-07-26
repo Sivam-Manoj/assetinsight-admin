@@ -1,28 +1,9 @@
 import DashboardShellV2 from "@/app/components/dashboard/DashboardShellV2";
 import AdminNavbarV2 from "@/app/components/common/AdminNavbarV2";
-import { SERVER_URL } from "@/lib/api";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireSuperadminPage } from "@/lib/requireSuperadminPage";
 
 export default async function Page() {
-  // Check if user is superadmin - regular admins can't access dashboard
-  const token = (await cookies()).get("cv_admin")?.value;
-  if (!token) redirect("/login");
-
-  const res = await fetch(`${SERVER_URL}/api/admin/me`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) redirect("/login");
-  
-  const data: { user?: { role?: string } } = await res
-    .json()
-    .catch(() => ({} as unknown as { user?: { role?: string } }));
-  const role = data?.user?.role;
-  
-  // Admin and superadmin can access dashboard
-  if (role !== "superadmin" && role !== "admin") redirect("/reports");
+  await requireSuperadminPage();
 
   return (
     <AdminNavbarV2>

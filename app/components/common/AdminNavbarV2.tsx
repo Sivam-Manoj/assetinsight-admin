@@ -115,7 +115,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
   const role = profile?.role || null;
   const roleLabel = role === "superadmin" ? "superadmin" : role === "admin" ? "admin" : role === "user" ? "user" : "loading";
   const displayName = profile?.username || profile?.companyName || profile?.email || "Administrator";
-  const homeHref = role === "superadmin" || role === "admin" ? "/dashboard" : "/reports";
+  const homeHref = role === "superadmin" ? "/dashboard" : "/reports";
 
   useEffect(() => {
     if (role !== "admin" && role !== "superadmin") return;
@@ -144,8 +144,12 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
     if (role !== "superadmin" && role !== "admin") return [];
 
     return [
-      { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
-      { href: "/preview-reports", label: "Preview Reports", icon: FileClock },
+      ...(role === "superadmin"
+        ? [
+            { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
+            { href: "/preview-reports", label: "Preview Reports", icon: FileClock },
+          ]
+        : []),
       { href: "/reports", label: "Approved Reports", icon: FileCheck2 },
       { href: "/users", label: "Users", icon: Users },
       {
@@ -157,9 +161,13 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       ...(role === "superadmin" ? [{ href: "/admins", label: "Admins", icon: Shield }] : []),
       { href: "/crm", label: "CRM", icon: Headphones },
       { href: "/spec-sheet", label: "CR Management", icon: ListChecks },
-      { href: "/revenue-radar", label: "Revenue Radar", icon: BarChart3 },
+      ...(role === "superadmin"
+        ? [{ href: "/revenue-radar", label: "Revenue Radar", icon: BarChart3 }]
+        : []),
       { href: "/approvals", label: "Released Appraisals", icon: CheckCircle2 },
-      { href: "/apk-manager", label: "APK Manager", icon: Smartphone },
+      ...(role === "superadmin"
+        ? [{ href: "/apk-manager", label: "APK Manager", icon: Smartphone }]
+        : []),
       { href: "/api", label: "API", icon: KeyRound },
     ];
   }, [deviceRequestCount, role]);
