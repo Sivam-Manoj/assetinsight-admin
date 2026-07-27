@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import {
   type ColumnDef,
   flexRender,
@@ -12,9 +13,6 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import ConfirmModal from "@/app/components/common/ConfirmModal";
-import ReportPreviewModal, {
-  type ReportPreviewPayload,
-} from "@/app/components/reports/ReportPreviewModal";
 import {
   Alert,
   Box,
@@ -327,6 +325,7 @@ const actionButtonSx = {
 };
 
 export default function AdminReports() {
+  const router = useRouter();
   // Filters
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -354,15 +353,6 @@ export default function AdminReports() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<ReportPreviewPayload | null>(null);
-  const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
-  const [previewTitle, setPreviewTitle] = useState("");
-  const [previewSaving, setPreviewSaving] = useState(false);
-  const [previewSaveError, setPreviewSaveError] = useState<string | null>(null);
-  const [previewSaveSuccess, setPreviewSaveSuccess] = useState<string | null>(null);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [crSubmitSuccess, setCrSubmitSuccess] = useState<string | null>(null);
   const [excelCrTarget, setExcelCrTarget] = useState<ReportGroup | null>(null);
@@ -423,62 +413,8 @@ export default function AdminReports() {
     setConfirmOpen(true);
   }
 
-  async function openPreview(id: string, title = "") {
-    setPreviewTargetId(id);
-    setPreviewTitle(title);
-    setPreviewOpen(true);
-    setPreviewLoading(true);
-    setPreviewError(null);
-    setPreviewData(null);
-    setPreviewSaveError(null);
-    setPreviewSaveSuccess(null);
-    try {
-      const res = await fetch(`/api/admin/reports/${id}/preview`, {
-        cache: "no-store",
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((json as { message?: string })?.message || "Failed to load report data");
-      }
-      setPreviewData(json as ReportPreviewPayload);
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to load report data";
-      setPreviewError(message);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
-
-  async function saveAssetScheduleSheet(assetScheduleSheet: NonNullable<ReportPreviewPayload["assetScheduleSheet"]>) {
-    if (!previewTargetId) return;
-    try {
-      setPreviewSaving(true);
-      setPreviewSaveError(null);
-      setPreviewSaveSuccess(null);
-      const res = await fetch(`/api/admin/reports/${previewTargetId}/asset-schedule-sheet`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ assetScheduleSheet }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((json as { message?: string })?.message || "Failed to save asset schedule sheet");
-      }
-      const payload = json as ReportPreviewPayload;
-      setPreviewData(payload);
-      setPreviewSaveSuccess(
-        payload.files_regeneration_queued
-          ? "Changes saved. Files are regenerating for My Reports."
-          : "Changes saved."
-      );
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to save asset schedule sheet";
-      setPreviewSaveError(message);
-    } finally {
-      setPreviewSaving(false);
-    }
+  function openReportData(id: string) {
+    router.push(`/reports/${encodeURIComponent(id)}/data?from=reports`);
   }
 
   async function confirmDelete() {
@@ -658,7 +594,7 @@ export default function AdminReports() {
                 "&:hover": { bgcolor: "#0369a1", boxShadow: "0 8px 18px rgba(2, 132, 199, 0.22)" },
               }}
               onClick={() => {
-                if (previewId) void openPreview(previewId, group.title);
+                if (previewId) openReportData(previewId);
               }}
             >
               Data
@@ -875,7 +811,7 @@ export default function AdminReports() {
     const previewId = getPreviewTargetId(group);
     return (
       <Stack direction="row" spacing={0.4} useFlexGap flexWrap="wrap" alignItems="center" sx={{ maxWidth: "100%", rowGap: 0.5 }}>
-        <Button variant="outlined" startIcon={<VisibilityRoundedIcon />} sx={desktopTileSx} onClick={() => previewId && void openPreview(previewId, group.title)}>
+        <Button variant="outlined" startIcon={<VisibilityRoundedIcon />} sx={desktopTileSx} onClick={() => previewId && openReportData(previewId)}>
           Data
         </Button>
         {buildFileLinks(group).map((file) => (
@@ -1454,28 +1390,6 @@ export default function AdminReports() {
           setPendingDeleteId(null);
         }}
         loading={deleting}
-      />
-      <ReportPreviewModal
-        open={previewOpen}
-        loading={previewLoading}
-        error={previewError}
-        preview={previewData}
-        titleOverride={previewTitle}
-        savingAssetSheet={previewSaving}
-        assetSheetSaveError={previewSaveError}
-        assetSheetSaveSuccess={previewSaveSuccess}
-        onSaveAssetSheet={saveAssetScheduleSheet}
-        onClose={() => {
-          setPreviewOpen(false);
-          setPreviewLoading(false);
-          setPreviewError(null);
-          setPreviewData(null);
-          setPreviewTargetId(null);
-          setPreviewTitle("");
-          setPreviewSaving(false);
-          setPreviewSaveError(null);
-          setPreviewSaveSuccess(null);
-        }}
       />
       {excelCrTarget ? (
         <ExcelConditionReportEditorDialog

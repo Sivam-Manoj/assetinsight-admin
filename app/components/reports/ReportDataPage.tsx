@@ -1,40 +1,29 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Braces, FileText, X } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Braces, FileText } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   Alert,
   alpha,
   Box,
+  Button,
   CircularProgress,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  IconButton,
   Stack,
   Tab,
   Tabs,
   Typography,
-  useMediaQuery,
-  useTheme,
 } from "@mui/material";
 import AssetScheduleSheet from "@/app/components/reports/AssetScheduleSheet";
+import { ADMIN_MOBILE_TITLEBAR_HEIGHT } from "@/app/components/common/adminLayout.constants";
 import type {
   AssetAdminScheduleSheet,
   ReportPreviewPayload,
 } from "@/app/components/reports/reportPreviewTypes";
 
-type ReportPreviewModalProps = {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-  preview: ReportPreviewPayload | null;
-  titleOverride?: string;
-  onClose: () => void;
-  savingAssetSheet?: boolean;
-  assetSheetSaveError?: string | null;
-  assetSheetSaveSuccess?: string | null;
-  onSaveAssetSheet?: (sheet: AssetAdminScheduleSheet) => Promise<void>;
+type ReportDataPageProps = {
+  reportId: string;
+  returnTo: "/reports" | "/approvals";
 };
 
 type PreviewTab = "data" | "schedule" | "raw";
@@ -474,22 +463,100 @@ function ReportDataPanel({
 
 export type { ReportPreviewPayload } from "@/app/components/reports/reportPreviewTypes";
 
-export default function ReportPreviewModal({
-  open,
-  loading,
-  error,
-  preview,
-  titleOverride,
-  onClose,
-  savingAssetSheet = false,
-  assetSheetSaveError = null,
-  assetSheetSaveSuccess = null,
-  onSaveAssetSheet,
-}: ReportPreviewModalProps) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"), { noSsr: true });
+export default function ReportDataPage({ reportId, returnTo }: ReportDataPageProps) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ReportPreviewPayload | null>(null);
+  const [savingAssetSheet, setSavingAssetSheet] = useState(false);
+  const [assetSheetSaveError, setAssetSheetSaveError] = useState<string | null>(null);
+  const [assetSheetSaveSuccess, setAssetSheetSaveSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PreviewTab>("data");
   const [selectedLot, setSelectedLot] = useState(0);
+
+  useEffect(() => {
+    router.prefetch(returnTo);
+  }, [returnTo, router]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadPreview() {
+      setLoading(true);
+      setError(null);
+      setPreview(null);
+      setAssetSheetSaveError(null);
+      setAssetSheetSaveSuccess(null);
+
+      try {
+        const response = await fetch(`/api/admin/reports/${encodeURIComponent(reportId)}/preview`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            (payload as { message?: string })?.message || "Failed to load report data"
+          );
+        }
+
+        const nextPreview = payload as ReportPreviewPayload;
+        setPreview(nextPreview);
+        setSelectedLot(0);
+        setActiveTab(nextPreview.variant === "assetScheduleSheet" ? "schedule" : "data");
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        setError(loadError instanceof Error ? loadError.message : "Failed to load report data");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+
+    void loadPreview();
+    return () => controller.abort();
+  }, [reportId]);
+
+  const saveAssetScheduleSheet = useCallback(
+    async (assetScheduleSheet: AssetAdminScheduleSheet) => {
+      setSavingAssetSheet(true);
+      setAssetSheetSaveError(null);
+      setAssetSheetSaveSuccess(null);
+
+      try {
+        const response = await fetch(
+          `/api/admin/reports/${encodeURIComponent(reportId)}/asset-schedule-sheet`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ assetScheduleSheet }),
+          }
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            (payload as { message?: string })?.message ||
+              "Failed to save asset schedule sheet"
+          );
+        }
+
+        const nextPreview = payload as ReportPreviewPayload;
+        setPreview(nextPreview);
+        setAssetSheetSaveSuccess(
+          nextPreview.files_regeneration_queued
+            ? "Changes saved. Files are regenerating for My Reports."
+            : "Changes saved."
+        );
+      } catch (saveError) {
+        setAssetSheetSaveError(
+          saveError instanceof Error ? saveError.message : "Failed to save asset schedule sheet"
+        );
+      } finally {
+        setSavingAssetSheet(false);
+      }
+    },
+    [reportId]
+  );
+
   const reportData = useMemo(
     () => (preview?.data && typeof preview.data === "object" ? preview.data : {}),
     [preview?.data]
@@ -502,227 +569,229 @@ export default function ReportPreviewModal({
     () => Object.fromEntries(Object.entries(reportData).filter(([key]) => key !== "lots" && !shouldHideReportDataKey(key))),
     [reportData]
   );
-  const hasSchedule = Boolean(preview?.assetScheduleSheet && onSaveAssetSheet);
-
-  useEffect(() => {
-    if (!open) return;
-    setSelectedLot(0);
-    setActiveTab(preview?.variant === "assetScheduleSheet" ? "schedule" : "data");
-  }, [open, preview?.reportId, preview?.variant]);
+  const hasSchedule = Boolean(preview?.assetScheduleSheet);
+  const backLabel = returnTo === "/approvals" ? "Back to released appraisals" : "Back to reports";
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      fullScreen={isMobile}
-      fullWidth
-      maxWidth={false}
-      slotProps={{
-        backdrop: {
-          sx: {
-            bgcolor: (activeTheme) => alpha(activeTheme.palette.common.black, 0.5),
-            backdropFilter: "blur(3px)",
-          },
+    <Box
+      sx={{
+        height: {
+          xs: `calc(100dvh - ${ADMIN_MOBILE_TITLEBAR_HEIGHT}px)`,
+          lg: "100dvh",
         },
+        minHeight: 620,
+        overflow: "hidden",
+        bgcolor: "background.default",
       }}
-      PaperProps={{
-        sx: {
+    >
+      <Box
+        sx={{
           display: "flex",
-          width: { xs: "100vw", sm: "min(1480px, calc(100vw - 48px))" },
-          height: { xs: "100dvh", sm: "min(920px, calc(100dvh - 48px))" },
-          maxHeight: { xs: "100dvh", sm: "calc(100dvh - 48px)" },
-          m: { xs: 0, sm: 3 },
-          border: { xs: 0, sm: "1px solid" },
-          borderColor: "divider",
-          borderRadius: { xs: 0, sm: 2.5 },
+          width: "100%",
+          height: "100%",
+          maxWidth: 1800,
+          mx: "auto",
+          flexDirection: "column",
           overflow: "hidden",
           bgcolor: "background.paper",
           backgroundImage: "none",
-          boxShadow: { xs: "none", sm: theme.shadows[8] },
-        },
-      }}
-    >
-      <DialogTitle
-        component="div"
+        }}
+      >
+      <Box
+        component="header"
         sx={{
           flex: "0 0 auto",
           borderBottom: "1px solid",
           borderColor: "divider",
-          px: { xs: 2, sm: 4 },
-          py: { xs: 2, sm: 2.75 },
+          px: { xs: 2, sm: 3, lg: 4 },
+          pt: { xs: 1.5, sm: 2.25, lg: 2.75 },
         }}
       >
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
-          <Box sx={{ minWidth: 0, pt: 0.25 }}>
-            <Typography
-              component="h2"
-              sx={{
-                color: "text.primary",
-                fontSize: { xs: 20, sm: 24 },
-                fontWeight: 700,
-                lineHeight: 1.2,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {titleOverride || preview?.title || "Report Data"}
-            </Typography>
-            <Typography
-              sx={{
-                mt: 0.75,
-                maxWidth: 680,
-                color: "text.secondary",
-                fontSize: { xs: 13.5, sm: 15 },
-                lineHeight: 1.5,
-              }}
-            >
-              Complete saved report data, organized lot by lot.
-            </Typography>
-          </Box>
-          <IconButton
-            aria-label="Close report data"
-            onClick={onClose}
+        <Button
+          color="inherit"
+          startIcon={<ArrowLeft size={18} strokeWidth={1.8} />}
+          onClick={() => router.push(returnTo)}
+          sx={{
+            minHeight: 40,
+            mb: { xs: 1, sm: 1.5 },
+            ml: -1,
+            px: 1,
+            borderRadius: 1,
+            color: "text.secondary",
+            fontSize: 13,
+            fontWeight: 600,
+            textTransform: "none",
+            "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+          }}
+        >
+          {backLabel}
+        </Button>
+
+        <Box sx={{ minWidth: 0, pb: { xs: 1.75, sm: 2.25 } }}>
+          <Typography
+            component="h1"
             sx={{
-              width: 44,
-              height: 44,
-              flexShrink: 0,
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: 1.5,
-              color: "text.secondary",
-              "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+              color: "text.primary",
+              fontSize: { xs: 26, sm: 30, lg: 34 },
+              fontWeight: 720,
+              lineHeight: 1.15,
+              letterSpacing: "-0.035em",
             }}
           >
-            <X size={20} strokeWidth={1.8} />
-          </IconButton>
-        </Stack>
-      </DialogTitle>
+            {preview?.title || "Report Data"}
+          </Typography>
+          <Typography
+            sx={{
+              mt: 0.75,
+              maxWidth: 680,
+              color: "text.secondary",
+              fontSize: { xs: 13.5, sm: 14.5 },
+              lineHeight: 1.5,
+            }}
+          >
+            Complete saved report data, organized lot by lot.
+          </Typography>
+        </Box>
 
-      <DialogContent
+        {!loading && !error && preview ? (
+          <Tabs
+            value={activeTab}
+            onChange={(_, value: PreviewTab) => setActiveTab(value)}
+            aria-label="Report data sections"
+            variant="scrollable"
+            scrollButtons={false}
+            TabIndicatorProps={{ sx: { height: 3, borderRadius: "3px 3px 0 0" } }}
+            sx={{
+              minHeight: 52,
+              "& .MuiTab-root": {
+                minHeight: 52,
+                minWidth: 0,
+                px: { xs: 1.25, sm: 2 },
+                color: "text.secondary",
+                fontSize: { xs: 13, sm: 14 },
+                fontWeight: 650,
+                textTransform: "none",
+              },
+              "& .Mui-selected": { color: "text.primary" },
+              "& .MuiTab-iconWrapper": { mr: 0.8 },
+            }}
+          >
+            <Tab
+              value="data"
+              icon={<FileText size={17} strokeWidth={1.8} />}
+              iconPosition="start"
+              label="Data"
+            />
+            {hasSchedule ? <Tab value="schedule" label="Schedule A" /> : null}
+            <Tab
+              value="raw"
+              icon={<Braces size={17} strokeWidth={1.8} />}
+              iconPosition="start"
+              label="Raw JSON"
+            />
+          </Tabs>
+        ) : null}
+      </Box>
+
+      <Box
         sx={{
           display: "flex",
           minHeight: 0,
           flex: 1,
           flexDirection: "column",
           overflow: "hidden",
-          p: 0,
         }}
       >
         {!loading && !error && preview ? (
-          <>
-            <Box
-              sx={{
-                flex: "0 0 auto",
-                overflow: "hidden",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-                px: { xs: 1, sm: 3.5 },
-                bgcolor: "background.paper",
-              }}
-            >
-              <Tabs
-                value={activeTab}
-                onChange={(_, value: PreviewTab) => setActiveTab(value)}
-                aria-label="Report data sections"
-                variant="scrollable"
-                scrollButtons={false}
-                TabIndicatorProps={{ sx: { height: 3, borderRadius: "3px 3px 0 0" } }}
-                sx={{
-                  minHeight: 58,
-                  "& .MuiTab-root": {
-                    minHeight: 58,
-                    minWidth: 0,
-                    px: { xs: 1.5, sm: 2 },
-                    color: "text.secondary",
-                    fontSize: { xs: 13, sm: 14 },
-                    fontWeight: 650,
-                    textTransform: "none",
-                  },
-                  "& .Mui-selected": {
-                    color: "text.primary",
-                  },
-                  "& .MuiTab-iconWrapper": {
-                    mr: 0.9,
-                  },
-                }}
-              >
-                <Tab value="data" icon={<FileText size={18} strokeWidth={1.8} />} iconPosition="start" label="Data" />
-                {hasSchedule ? <Tab value="schedule" label="Schedule A" /> : null}
-                <Tab value="raw" icon={<Braces size={18} strokeWidth={1.8} />} iconPosition="start" label="Raw JSON" />
-              </Tabs>
+          <Box
+            sx={{
+              minHeight: 0,
+              flex: 1,
+              overflowX: "hidden",
+              overflowY: activeTab === "schedule" ? "hidden" : "auto",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              bgcolor: "background.paper",
+            }}
+          >
+            <Box sx={{ display: activeTab === "data" ? "block" : "none", minHeight: "100%" }}>
+              <ReportDataPanel
+                preview={preview}
+                lots={lots}
+                summary={summary}
+                selectedLot={selectedLot}
+                onSelectLot={setSelectedLot}
+              />
             </Box>
 
-            <Box
-              sx={{
-                minHeight: 0,
-                flex: 1,
-                overflowX: "hidden",
-                overflowY: activeTab === "schedule" ? "hidden" : "auto",
-                overscrollBehavior: "contain",
-                scrollbarGutter: "stable",
-                bgcolor: "background.paper",
-              }}
-            >
-              <Box sx={{ display: activeTab === "data" ? "block" : "none", minHeight: "100%" }}>
-                <ReportDataPanel
+            {hasSchedule && preview.assetScheduleSheet ? (
+              <Box
+                sx={{
+                  display: activeTab === "schedule" ? "block" : "none",
+                  height: "100%",
+                  minHeight: 0,
+                }}
+              >
+                <AssetScheduleSheet
                   preview={preview}
-                  lots={lots}
-                  summary={summary}
-                  selectedLot={selectedLot}
-                  onSelectLot={setSelectedLot}
+                  saving={savingAssetSheet}
+                  saveError={assetSheetSaveError}
+                  saveSuccess={assetSheetSaveSuccess}
+                  onSave={saveAssetScheduleSheet}
+                  pageMode
                 />
               </Box>
+            ) : null}
 
-              {hasSchedule && preview.assetScheduleSheet ? (
-                <Box
-                  sx={{
-                    display: activeTab === "schedule" ? "block" : "none",
-                    height: "100%",
-                    minHeight: 0,
-                    p: { xs: 1.5, sm: 2.5, lg: 3 },
-                  }}
-                >
-                  <AssetScheduleSheet
-                    preview={preview}
-                    saving={savingAssetSheet}
-                    saveError={assetSheetSaveError}
-                    saveSuccess={assetSheetSaveSuccess}
-                    onSave={onSaveAssetSheet!}
-                    onClose={onClose}
-                  />
-                </Box>
-              ) : null}
-
-              <Box
-                component="pre"
-                sx={{
-                  display: activeTab === "raw" ? "block" : "none",
-                  minHeight: "100%",
-                  m: 0,
-                  p: { xs: 2, sm: 3, lg: 4 },
-                  color: "text.primary",
-                  bgcolor: "background.paper",
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  fontSize: { xs: 11.5, sm: 12 },
-                  lineHeight: 1.65,
-                  whiteSpace: "pre-wrap",
-                  overflowWrap: "anywhere",
-                }}
-              >
-                {JSON.stringify(preview, null, 2)}
-              </Box>
+            <Box
+              component="pre"
+              sx={{
+                display: activeTab === "raw" ? "block" : "none",
+                minHeight: "100%",
+                m: 0,
+                p: { xs: 2, sm: 3, lg: 4 },
+                color: "text.primary",
+                bgcolor: "background.paper",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                fontSize: { xs: 11.5, sm: 12 },
+                lineHeight: 1.65,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {JSON.stringify(preview, null, 2)}
             </Box>
-          </>
+          </Box>
         ) : null}
 
         {loading ? (
-          <Box sx={{ display: "grid", minHeight: 0, flex: 1, placeItems: "center" }}>
-            <CircularProgress size={28} color="primary" />
+          <Box
+            role="status"
+            aria-label="Loading report data"
+            sx={{ display: "grid", minHeight: 0, flex: 1, placeItems: "center" }}
+          >
+            <Stack alignItems="center" spacing={1.5}>
+              <CircularProgress size={28} color="primary" />
+              <Typography sx={{ color: "text.secondary", fontSize: 13 }}>
+                Loading report data...
+              </Typography>
+            </Stack>
           </Box>
         ) : null}
 
         {error ? (
-          <Box sx={{ minHeight: 0, flex: 1, overflowY: "auto", p: { xs: 2, sm: 3 } }}>
-            <Alert severity="error" sx={{ borderRadius: 1.5 }}>{error}</Alert>
+          <Box sx={{ minHeight: 0, flex: 1, overflowY: "auto", p: { xs: 2, sm: 3, lg: 4 } }}>
+            <Alert
+              severity="error"
+              action={
+                <Button color="inherit" size="small" onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              }
+              sx={{ maxWidth: 760, borderRadius: 1 }}
+            >
+              {error}
+            </Alert>
           </Box>
         ) : null}
 
@@ -742,7 +811,8 @@ export default function ReportPreviewModal({
             No report data available.
           </Box>
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </Box>
+    </Box>
+    </Box>
   );
 }

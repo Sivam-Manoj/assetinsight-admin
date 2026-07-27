@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Modal from "@/app/components/common/Modal";
 import ConfirmModal from "@/app/components/common/ConfirmModal";
-import ReportPreviewModal, {
-  type ReportPreviewPayload,
-} from "@/app/components/reports/ReportPreviewModal";
 
 type ReportItem = {
   _id: string;
@@ -36,19 +34,12 @@ type ReportItem = {
 type ApiResponse = { items: ReportItem[]; total: number; page: number; limit: number };
 
 export default function AdminApprovals() {
+  const router = useRouter();
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [limit] = useState(200);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<ReportPreviewPayload | null>(null);
-  const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
-  const [previewSaving, setPreviewSaving] = useState(false);
-  const [previewSaveError, setPreviewSaveError] = useState<string | null>(null);
-  const [previewSaveSuccess, setPreviewSaveSuccess] = useState<string | null>(null);
 
   const [toasts, setToasts] = useState<{ id: number; type: "success" | "error" | "info"; message: string }[]>([]);
   function pushToast(message: string, type: "success" | "error" | "info" = "info") {
@@ -146,62 +137,8 @@ export default function AdminApprovals() {
     );
   }
 
-  async function openPreview(id: string) {
-    setPreviewTargetId(id);
-    setPreviewOpen(true);
-    setPreviewLoading(true);
-    setPreviewError(null);
-    setPreviewData(null);
-    setPreviewSaveError(null);
-    setPreviewSaveSuccess(null);
-    try {
-      const res = await fetch(`/api/admin/reports/${id}/preview`, {
-        cache: "no-store",
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((json as { message?: string })?.message || "Failed to load report data");
-      }
-      setPreviewData(json as ReportPreviewPayload);
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to load report data";
-      setPreviewError(message);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
-
-  async function saveAssetScheduleSheet(assetScheduleSheet: NonNullable<ReportPreviewPayload["assetScheduleSheet"]>) {
-    if (!previewTargetId) return;
-    try {
-      setPreviewSaving(true);
-      setPreviewSaveError(null);
-      setPreviewSaveSuccess(null);
-      const res = await fetch(`/api/admin/reports/${previewTargetId}/asset-schedule-sheet`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ assetScheduleSheet }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((json as { message?: string })?.message || "Failed to save asset schedule sheet");
-      }
-      const payload = json as ReportPreviewPayload;
-      setPreviewData(payload);
-      const message = payload.files_regeneration_queued
-        ? "Changes saved. Files are regenerating for My Reports."
-        : "Changes saved.";
-      setPreviewSaveSuccess(message);
-      pushToast(message, "success");
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to save asset schedule sheet";
-      setPreviewSaveError(message);
-      pushToast(message, "error");
-    } finally {
-      setPreviewSaving(false);
-    }
+  function openReportData(id: string) {
+    router.push(`/reports/${encodeURIComponent(id)}/data?from=approvals`);
   }
 
   type Group = {
@@ -363,7 +300,7 @@ export default function AdminApprovals() {
                                 <button
                                   onClick={() => {
                                     const previewId = getPreviewTargetId(g);
-                                    if (previewId) void openPreview(previewId);
+                                    if (previewId) openReportData(previewId);
                                   }}
                                   className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 hover:shadow"
                                 >
@@ -389,7 +326,7 @@ export default function AdminApprovals() {
                                 <button
                                   onClick={() => {
                                     const previewId = getPreviewTargetId(g);
-                                    if (previewId) void openPreview(previewId);
+                                    if (previewId) openReportData(previewId);
                                   }}
                                   className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 hover:shadow"
                                 >
@@ -406,7 +343,7 @@ export default function AdminApprovals() {
                                 <button
                                   onClick={() => {
                                     const previewId = getPreviewTargetId(g);
-                                    if (previewId) void openPreview(previewId);
+                                    if (previewId) openReportData(previewId);
                                   }}
                                   className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 hover:shadow"
                                 >
@@ -450,7 +387,7 @@ export default function AdminApprovals() {
                           <button
                             onClick={() => {
                               const previewId = getPreviewTargetId(g);
-                              if (previewId) void openPreview(previewId);
+                              if (previewId) openReportData(previewId);
                             }}
                             className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 hover:shadow"
                           >
@@ -470,7 +407,7 @@ export default function AdminApprovals() {
                           <button
                             onClick={() => {
                               const previewId = getPreviewTargetId(g);
-                              if (previewId) void openPreview(previewId);
+                              if (previewId) openReportData(previewId);
                             }}
                             className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 hover:shadow"
                           >
@@ -532,27 +469,6 @@ export default function AdminApprovals() {
           <p className="mt-2 text-xs text-gray-500">This note will be sent to the user.</p>
         </div>
       </Modal>
-
-      <ReportPreviewModal
-        open={previewOpen}
-        loading={previewLoading}
-        error={previewError}
-        preview={previewData}
-        savingAssetSheet={previewSaving}
-        assetSheetSaveError={previewSaveError}
-        assetSheetSaveSuccess={previewSaveSuccess}
-        onSaveAssetSheet={saveAssetScheduleSheet}
-        onClose={() => {
-          setPreviewOpen(false);
-          setPreviewLoading(false);
-          setPreviewError(null);
-          setPreviewData(null);
-          setPreviewTargetId(null);
-          setPreviewSaving(false);
-          setPreviewSaveError(null);
-          setPreviewSaveSuccess(null);
-        }}
-      />
 
       {/* Toasts */}
       <div className="fixed bottom-4 right-4 z-[90] space-y-2">

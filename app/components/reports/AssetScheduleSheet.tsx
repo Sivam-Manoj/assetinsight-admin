@@ -40,6 +40,8 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import type {
   AssetAdminScheduleBuyersPremiumBasis,
@@ -64,7 +66,8 @@ type AssetScheduleSheetProps = {
   saveError: string | null;
   saveSuccess: string | null;
   onSave: (sheet: AssetAdminScheduleSheet) => Promise<void>;
-  onClose: () => void;
+  onClose?: () => void;
+  pageMode?: boolean;
 };
 
 type AssetSheetTab = "scheduleA" | "fileSummary";
@@ -76,6 +79,11 @@ type SummaryRow = {
 
 function readOnlyValue(value: string | number | null | undefined) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
+}
+
+function mobileLotNumber(row: AssetAdminScheduleRow, index: number) {
+  const match = String(row.lot_id || "").match(/(\d+)$/);
+  return match?.[1] || String(index + 1).padStart(3, "0");
 }
 
 function CompactReadOnlyCell({ value }: { value: string | number | null | undefined }) {
@@ -618,16 +626,21 @@ export default function AssetScheduleSheet({
   saveSuccess,
   onSave,
   onClose,
+  pageMode = false,
 }: AssetScheduleSheetProps) {
+  const theme = useTheme();
+  const isCompactLayout = useMediaQuery(theme.breakpoints.down("lg"), { noSsr: true });
   const [sheet, setSheet] = useState<AssetAdminScheduleSheet | null>(
     preview.assetScheduleSheet ? cloneAssetScheduleSheet(preview.assetScheduleSheet) : null
   );
   const [gallery, setGallery] = useState<{ title: string; urls: string[]; index: number } | null>(null);
   const [activeTab, setActiveTab] = useState<AssetSheetTab>("scheduleA");
+  const [selectedMobileLot, setSelectedMobileLot] = useState(0);
 
   useEffect(() => {
     setSheet(preview.assetScheduleSheet ? cloneAssetScheduleSheet(preview.assetScheduleSheet) : null);
     setActiveTab("scheduleA");
+    setSelectedMobileLot(0);
   }, [preview]);
 
   const derivedSummary = useMemo(() => (sheet ? deriveAssetScheduleSummary(sheet) : null), [sheet]);
@@ -1130,7 +1143,7 @@ export default function AssetScheduleSheet({
             },
           }}
         >
-          <Tab value="scheduleA" label="Schedule A" />
+          <Tab value="scheduleA" label={pageMode ? "Lots" : "Schedule A"} />
           <Tab value="fileSummary" label="File Summary" />
         </Tabs>
 
@@ -1143,6 +1156,7 @@ export default function AssetScheduleSheet({
             py: 1.5,
             borderTop: "1px solid",
             borderColor: "divider",
+            justifyContent: pageMode ? "flex-end" : "flex-start",
           }}
         >
           {activeTab === "scheduleA" ? (
@@ -1167,17 +1181,19 @@ export default function AssetScheduleSheet({
             onClick={() => void handleSave()}
             sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
           >
-            {saving ? "Saving..." : "Save"}
+            {saving ? "Saving..." : pageMode ? "Save changes" : "Save"}
           </Button>
-          <Button
-            variant="outlined"
-            color="inherit"
-            startIcon={<CloseRoundedIcon />}
-            onClick={onClose}
-            sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
-          >
-            Close
-          </Button>
+          {!pageMode && onClose ? (
+            <Button
+              variant="outlined"
+              color="inherit"
+              startIcon={<CloseRoundedIcon />}
+              onClick={onClose}
+              sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
+            >
+              Close
+            </Button>
+          ) : null}
         </Stack>
 
         {saveError ? (
@@ -1197,23 +1213,23 @@ export default function AssetScheduleSheet({
           flex: 1,
           minHeight: 0,
           overflow: "auto",
-          bgcolor: "background.default",
+          bgcolor: pageMode ? "background.paper" : "background.default",
         }}
       >
         {activeTab === "scheduleA" ? (
           <>
-            <TableContainer
-              component={Paper}
-              square
-              elevation={0}
-              sx={{
-                display: { xs: "none", lg: "block" },
-                height: "100%",
-                border: "none",
-                bgcolor: "background.paper",
-              }}
-            >
-              <Table stickyHeader size="small" sx={{ minWidth: 2480 }}>
+            {!isCompactLayout ? (
+              <TableContainer
+                component={Paper}
+                square
+                elevation={0}
+                sx={{
+                  height: "100%",
+                  border: "none",
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Table stickyHeader size="small" sx={{ minWidth: 2480 }}>
                 <TableHead>
                   {scheduleTable.getHeaderGroups().map((headerGroup) => (
                     <TableRow key={headerGroup.id}>
@@ -1278,61 +1294,102 @@ export default function AssetScheduleSheet({
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </TableContainer>
+                </Table>
+              </TableContainer>
+            ) : null}
 
-            <Box
-              sx={{
-                display: { xs: "block", lg: "none" },
-                p: { xs: 1.5, sm: 2.5 },
-              }}
-            >
-              <Paper
-                variant="outlined"
-                sx={{
-                  mb: 1.5,
-                  p: 1.5,
-                  borderRadius: 1,
-                  bgcolor: "background.paper",
-                }}
-              >
-                <Typography sx={{ mb: 1, fontSize: 13, fontWeight: 700 }}>
-                  Evaluators
-                </Typography>
-                <Stack spacing={1}>
-                  {sheet.evaluator_columns.map((column) => (
-                    <Stack key={column.id} direction="row" spacing={1} alignItems="center">
-                      <EvaluatorNameField
-                        value={column.name}
-                        onCommit={(next) => updateEvaluatorName(column.id, next)}
-                        ariaLabel={`Name for ${column.name || "evaluator"}`}
-                      />
-                      <IconButton
-                        aria-label={`Remove ${column.name || "evaluator"}`}
-                        disabled={sheet.evaluator_columns.length <= 1}
-                        onClick={() => removeEvaluator(column.id)}
-                        sx={{ width: 44, height: 44, border: "1px solid", borderColor: "divider", borderRadius: 1 }}
-                      >
-                        <DeleteOutlineRoundedIcon />
-                      </IconButton>
-                    </Stack>
-                  ))}
-                </Stack>
-              </Paper>
+            {isCompactLayout ? (
+              <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
+                {sheet.rows.length ? (
+                  <Box
+                    component="nav"
+                    aria-label="Schedule lots"
+                    sx={{
+                      display: "flex",
+                      gap: 1,
+                      mx: { xs: -1.5, sm: -2.5 },
+                      mb: 1.5,
+                      px: { xs: 1.5, sm: 2.5 },
+                      pb: 0.5,
+                      overflowX: "auto",
+                      scrollbarWidth: "none",
+                      "&::-webkit-scrollbar": { display: "none" },
+                    }}
+                  >
+                    {sheet.rows.map((row, index) => {
+                      const selected = selectedMobileLot === index;
+                      return (
+                        <Button
+                          key={row.lot_id}
+                          aria-pressed={selected}
+                          variant={selected ? "outlined" : "text"}
+                          color={selected ? "primary" : "inherit"}
+                          onClick={() => setSelectedMobileLot(index)}
+                          sx={{
+                            minWidth: 104,
+                            minHeight: 44,
+                            flex: "0 0 auto",
+                            borderRadius: 1,
+                            borderColor: selected ? "primary.main" : "divider",
+                            color: selected ? "primary.main" : "text.secondary",
+                            bgcolor: selected ? "background.paper" : "transparent",
+                            fontSize: 13,
+                            fontWeight: selected ? 700 : 600,
+                            textTransform: "none",
+                          }}
+                        >
+                          Lot {mobileLotNumber(row, index)}
+                        </Button>
+                      );
+                    })}
+                  </Box>
+                ) : null}
 
-              <Stack spacing={1.5}>
-                {sheet.rows.map((row, index) => (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    mb: 1.5,
+                    p: 1.5,
+                    borderRadius: 1,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  <Typography sx={{ mb: 1, fontSize: 13, fontWeight: 700 }}>
+                    Evaluators
+                  </Typography>
+                  <Stack spacing={1}>
+                    {sheet.evaluator_columns.map((column) => (
+                      <Stack key={column.id} direction="row" spacing={1} alignItems="center">
+                        <EvaluatorNameField
+                          value={column.name}
+                          onCommit={(next) => updateEvaluatorName(column.id, next)}
+                          ariaLabel={`Name for ${column.name || "evaluator"}`}
+                        />
+                        <IconButton
+                          aria-label={`Remove ${column.name || "evaluator"}`}
+                          disabled={sheet.evaluator_columns.length <= 1}
+                          onClick={() => removeEvaluator(column.id)}
+                          sx={{ width: 44, height: 44, border: "1px solid", borderColor: "divider", borderRadius: 1 }}
+                        >
+                          <DeleteOutlineRoundedIcon />
+                        </IconButton>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Paper>
+
+                {sheet.rows[selectedMobileLot] ? (
                   <MobileLotCard
-                    key={row.lot_id}
-                    row={row}
-                    index={index}
+                    key={sheet.rows[selectedMobileLot].lot_id}
+                    row={sheet.rows[selectedMobileLot]}
+                    index={selectedMobileLot}
                     evaluatorColumns={sheet.evaluator_columns}
                     onUpdateRow={updateRowField}
                     onOpenGallery={openGallery}
                   />
-                ))}
-              </Stack>
-            </Box>
+                ) : null}
+              </Box>
+            ) : null}
           </>
         ) : null}
 
@@ -1415,28 +1472,30 @@ export default function AssetScheduleSheet({
             "& .MuiSvgIcon-root": { fontSize: 18 },
           }}
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? "Saving..." : pageMode ? "Save changes" : "Save"}
         </Button>
-        <Button
-          variant="outlined"
-          color="inherit"
-          startIcon={<CloseRoundedIcon />}
-          onClick={onClose}
-          sx={{
-            minWidth: 0,
-            minHeight: 46,
-            flex: 1,
-            borderRadius: 1,
-            px: 1,
-            fontSize: 13,
-            textTransform: "none",
-            whiteSpace: "nowrap",
-            "& .MuiButton-startIcon": { ml: 0, mr: 0.5 },
-            "& .MuiSvgIcon-root": { fontSize: 18 },
-          }}
-        >
-          Close
-        </Button>
+        {!pageMode && onClose ? (
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<CloseRoundedIcon />}
+            onClick={onClose}
+            sx={{
+              minWidth: 0,
+              minHeight: 46,
+              flex: 1,
+              borderRadius: 1,
+              px: 1,
+              fontSize: 13,
+              textTransform: "none",
+              whiteSpace: "nowrap",
+              "& .MuiButton-startIcon": { ml: 0, mr: 0.5 },
+              "& .MuiSvgIcon-root": { fontSize: 18 },
+            }}
+          >
+            Close
+          </Button>
+        ) : null}
       </Stack>
 
       <Dialog
