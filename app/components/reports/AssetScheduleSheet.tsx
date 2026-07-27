@@ -39,6 +39,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
@@ -86,20 +87,60 @@ function mobileLotNumber(row: AssetAdminScheduleRow, index: number) {
   return match?.[1] || String(index + 1).padStart(3, "0");
 }
 
-function CompactReadOnlyCell({ value }: { value: string | number | null | undefined }) {
+function CompactReadOnlyCell({
+  value,
+  align = "left",
+  accent = false,
+}: {
+  value: string | number | null | undefined;
+  align?: "left" | "right";
+  accent?: boolean;
+}) {
+  const displayValue = readOnlyValue(value);
+
   return (
-    <Box
-      sx={{
-        minWidth: 80,
-        fontSize: 13,
-        lineHeight: 1.45,
-        color: "text.primary",
-        whiteSpace: "normal",
-        wordBreak: "break-word",
-      }}
-    >
-      {readOnlyValue(value)}
-    </Box>
+    <Tooltip title={displayValue === "-" ? "" : displayValue} arrow enterDelay={500}>
+      <Box
+        sx={{
+          width: "100%",
+          overflow: "hidden",
+          color: accent ? "primary.main" : "text.primary",
+          fontSize: 13,
+          fontWeight: accent ? 650 : 450,
+          lineHeight: 1.45,
+          textAlign: align,
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {displayValue}
+      </Box>
+    </Tooltip>
+  );
+}
+
+function LongTextCell({ value }: { value: string | number | null | undefined }) {
+  const displayValue = readOnlyValue(value);
+
+  return (
+    <Tooltip title={displayValue === "-" ? "" : displayValue} arrow enterDelay={350}>
+      <Box
+        sx={{
+          display: "-webkit-box",
+          width: "100%",
+          overflow: "hidden",
+          color: "text.primary",
+          fontSize: 13,
+          lineHeight: 1.45,
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: 3,
+          overflowWrap: "anywhere",
+        }}
+      >
+        {displayValue}
+      </Box>
+    </Tooltip>
   );
 }
 
@@ -186,6 +227,7 @@ const NumericDraftField = memo(function NumericDraftField({
       inputProps={{
         inputMode: "decimal",
         "aria-label": ariaLabel,
+        style: { textAlign: "right" },
       }}
       InputProps={{
         endAdornment: suffix ? (
@@ -206,6 +248,7 @@ const NumericDraftField = memo(function NumericDraftField({
           px: 1.25,
           py: 1,
           fontSize: { xs: 16, md: 13 },
+          fontWeight: 550,
           fontVariantNumeric: "tabular-nums",
         },
       }}
@@ -755,18 +798,21 @@ export default function AssetScheduleSheet({
     if (!sheet) return [];
 
     const staticColumns: ColumnDef<AssetAdminScheduleRow>[] = [
-      { id: "asset_id", accessorKey: "asset_id", header: "Asset ID", cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_id} /> },
-      { id: "asset_category", accessorKey: "asset_category", header: "Asset Category", cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_category} /> },
-      { id: "year", accessorKey: "year", header: "Year", cell: ({ row }) => <CompactReadOnlyCell value={row.original.year} /> },
-      { id: "make", accessorKey: "make", header: "Make", cell: ({ row }) => <CompactReadOnlyCell value={row.original.make} /> },
-      { id: "model", accessorKey: "model", header: "Model", cell: ({ row }) => <CompactReadOnlyCell value={row.original.model} /> },
-      { id: "serial_number", accessorKey: "serial_number", header: "Serial Number", cell: ({ row }) => <CompactReadOnlyCell value={row.original.serial_number} /> },
-      { id: "cr_details", accessorKey: "cr_details", header: "CR Details", cell: ({ row }) => <CompactReadOnlyCell value={row.original.cr_details} /> },
-      { id: "condition_score", accessorKey: "condition_score", header: "Condition (1-5)", cell: ({ row }) => <CompactReadOnlyCell value={row.original.condition_score} /> },
+      { id: "asset_id", accessorKey: "asset_id", header: "Asset ID", size: 120, minSize: 120, maxSize: 120, cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_id} /> },
+      { id: "asset_category", accessorKey: "asset_category", header: "Asset Category", size: 168, minSize: 168, maxSize: 168, cell: ({ row }) => <LongTextCell value={row.original.asset_category} /> },
+      { id: "year", accessorKey: "year", header: "Year", size: 88, minSize: 88, maxSize: 88, cell: ({ row }) => <CompactReadOnlyCell value={row.original.year} /> },
+      { id: "make", accessorKey: "make", header: "Make", size: 120, minSize: 120, maxSize: 120, cell: ({ row }) => <CompactReadOnlyCell value={row.original.make} /> },
+      { id: "model", accessorKey: "model", header: "Model", size: 132, minSize: 132, maxSize: 132, cell: ({ row }) => <CompactReadOnlyCell value={row.original.model} /> },
+      { id: "serial_number", accessorKey: "serial_number", header: "Serial Number", size: 152, minSize: 152, maxSize: 152, cell: ({ row }) => <LongTextCell value={row.original.serial_number} /> },
+      { id: "cr_details", accessorKey: "cr_details", header: "CR Details", size: 240, minSize: 240, maxSize: 240, cell: ({ row }) => <LongTextCell value={row.original.cr_details} /> },
+      { id: "condition_score", accessorKey: "condition_score", header: "Condition (1-5)", size: 128, minSize: 128, maxSize: 128, cell: ({ row }) => <CompactReadOnlyCell value={row.original.condition_score} /> },
       {
         id: "location",
         accessorKey: "location",
         header: "Location (City, State/Prov)",
+        size: 220,
+        minSize: 220,
+        maxSize: 220,
         cell: ({ row }) => (
           <TextField
             value={row.original.location}
@@ -776,8 +822,7 @@ export default function AssetScheduleSheet({
             variant="outlined"
             fullWidth
             sx={{
-              minWidth: 180,
-              "& .MuiOutlinedInput-root": { borderRadius: 0 },
+              "& .MuiOutlinedInput-root": { minHeight: 40, borderRadius: 1, bgcolor: "background.paper" },
               "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
             }}
           />
@@ -787,6 +832,9 @@ export default function AssetScheduleSheet({
         id: "pictures",
         accessorKey: "pictures",
         header: "Pictures",
+        size: 120,
+        minSize: 120,
+        maxSize: 120,
         cell: ({ row }) => {
           const pictureCount = row.original.picture_urls.length || row.original.pictures;
           if (!pictureCount) {
@@ -818,40 +866,15 @@ export default function AssetScheduleSheet({
           );
         },
       },
-      { id: "asset_insight", accessorKey: "asset_insight", header: "Asset Insight", cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_insight} /> },
+      { id: "asset_insight", accessorKey: "asset_insight", header: "Asset Insight", size: 176, minSize: 176, maxSize: 176, cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_insight} accent /> },
     ];
 
     const evaluatorColumns: ColumnDef<AssetAdminScheduleRow>[] = sheet.evaluator_columns.map((column) => ({
       id: `eval_${column.id}`,
-      header: () => (
-        <Stack spacing={0.75} sx={{ minWidth: 120 }}>
-          <EvaluatorNameField
-            value={column.name}
-            onCommit={(next) => updateEvaluatorName(column.id, next)}
-            ariaLabel={`Name for ${column.name || "evaluator"}`}
-          />
-          <Button
-            size="small"
-            variant="text"
-            color="inherit"
-            startIcon={<DeleteOutlineRoundedIcon fontSize="small" />}
-            disabled={sheet.evaluator_columns.length <= 1}
-            onClick={() => removeEvaluator(column.id)}
-            sx={{
-              justifyContent: "flex-start",
-              minWidth: 0,
-              px: 0,
-              py: 0.25,
-              borderRadius: 1,
-              color: "inherit",
-              textTransform: "none",
-              fontSize: 12,
-            }}
-          >
-            Remove
-          </Button>
-        </Stack>
-      ),
+      header: column.name || "Evaluator",
+      size: 152,
+      minSize: 152,
+      maxSize: 152,
       cell: ({ row }) => (
         <NumericDraftField
           value={row.original.evaluator_values[column.id] ?? null}
@@ -867,38 +890,43 @@ export default function AssetScheduleSheet({
     }));
 
     const resultColumns: ColumnDef<AssetAdminScheduleRow>[] = [
-      { id: "low_est_sale_value", accessorKey: "low_est_sale_value", header: "Low Est. Sale Value ($)", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.low_est_sale_value)} /> },
-      { id: "high_est_sale_value", accessorKey: "high_est_sale_value", header: "High Est. Sale Value ($)", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.high_est_sale_value)} /> },
-      { id: "buyer_premium_percent", accessorKey: "buyer_premium_percent", header: "Buyer Premium %", cell: ({ row }) => <CompactReadOnlyCell value={`${row.original.buyer_premium_percent}%`} /> },
-      { id: "buyer_premium_amount", accessorKey: "buyer_premium_amount", header: "Buyer Premium ($)", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.buyer_premium_amount)} /> },
-      { id: "total_expected_gross", accessorKey: "total_expected_gross", header: "Total Expected Gross ($)", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.total_expected_gross)} /> },
-      { id: "allocated_value", accessorKey: "allocated_value", header: "Allocated Value ($)", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.allocated_value)} /> },
+      { id: "low_est_sale_value", accessorKey: "low_est_sale_value", header: "Low Est. Sale Value ($)", size: 160, minSize: 160, maxSize: 160, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.low_est_sale_value)} align="right" /> },
+      { id: "high_est_sale_value", accessorKey: "high_est_sale_value", header: "High Est. Sale Value ($)", size: 160, minSize: 160, maxSize: 160, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.high_est_sale_value)} align="right" /> },
+      { id: "buyer_premium_percent", accessorKey: "buyer_premium_percent", header: "Buyer Premium %", size: 128, minSize: 128, maxSize: 128, cell: ({ row }) => <CompactReadOnlyCell value={`${row.original.buyer_premium_percent}%`} align="right" /> },
+      { id: "buyer_premium_amount", accessorKey: "buyer_premium_amount", header: "Buyer Premium ($)", size: 152, minSize: 152, maxSize: 152, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.buyer_premium_amount)} align="right" /> },
+      { id: "total_expected_gross", accessorKey: "total_expected_gross", header: "Total Expected Gross ($)", size: 176, minSize: 176, maxSize: 176, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.total_expected_gross)} align="right" /> },
+      { id: "allocated_value", accessorKey: "allocated_value", header: "Allocated Value ($)", size: 152, minSize: 152, maxSize: 152, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.allocated_value)} align="right" /> },
       {
         id: "notes",
         accessorKey: "notes",
         header: "Notes",
+        size: 220,
+        minSize: 220,
+        maxSize: 220,
         cell: ({ row }) => (
           <TextField
             multiline
-            minRows={2}
+            rows={2}
             value={row.original.notes}
             onChange={(event) => updateRowField(row.original.lot_id, "notes", event.target.value)}
             placeholder="Notes"
             size="small"
             fullWidth
             sx={{
-              minWidth: 160,
-              "& .MuiOutlinedInput-root": { borderRadius: 0 },
+              "& .MuiOutlinedInput-root": { borderRadius: 1, bgcolor: "background.paper" },
               "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
             }}
           />
         ),
       },
-      { id: "cleaning", accessorKey: "cleaning", header: "Cleaning", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.cleaning)} /> },
+      { id: "cleaning", accessorKey: "cleaning", header: "Cleaning", size: 120, minSize: 120, maxSize: 120, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.cleaning)} align="right" /> },
       {
         id: "lien_search",
         accessorKey: "lien_search",
         header: "Lien Search",
+        size: 136,
+        minSize: 136,
+        maxSize: 136,
         cell: ({ row }) => (
           <NumericDraftField
             value={row.original.lien_search ?? null}
@@ -911,6 +939,9 @@ export default function AssetScheduleSheet({
         id: "video_cost",
         accessorKey: "video_cost",
         header: "Video Cost",
+        size: 136,
+        minSize: 136,
+        maxSize: 136,
         cell: ({ row }) => (
           <NumericDraftField
             value={row.original.video_cost ?? null}
@@ -919,8 +950,8 @@ export default function AssetScheduleSheet({
           />
         ),
       },
-      { id: "lotting_fee", accessorKey: "lotting_fee", header: "Lotting Fee", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.lotting_fee)} /> },
-      { id: "advertising", accessorKey: "advertising", header: "Advertising", cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.advertising)} /> },
+      { id: "lotting_fee", accessorKey: "lotting_fee", header: "Lotting Fee", size: 132, minSize: 132, maxSize: 132, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.lotting_fee)} align="right" /> },
+      { id: "advertising", accessorKey: "advertising", header: "Advertising", size: 132, minSize: 132, maxSize: 132, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.advertising)} align="right" /> },
     ];
 
     return [
@@ -960,13 +991,16 @@ export default function AssetScheduleSheet({
         columns: resultColumns.slice(6),
       },
     ];
-  }, [openGallery, removeEvaluator, sheet, updateEvaluatorName, updateRowField]);
+  }, [openGallery, sheet, updateRowField]);
 
   const scheduleTable = useReactTable({
     data: sheet?.rows ?? [],
     columns: scheduleColumns,
     getCoreRowModel: getCoreRowModel(),
   });
+  const scheduleTableWidth = scheduleTable
+    .getAllLeafColumns()
+    .reduce((total, column) => total + column.getSize(), 0);
 
   const metricRows = useMemo<SummaryRow[]>(() => {
     if (!sheet || !derivedSummary) return [];
@@ -1147,54 +1181,123 @@ export default function AssetScheduleSheet({
           <Tab value="fileSummary" label="File Summary" />
         </Tabs>
 
-        <Stack
-          direction="row"
-          spacing={1}
+        <Box
           sx={{
             display: { xs: "none", lg: "flex" },
+            minHeight: 72,
             px: 2.5,
             py: 1.5,
             borderTop: "1px solid",
             borderColor: "divider",
-            justifyContent: pageMode ? "flex-end" : "flex-start",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
           }}
         >
           {activeTab === "scheduleA" ? (
-            <Button
-              variant="outlined"
-              color="inherit"
-              startIcon={<AddRoundedIcon />}
-              onClick={addEvaluator}
-              sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
+            <Stack
+              direction="row"
+              spacing={1.25}
+              alignItems="center"
+              sx={{ minWidth: 0, flex: "1 1 auto" }}
             >
-              Add Evaluator
-            </Button>
-          ) : null}
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<SaveRoundedIcon />}
-            disabled={saving}
-            onPointerDown={() => {
-              if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-            }}
-            onClick={() => void handleSave()}
-            sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
-          >
-            {saving ? "Saving..." : pageMode ? "Save changes" : "Save"}
-          </Button>
-          {!pageMode && onClose ? (
+              <Typography
+                sx={{
+                  flex: "0 0 auto",
+                  color: "text.secondary",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                Evaluators
+              </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  minWidth: 0,
+                  maxWidth: "min(760px, 100%)",
+                  gap: 1,
+                  overflowX: "auto",
+                  scrollbarWidth: "thin",
+                }}
+              >
+                {sheet.evaluator_columns.map((column) => (
+                  <Stack
+                    key={column.id}
+                    direction="row"
+                    spacing={0.5}
+                    alignItems="center"
+                    sx={{ width: 220, flex: "0 0 220px" }}
+                  >
+                    <EvaluatorNameField
+                      value={column.name}
+                      onCommit={(next) => updateEvaluatorName(column.id, next)}
+                      ariaLabel={`Name for ${column.name || "evaluator"}`}
+                    />
+                    <Tooltip title="Remove evaluator" arrow>
+                      <span>
+                        <IconButton
+                          aria-label={`Remove ${column.name || "evaluator"}`}
+                          disabled={sheet.evaluator_columns.length <= 1}
+                          onClick={() => removeEvaluator(column.id)}
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            border: "1px solid",
+                            borderColor: "divider",
+                            borderRadius: 1,
+                          }}
+                        >
+                          <DeleteOutlineRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </Stack>
+                ))}
+              </Box>
+            </Stack>
+          ) : (
+            <Box />
+          )}
+
+          <Stack direction="row" spacing={1} sx={{ flex: "0 0 auto" }}>
+            {activeTab === "scheduleA" ? (
+              <Button
+                variant="outlined"
+                color="inherit"
+                startIcon={<AddRoundedIcon />}
+                onClick={addEvaluator}
+                sx={{ minHeight: 44, borderRadius: 1, textTransform: "none", whiteSpace: "nowrap" }}
+              >
+                Add Evaluator
+              </Button>
+            ) : null}
             <Button
-              variant="outlined"
-              color="inherit"
-              startIcon={<CloseRoundedIcon />}
-              onClick={onClose}
-              sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
+              variant="contained"
+              color="primary"
+              startIcon={<SaveRoundedIcon />}
+              disabled={saving}
+              onPointerDown={() => {
+                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+              }}
+              onClick={() => void handleSave()}
+              sx={{ minHeight: 44, borderRadius: 1, textTransform: "none", whiteSpace: "nowrap" }}
             >
-              Close
+              {saving ? "Saving..." : pageMode ? "Save changes" : "Save"}
             </Button>
-          ) : null}
-        </Stack>
+            {!pageMode && onClose ? (
+              <Button
+                variant="outlined"
+                color="inherit"
+                startIcon={<CloseRoundedIcon />}
+                onClick={onClose}
+                sx={{ minHeight: 44, borderRadius: 1, textTransform: "none" }}
+              >
+                Close
+              </Button>
+            ) : null}
+          </Stack>
+        </Box>
 
         {saveError ? (
           <Alert severity="error" sx={{ mx: 2, my: 1, borderRadius: 1 }}>
@@ -1221,45 +1324,103 @@ export default function AssetScheduleSheet({
             {!isCompactLayout ? (
               <TableContainer
                 component={Paper}
-                square
+                variant="outlined"
                 elevation={0}
                 sx={{
-                  height: "100%",
-                  border: "none",
+                  width: "calc(100% - 32px)",
+                  height: "calc(100% - 32px)",
+                  m: 2,
+                  overflow: "auto",
+                  overscrollBehavior: "contain",
+                  scrollbarGutter: "stable",
+                  borderColor: "#d9dde3",
+                  borderRadius: 1.5,
                   bgcolor: "background.paper",
                 }}
               >
-                <Table stickyHeader size="small" sx={{ minWidth: 2480 }}>
+                <Table
+                  stickyHeader
+                  size="small"
+                  aria-label="Asset schedule lots"
+                  sx={{
+                    width: scheduleTableWidth,
+                    tableLayout: "fixed",
+                    borderCollapse: "separate",
+                    borderSpacing: 0,
+                  }}
+                >
+                <colgroup>
+                  {scheduleTable.getAllLeafColumns().map((column) => (
+                    <col key={column.id} style={{ width: column.getSize() }} />
+                  ))}
+                </colgroup>
                 <TableHead>
                   {scheduleTable.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
+                    <TableRow
+                      key={headerGroup.id}
+                      sx={{
+                        height: headerGroup.depth === 0 ? 36 : 54,
+                      }}
+                    >
                       {headerGroup.headers.map((header) => {
                         const stickyAssetId = header.column.id === "asset_id";
+                        const isGroupHeader = headerGroup.depth === 0;
                         return (
                           <TableCell
                             key={header.id}
                             colSpan={header.colSpan}
                             sx={{
-                              top: headerGroup.depth === 0 ? 0 : 41,
+                              position: "sticky",
+                              top: isGroupHeader ? 0 : 36,
                               left: stickyAssetId ? 0 : "auto",
-                              zIndex: stickyAssetId ? 5 : 3,
-                              bgcolor: "action.hover",
+                              zIndex: stickyAssetId ? 8 : isGroupHeader ? 6 : 7,
+                              ...(!isGroupHeader
+                                ? {
+                                    width: header.getSize(),
+                                    minWidth: header.getSize(),
+                                    maxWidth: header.getSize(),
+                                  }
+                                : null),
+                              height: isGroupHeader ? 36 : 54,
+                              minHeight: isGroupHeader ? 36 : 54,
+                              maxHeight: isGroupHeader ? 36 : 54,
+                              boxSizing: "border-box",
+                              overflow: "hidden",
+                              bgcolor: isGroupHeader ? "#f2f4f7" : "#f8f9fb",
                               color: "text.primary",
                               borderBottom: "1px solid",
                               borderRight: "1px solid",
-                              borderColor: "divider",
+                              borderColor: "#d9dde3",
                               fontWeight: 700,
-                              fontSize: 13,
-                              textAlign: headerGroup.depth === 0 ? "center" : "left",
-                              verticalAlign: "top",
-                              py: 1.25,
-                              px: 1.5,
-                              minWidth: stickyAssetId ? 120 : 100,
+                              fontSize: isGroupHeader ? 12 : 12.5,
+                              lineHeight: 1.25,
+                              letterSpacing: isGroupHeader ? "0.01em" : 0,
+                              textAlign: isGroupHeader ? "center" : "left",
+                              verticalAlign: "middle",
+                              p: 0,
+                              ...(stickyAssetId
+                                ? {
+                                    boxShadow: "5px 0 10px -8px rgba(15, 23, 42, 0.7)",
+                                  }
+                                : null),
                             }}
                           >
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(header.column.columnDef.header, header.getContext())}
+                            <Box
+                              sx={{
+                                display: isGroupHeader ? "block" : "-webkit-box",
+                                width: "100%",
+                                px: isGroupHeader ? 1 : 1.5,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: isGroupHeader ? "nowrap" : "normal",
+                                WebkitBoxOrient: "vertical",
+                                WebkitLineClamp: isGroupHeader ? 1 : 2,
+                              }}
+                            >
+                              {header.isPlaceholder
+                                ? null
+                                : flexRender(header.column.columnDef.header, header.getContext())}
+                            </Box>
                           </TableCell>
                         );
                       })}
@@ -1268,7 +1429,18 @@ export default function AssetScheduleSheet({
                 </TableHead>
                 <TableBody>
                   {scheduleTable.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id} hover>
+                    <TableRow
+                      key={row.id}
+                      sx={{
+                        height: 96,
+                        "& > .MuiTableCell-root": {
+                          bgcolor: row.index % 2 === 0 ? "background.paper" : "#fbfcfd",
+                        },
+                        "&:hover > .MuiTableCell-root": {
+                          bgcolor: "#f5f7fa",
+                        },
+                      }}
+                    >
                       {row.getVisibleCells().map((cell) => {
                         const stickyAssetId = cell.column.id === "asset_id";
                         return (
@@ -1277,14 +1449,26 @@ export default function AssetScheduleSheet({
                             sx={{
                               position: stickyAssetId ? "sticky" : "static",
                               left: stickyAssetId ? 0 : "auto",
-                              zIndex: stickyAssetId ? 1 : "auto",
+                              zIndex: stickyAssetId ? 2 : "auto",
+                              width: cell.column.getSize(),
+                              minWidth: cell.column.getSize(),
+                              maxWidth: cell.column.getSize(),
+                              height: 96,
+                              maxHeight: 96,
+                              boxSizing: "border-box",
+                              overflow: "hidden",
                               borderBottom: "1px solid",
                               borderRight: "1px solid",
-                              borderColor: "divider",
-                              verticalAlign: "top",
-                              py: 1.25,
+                              borderColor: "#e2e5e9",
+                              verticalAlign: "middle",
+                              py: 1,
                               px: 1.5,
-                              bgcolor: "background.paper",
+                              ...(stickyAssetId
+                                ? {
+                                    fontWeight: 700,
+                                    boxShadow: "5px 0 10px -8px rgba(15, 23, 42, 0.7)",
+                                  }
+                                : null),
                             }}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
