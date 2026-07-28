@@ -168,7 +168,9 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       ...(role === "superadmin"
         ? [{ href: "/apk-manager", label: "APK Manager", icon: Smartphone }]
         : []),
-      { href: "/api", label: "API", icon: KeyRound },
+      ...(role === "superadmin"
+        ? [{ href: "/api", label: "API", icon: KeyRound }]
+        : []),
     ];
   }, [deviceRequestCount, role]);
 

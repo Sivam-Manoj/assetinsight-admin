@@ -10,7 +10,7 @@ function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-async function verifyAdmin(request: NextRequest) {
+async function verifySuperadmin(request: NextRequest) {
   const token = request.cookies.get("cv_admin")?.value;
   if (!token) return false;
 
@@ -23,8 +23,7 @@ async function verifyAdmin(request: NextRequest) {
 
   if (!res?.ok) return false;
   const data = await res.json().catch(() => ({}));
-  const role = data?.user?.role;
-  return role === "admin" || role === "superadmin";
+  return data?.user?.role === "superadmin";
 }
 
 function resolveApiUrl(input: string) {
@@ -52,9 +51,9 @@ function resolveApiUrl(input: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const isAdmin = await verifyAdmin(request);
-  if (!isAdmin) {
-    return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
+  const isSuperadmin = await verifySuperadmin(request);
+  if (!isSuperadmin) {
+    return NextResponse.json({ message: "Superadmin privileges required" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));
