@@ -30,6 +30,7 @@ import {
   IconButton,
   MenuItem,
   Select,
+  Snackbar,
   Stack,
   Table,
   TableBody,
@@ -77,10 +78,20 @@ type ReportItem = {
   reportModel?: string;
   fileType?: "pdf" | "spec_pdf" | "cr_docx" | "docx" | "xlsx" | "images";
   approvalStatus?: "pending" | "approved" | "rejected";
+  approval_assigned_to?: { _id?: string; email?: string; username?: string; companyName?: string; role?: string } | string | null;
   release_status?: "pending_release" | "released";
   release_assigned_to?: { _id?: string; email?: string; username?: string; companyName?: string; role?: string } | string | null;
   released_at?: string | null;
   downloadable?: boolean;
+  download_access?: ReportDownloadAccess;
+  generation_state?: "queued" | "processing" | "ready" | "error";
+  workflow_stage?: "preparing_preview" | "preview_ready" | "generating_files" | "awaiting_approval" | "awaiting_release" | "ready" | "error";
+  workflow_message?: string;
+  files_ready?: boolean;
+  files_generating?: boolean;
+  files_regenerating?: boolean;
+  job_status?: string;
+  job_error?: string;
   report?: string;
   contract_no?: string;
   lot_number_summary?: string;
@@ -118,11 +129,36 @@ type ReportGroup = {
   isLotListingReport?: boolean;
   preview_files?: { pdf?: string; spec_pdf?: string; cr_docx?: string; docx?: string; excel?: string; images?: string };
   crDisclaimerCount?: number;
+  approvalStatus?: ReportItem["approvalStatus"];
+  approval_assigned_to?: ReportItem["approval_assigned_to"];
   release_status?: "pending_release" | "released";
   release_assigned_to?: ReportItem["release_assigned_to"];
   released_at?: string | null;
   downloadable?: boolean;
+  download_access?: ReportDownloadAccess;
+  generation_state?: ReportItem["generation_state"];
+  workflow_stage?: ReportItem["workflow_stage"];
+  workflow_message?: string;
+  files_ready?: boolean;
+  files_generating?: boolean;
+  files_regenerating?: boolean;
+  job_status?: string;
+  job_error?: string;
   adminArchivedAt?: string | null;
+};
+
+type ReportDownloadAccess = {
+  allowed: boolean;
+  code:
+    | "READY"
+    | "AWAITING_APPROVAL"
+    | "AWAITING_RELEASE"
+    | "DECLINED"
+    | "FILES_GENERATING"
+    | "FILES_UNAVAILABLE";
+  message: string;
+  approval_status: "pending" | "approved" | "rejected";
+  release_status: "pending_release" | "released";
 };
 
 type ReportFileLink = {
@@ -132,6 +168,14 @@ type ReportFileLink = {
 };
 
 const LARGE_PAGE_SIZE = 500;
+const DOWNLOAD_ACCESS_PRIORITY: Record<ReportDownloadAccess["code"], number> = {
+  READY: 0,
+  FILES_UNAVAILABLE: 1,
+  FILES_GENERATING: 2,
+  AWAITING_RELEASE: 3,
+  AWAITING_APPROVAL: 4,
+  DECLINED: 5,
+};
 
 function formatFMV(value: string) {
   return value || "N/A";
@@ -151,6 +195,120 @@ function getPreviewTargetId(group: ReportGroup) {
     group.variants.images?._id ||
     group.key
   );
+}
+
+function reportIsActivelyGenerating(group: ReportGroup) {
+  return Boolean(
+    group.generation_state === "queued" ||
+      group.generation_state === "processing" ||
+      group.workflow_stage === "preparing_preview" ||
+      group.workflow_stage === "generating_files" ||
+      group.files_generating ||
+      group.files_regenerating
+  );
+}
+
+function reportApprovalIsApproved(group: ReportGroup) {
+  if (group.download_access) {
+    return group.download_access.approval_status === "approved";
+  }
+  return !group.approvalStatus || group.approvalStatus === "approved";
+}
+
+function getFileBlockReason(group: ReportGroup, file: ReportFileLink): string | null {
+  if (
+    group.approvalStatus === "rejected" ||
+    group.download_access?.code === "DECLINED"
+  ) {
+    return "This report was not approved. Please resolve the approver feedback before downloading.";
+  }
+  if (
+    group.approvalStatus === "pending" ||
+    group.workflow_stage === "awaiting_approval" ||
+    group.download_access?.code === "AWAITING_APPROVAL"
+  ) {
+    return group.approval_assigned_to
+      ? "This report is waiting for approval from the assigned approver. Downloads will be available after approval."
+      : "This report is waiting for approval. Downloads will be available after approval.";
+  }
+  if (
+    group.release_status === "pending_release" ||
+    group.workflow_stage === "awaiting_release" ||
+    group.download_access?.code === "AWAITING_RELEASE"
+  ) {
+    return "This report is approved but is waiting to be released. Downloads will be available after release.";
+  }
+  if (
+    group.download_access?.code === "FILES_GENERATING" ||
+    reportIsActivelyGenerating(group)
+  ) {
+    return `${file.label} is still being generated. Please refresh shortly.`;
+  }
+  if (
+    group.download_access &&
+    !group.download_access.allowed &&
+    group.download_access.code !== "FILES_UNAVAILABLE"
+  ) {
+    return group.download_access.message;
+  }
+  if (
+    group.downloadable === false &&
+    group.download_access?.code !== "FILES_UNAVAILABLE"
+  ) {
+    return "Downloads will be available after this report has been approved and released.";
+  }
+  if (file.href) return null;
+  if (
+    group.download_access?.code === "FILES_UNAVAILABLE" ||
+    group.generation_state === "error" ||
+    group.workflow_stage === "error" ||
+    group.job_status === "error"
+  ) {
+    return (
+      group.download_access?.message ||
+      `${file.label} is unavailable. Regenerate the report files or contact support.`
+    );
+  }
+  return `${file.label} is not available for this report. Regenerate the report files or contact support.`;
+}
+
+function getReportStatusPresentation(group: ReportGroup) {
+  if (
+    group.approvalStatus === "rejected" ||
+    group.download_access?.code === "DECLINED"
+  ) {
+    return { label: "Not Approved", background: "#fff1f2", color: "#be123c", border: "#fecdd3" };
+  }
+  if (
+    group.approvalStatus === "pending" ||
+    group.workflow_stage === "awaiting_approval" ||
+    group.download_access?.code === "AWAITING_APPROVAL"
+  ) {
+    return { label: "Awaiting Approval", background: "#fff4df", color: "#a45a00", border: "#f2d6a5" };
+  }
+  if (
+    group.release_status === "pending_release" ||
+    group.workflow_stage === "awaiting_release" ||
+    group.download_access?.code === "AWAITING_RELEASE"
+  ) {
+    return { label: "Awaiting Release", background: "#fff4df", color: "#a45a00", border: "#f2d6a5" };
+  }
+  if (
+    group.download_access?.code === "FILES_GENERATING" ||
+    reportIsActivelyGenerating(group)
+  ) {
+    return { label: "Generating Files", background: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" };
+  }
+  if (
+    group.download_access?.code === "FILES_UNAVAILABLE" ||
+    (group.files_ready === false &&
+      (group.generation_state === "error" ||
+      group.workflow_stage === "error" ||
+      group.job_status === "error"))
+  ) {
+    return { label: "Files Unavailable", background: "#fff1f2", color: "#be123c", border: "#fecdd3" };
+  }
+  return { label: "Released", background: "#e9f7f2", color: "#087f5b", border: "#c5e9dd" };
 }
 
 function groupReportItems(items: ReportItem[]): ReportGroup[] {
@@ -186,18 +344,60 @@ function groupReportItems(items: ReportItem[]): ReportGroup[] {
         isLotListingReport: r.reportType === "LotListing" || r.isLotListingReport || (r as any).isLotListing,
         preview_files: r.preview_files,
         crDisclaimerCount: Number(r.crDisclaimerCount || 0),
+        approvalStatus: r.approvalStatus,
+        approval_assigned_to: r.approval_assigned_to || null,
         release_status: r.release_status || "released",
         release_assigned_to: r.release_assigned_to || null,
         released_at: r.released_at || null,
         downloadable: r.downloadable !== false,
+        download_access: r.download_access,
+        generation_state: r.generation_state,
+        workflow_stage: r.workflow_stage,
+        workflow_message: r.workflow_message,
+        files_ready: r.files_ready,
+        files_generating: r.files_generating,
+        files_regenerating: r.files_regenerating,
+        job_status: r.job_status,
+        job_error: r.job_error,
         adminArchivedAt: r.adminArchivedAt || null,
       };
       map.set(key, group);
-    } else if (group.release_status !== "pending_release" && r.release_status === "pending_release") {
-      group.release_status = "pending_release";
-      group.release_assigned_to = r.release_assigned_to || null;
-      group.released_at = r.released_at || null;
-      group.downloadable = false;
+    } else {
+      if (group.release_status !== "pending_release" && r.release_status === "pending_release") {
+        group.release_status = "pending_release";
+        group.release_assigned_to = r.release_assigned_to || null;
+        group.released_at = r.released_at || null;
+      }
+      if (r.downloadable === false) group.downloadable = false;
+      if (
+        r.download_access &&
+        (!group.download_access ||
+          DOWNLOAD_ACCESS_PRIORITY[r.download_access.code] >
+            DOWNLOAD_ACCESS_PRIORITY[group.download_access.code])
+      ) {
+        group.download_access = r.download_access;
+      }
+      if (
+        r.approvalStatus === "rejected" ||
+        (r.approvalStatus === "pending" && group.approvalStatus !== "rejected")
+      ) {
+        group.approvalStatus = r.approvalStatus;
+        group.approval_assigned_to = r.approval_assigned_to || null;
+      }
+      if (
+        r.generation_state === "error" ||
+        (r.generation_state === "processing" && group.generation_state !== "error") ||
+        (r.generation_state === "queued" && !group.generation_state)
+      ) {
+        group.generation_state = r.generation_state;
+        group.workflow_stage = r.workflow_stage;
+        group.workflow_message = r.workflow_message;
+        group.files_ready = r.files_ready;
+        group.files_generating = r.files_generating;
+        group.files_regenerating = r.files_regenerating;
+        group.job_status = r.job_status;
+        group.job_error = r.job_error;
+      }
     }
 
     if (new Date(r.createdAt).getTime() > new Date(group.createdAt).getTime()) group.createdAt = r.createdAt;
@@ -355,6 +555,7 @@ export default function AdminReports() {
   const [deleting, setDeleting] = useState(false);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [crSubmitSuccess, setCrSubmitSuccess] = useState<string | null>(null);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const [excelCrTarget, setExcelCrTarget] = useState<ReportGroup | null>(null);
 
   useEffect(() => {
@@ -469,7 +670,7 @@ export default function AdminReports() {
       if (!res.ok) throw new Error(json?.message || "Failed to release report");
       await load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to release report");
+      setDownloadNotice(e instanceof Error ? e.message : "Failed to release report");
     } finally {
       setActionBusyId(null);
     }
@@ -564,6 +765,13 @@ export default function AdminReports() {
     const archiveLabel = archiveMode === "archived" ? "Restore" : "Done";
     const archiveTooltip =
       archiveMode === "archived" ? "Restore report to active list" : "Move report to archived list";
+    const statusPresentation = getReportStatusPresentation(group);
+    const canRelease =
+      group.release_status === "pending_release" &&
+      reportApprovalIsApproved(group) &&
+      !reportIsActivelyGenerating(group) &&
+      group.files_ready !== false &&
+      group.workflow_stage !== "error";
 
     return (
       <Stack
@@ -631,25 +839,26 @@ export default function AdminReports() {
           const isExcel = link.label.toLowerCase().includes("excel");
           const color = isPdf ? "#4f46e5" : isExcel ? "#2563eb" : "#7c3aed";
           const hover = isPdf ? "#4338ca" : isExcel ? "#1d4ed8" : "#6d28d9";
+          const blockReason = getFileBlockReason(group, link);
           return (
-            <Tooltip key={`${group.key}-${link.label}`} title={link.href ? tooltipLabel : `${tooltipLabel} unavailable`}>
+            <Tooltip key={`${group.key}-${link.label}`} title={blockReason || tooltipLabel}>
               <span>
                 <Button
                   size="small"
                   variant="contained"
-                  disabled={!link.href}
+                  aria-disabled={Boolean(blockReason)}
                   startIcon={getFileActionIcon(link.label)}
+                  onClick={blockReason ? () => setDownloadNotice(blockReason) : undefined}
                   sx={{
                     ...actionButtonSx,
-                    bgcolor: color,
-                    color: "#fff",
-                    "&:hover": { bgcolor: hover, boxShadow: `0 8px 18px ${color}33` },
-                    "&.Mui-disabled": {
-                      bgcolor: "#e5e7eb",
-                      color: "#94a3b8",
-                    },
+                    bgcolor: blockReason ? "#e5e7eb" : color,
+                    color: blockReason ? "#64748b" : "#fff",
+                    cursor: blockReason ? "pointer" : undefined,
+                    "&:hover": blockReason
+                      ? { bgcolor: "#dbe0e6", boxShadow: "none" }
+                      : { bgcolor: hover, boxShadow: `0 8px 18px ${color}33` },
                   }}
-                  {...(link.href
+                  {...(!blockReason && link.href
                     ? {
                         href: link.href,
                         ...(link.download
@@ -693,15 +902,19 @@ export default function AdminReports() {
 
         <Tooltip
           title={
-            group.release_status === "pending_release"
+            canRelease
               ? "Release this approved report so the user can download files"
+              : group.release_status === "pending_release"
+                ? group.workflow_message || "Approval and all required files must be complete before release"
+              : group.workflow_message
+                ? group.workflow_message
               : group.released_at
                 ? `Released ${new Date(group.released_at).toLocaleString()}`
                 : "Released"
           }
         >
           <span>
-            {group.release_status === "pending_release" ? (
+            {canRelease ? (
               <Button
                 size="small"
                 variant="contained"
@@ -719,14 +932,14 @@ export default function AdminReports() {
             ) : (
               <Chip
                 size="small"
-                label="Released"
+                label={statusPresentation.label}
                 sx={{
                   height: 26,
                   fontSize: "0.62rem",
                   fontWeight: 900,
-                  bgcolor: "#ecfdf5",
-                  color: "#047857",
-                  border: "1px solid #a7f3d0",
+                  bgcolor: statusPresentation.background,
+                  color: statusPresentation.color,
+                  border: `1px solid ${statusPresentation.border}`,
                   borderRadius: 1.25,
                 }}
               />
@@ -814,28 +1027,52 @@ export default function AdminReports() {
         <Button variant="outlined" startIcon={<VisibilityRoundedIcon />} sx={desktopTileSx} onClick={() => previewId && openReportData(previewId)}>
           Data
         </Button>
-        {buildFileLinks(group).map((file) => (
-          <Button
-            key={`${group.key}-${file.label}`}
-            variant="outlined"
-            disabled={!file.href}
-            startIcon={getFileActionIcon(file.label)}
-            sx={desktopTileSx}
-            {...(file.href
-              ? {
-                  href: file.href,
-                  ...(file.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" }),
-                }
-              : {})}
-          >
-            {file.label}
-          </Button>
-        ))}
+        {buildFileLinks(group).map((file) => {
+          const blockReason = getFileBlockReason(group, file);
+          return (
+            <Tooltip key={`${group.key}-${file.label}`} title={blockReason || file.label}>
+              <span>
+                <Button
+                  variant="outlined"
+                  aria-disabled={Boolean(blockReason)}
+                  startIcon={getFileActionIcon(file.label)}
+                  onClick={blockReason ? () => setDownloadNotice(blockReason) : undefined}
+                  sx={{
+                    ...desktopTileSx,
+                    ...(blockReason
+                      ? {
+                          borderColor: "#d8dde3",
+                          bgcolor: "#f4f6f8",
+                          color: "#7b8794",
+                          cursor: "pointer",
+                          "&:hover": { borderColor: "#b8c1cb", bgcolor: "#e9edf1" },
+                        }
+                      : {}),
+                  }}
+                  {...(!blockReason && file.href
+                    ? {
+                        href: file.href,
+                        ...(file.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" }),
+                      }
+                    : {})}
+                >
+                  {file.label}
+                </Button>
+              </span>
+            </Tooltip>
+          );
+        })}
       </Stack>
     );
   }
 
   function renderDesktopRowActions(group: ReportGroup) {
+    const canRelease =
+      group.release_status === "pending_release" &&
+      reportApprovalIsApproved(group) &&
+      !reportIsActivelyGenerating(group) &&
+      group.files_ready !== false &&
+      group.workflow_stage !== "error";
     const desktopActionSx = {
       width: 48,
       minWidth: 48,
@@ -869,7 +1106,7 @@ export default function AdminReports() {
             CR Notes
           </Button>
         ) : null}
-        {group.release_status === "pending_release" ? (
+        {canRelease ? (
           <Button variant="outlined" sx={{ ...desktopActionSx, color: "#087f5b" }} disabled={actionBusyId === group.key} onClick={() => void releaseReport(group.key)}>
             Release
           </Button>
@@ -971,10 +1208,21 @@ export default function AdminReports() {
       header: "Status",
       enableSorting: false,
       cell: ({ row }) => {
-        const released = row.original.release_status !== "pending_release";
+        const status = getReportStatusPresentation(row.original);
         return (
           <Stack spacing={0.5} alignItems="center">
-            <Chip size="small" label={released ? "Released" : "Awaiting Release"} sx={{ height: 23, bgcolor: released ? "#e9f7f2" : "#fff4df", color: released ? "#087f5b" : "#a45a00", border: "1px solid", borderColor: released ? "#c5e9dd" : "#f2d6a5", fontSize: "0.62rem" }} />
+            <Chip
+              size="small"
+              label={status.label}
+              sx={{
+                height: 23,
+                bgcolor: status.background,
+                color: status.color,
+                border: "1px solid",
+                borderColor: status.border,
+                fontSize: "0.62rem",
+              }}
+            />
             {row.original.released_at ? <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.56rem" }}>{new Date(row.original.released_at).toLocaleString()}</Typography> : null}
           </Stack>
         );
@@ -1321,7 +1569,7 @@ export default function AdminReports() {
           {!sameContractLoading && sameContractGroups.length ? (
             <Stack spacing={1}>
               {sameContractGroups.map((report) => {
-                const files = buildFileLinks(report).filter((file) => file.href);
+                const files = buildFileLinks(report);
                 return (
                   <Box
                     component="article"
@@ -1353,18 +1601,54 @@ export default function AdminReports() {
                     <Box><Typography sx={{ color: "#737773", fontSize: 11 }}>Created</Typography><Typography sx={{ mt: 0.5, color: "#17191d", fontSize: 13 }}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(report.createdAt))}</Typography></Box>
                     <Box sx={{ minWidth: 0 }}><Typography sx={{ color: "#737773", fontSize: 11 }}>Owner</Typography><Typography noWrap sx={{ mt: 0.5, color: "#17191d", fontSize: 13 }}>{report.userDisplayName || report.userEmail || "Unknown"}</Typography></Box>
                     <Stack direction="row" justifyContent={{ md: "flex-end" }} spacing={0.75} useFlexGap flexWrap="wrap">
-                      {files.map((file) => (
-                        <Button
-                          key={`${report.key}-${file.label}`}
-                          size="small"
-                          variant="outlined"
-                          href={file.href}
-                          {...(file.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" })}
-                          sx={{ minWidth: "auto", minHeight: 28, borderRadius: "3px", borderColor: "#dedfe1", px: 1.25, color: "#17191d", fontSize: 11, fontWeight: 600, textTransform: "none", boxShadow: "none", "&:hover": { borderColor: "#b9bcbe", bgcolor: "#f7f8f8", boxShadow: "none" }, "&.Mui-focusVisible": { borderColor: "#df111b", boxShadow: "0 0 0 2px rgba(223,17,27,0.28)" } }}
-                        >
-                          {file.label}
-                        </Button>
-                      ))}
+                      {files.map((file) => {
+                        const blockReason = getFileBlockReason(report, file);
+                        return (
+                          <Tooltip key={`${report.key}-${file.label}`} title={blockReason || file.label}>
+                            <span>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                aria-disabled={Boolean(blockReason)}
+                                onClick={blockReason ? () => setDownloadNotice(blockReason) : undefined}
+                                {...(!blockReason && file.href
+                                  ? {
+                                      href: file.href,
+                                      ...(file.download
+                                        ? { download: true }
+                                        : { target: "_blank", rel: "noopener noreferrer" }),
+                                    }
+                                  : {})}
+                                sx={{
+                                  minWidth: "auto",
+                                  minHeight: 28,
+                                  borderRadius: "3px",
+                                  borderColor: blockReason ? "#d8dde3" : "#dedfe1",
+                                  bgcolor: blockReason ? "#f4f6f8" : undefined,
+                                  px: 1.25,
+                                  color: blockReason ? "#7b8794" : "#17191d",
+                                  cursor: blockReason ? "pointer" : undefined,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  textTransform: "none",
+                                  boxShadow: "none",
+                                  "&:hover": {
+                                    borderColor: blockReason ? "#b8c1cb" : "#b9bcbe",
+                                    bgcolor: blockReason ? "#e9edf1" : "#f7f8f8",
+                                    boxShadow: "none",
+                                  },
+                                  "&.Mui-focusVisible": {
+                                    borderColor: "#df111b",
+                                    boxShadow: "0 0 0 2px rgba(223,17,27,0.28)",
+                                  },
+                                }}
+                              >
+                                {file.label}
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        );
+                      })}
                     </Stack>
                   </Box>
                 );
@@ -1400,6 +1684,21 @@ export default function AdminReports() {
           onSaved={handleExcelCrSaved}
         />
       ) : null}
+      <Snackbar
+        open={Boolean(downloadNotice)}
+        autoHideDuration={7000}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        onClose={() => setDownloadNotice(null)}
+      >
+        <Alert
+          severity="warning"
+          variant="filled"
+          onClose={() => setDownloadNotice(null)}
+          sx={{ width: "100%", maxWidth: 620 }}
+        >
+          {downloadNotice}
+        </Alert>
+      </Snackbar>
     </div>
   );
 }
