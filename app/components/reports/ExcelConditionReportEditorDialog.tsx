@@ -69,6 +69,7 @@ import FormatAlignLeftRoundedIcon from "@mui/icons-material/FormatAlignLeftRound
 import FormatAlignRightRoundedIcon from "@mui/icons-material/FormatAlignRightRounded";
 import FormatBoldRoundedIcon from "@mui/icons-material/FormatBoldRounded";
 import FormatClearRoundedIcon from "@mui/icons-material/FormatClearRounded";
+import HorizontalRuleRoundedIcon from "@mui/icons-material/HorizontalRuleRounded";
 import FormatItalicRoundedIcon from "@mui/icons-material/FormatItalicRounded";
 import FormatListBulletedRoundedIcon from "@mui/icons-material/FormatListBulletedRounded";
 import FormatListNumberedRoundedIcon from "@mui/icons-material/FormatListNumberedRounded";
@@ -413,6 +414,7 @@ function RichNoteEditor({
         <Divider orientation="vertical" flexItem sx={{ mx: 0.4 }} />
         {toolbarButton("Bullet list", <FormatListBulletedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("bulletList")), () => editor?.chain().focus().toggleBulletList().run())}
         {toolbarButton("Numbered list", <FormatListNumberedRoundedIcon fontSize="small" />, Boolean(editor?.isActive("orderedList")), () => editor?.chain().focus().toggleOrderedList().run())}
+        {toolbarButton("Horizontal rule", <HorizontalRuleRoundedIcon fontSize="small" />, false, () => editor?.chain().focus().setHorizontalRule().run(), !editor?.can().setHorizontalRule())}
         <Divider orientation="vertical" flexItem sx={{ mx: 0.4 }} />
         {toolbarButton("Align left", <FormatAlignLeftRoundedIcon fontSize="small" />, Boolean(editor?.isActive({ textAlign: "left" })), () => editor?.chain().focus().setTextAlign("left").run())}
         {toolbarButton("Align center", <FormatAlignCenterRoundedIcon fontSize="small" />, Boolean(editor?.isActive({ textAlign: "center" })), () => editor?.chain().focus().setTextAlign("center").run())}
@@ -435,6 +437,7 @@ function RichNoteEditor({
         .excel-cr-rich-editor .tiptap h2 { font-size: 19px; line-height: 1.3; margin: 8px 0; }
         .excel-cr-rich-editor .tiptap h3 { font-size: 16px; line-height: 1.35; margin: 8px 0; }
         .excel-cr-rich-editor .tiptap ul, .excel-cr-rich-editor .tiptap ol { padding-left: 24px; }
+        .excel-cr-rich-editor .tiptap hr { margin: 14px 0; border: 0; border-top: 1px solid #aeb2ae; }
       `}</Box>
     </Box>
   );
