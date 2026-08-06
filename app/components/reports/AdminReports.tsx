@@ -185,6 +185,12 @@ function getReportTypeLabel(reportType: string) {
   return reportType === "LotListing" ? "Lot Listing" : reportType;
 }
 
+function normalizedReportType(group: ReportGroup) {
+  return String(group.reportType || "")
+    .toLowerCase()
+    .replace(/[\s_-]/g, "");
+}
+
 function getPreviewTargetId(group: ReportGroup) {
   return (
     group.variants.pdf?._id ||
@@ -415,6 +421,10 @@ function groupReportItems(items: ReportItem[]): ReportGroup[] {
 }
 
 function buildFileLinks(group: ReportGroup): ReportFileLink[] {
+  const reportType = normalizedReportType(group);
+  const isAssetType = reportType === "asset";
+  const isRealEstateType = reportType === "realestate";
+
   if (group.isLotListingReport) {
     return [
       { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf/download`, download: true },
@@ -442,7 +452,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
             },
           ]
         : []),
-      { label: "DOCX", href: group.preview_files.docx },
+      { label: "Appraisal report", href: group.preview_files.docx },
       { label: "Excel", href: group.preview_files.excel },
       { label: "Images", href: group.preview_files.images },
     ];
@@ -453,7 +463,7 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
       { label: "CR", href: `/api/admin/reports/${group.key}/spec-pdf/download`, download: true },
       { label: "CR DOCX", href: `/api/admin/reports/${group.key}/cr-docx`, download: true },
       {
-        label: "DOCX",
+        label: "Appraisal report",
         href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
       },
       {
@@ -469,7 +479,11 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 
   return [
     {
-      label: "PDF",
+      label: group.variants.specPdf
+        ? "CR"
+        : isAssetType
+          ? "Schedule A"
+          : "PDF",
       href: group.variants.specPdf
         ? `/api/admin/reports/${group.variants.specPdf._id}/download`
         : group.variants.pdf
@@ -477,7 +491,8 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
           : undefined,
     },
     {
-      label: "DOCX",
+      label:
+        isAssetType || isRealEstateType ? "Appraisal report" : "DOCX",
       href: group.variants.docx ? `/api/admin/reports/${group.variants.docx._id}/download` : undefined,
     },
     {
@@ -499,8 +514,15 @@ function buildFileLinks(group: ReportGroup): ReportFileLink[] {
 
 function getFileActionIcon(label: string) {
   const key = label.toLowerCase();
-  if (key === "cr" || key.includes("pdf") || key.includes("conditional report")) return <PictureAsPdfRoundedIcon />;
-  if (key.includes("docx")) return <NoteAddRoundedIcon />;
+  if (
+    key === "cr" ||
+    key === "schedule a" ||
+    key.includes("pdf") ||
+    key.includes("conditional report")
+  ) {
+    return <PictureAsPdfRoundedIcon />;
+  }
+  if (key === "appraisal report" || key.includes("docx")) return <NoteAddRoundedIcon />;
   if (key.includes("excel")) return <TableChartRoundedIcon />;
   if (key.includes("image")) return <CollectionsRoundedIcon />;
   return undefined;
@@ -789,11 +811,12 @@ export default function AdminReports() {
           "& > span": { flexShrink: 0 },
         }}
       >
-        <Tooltip title="Open report data">
+        <Tooltip title="Open proposal valuation">
           <span>
             <Button
               size="small"
               variant="contained"
+              aria-label="Proposal valuation"
               startIcon={<VisibilityRoundedIcon />}
               sx={{
                 ...actionButtonSx,
@@ -805,7 +828,12 @@ export default function AdminReports() {
                 if (previewId) openReportData(previewId);
               }}
             >
-              Data
+              <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>
+                PV
+              </Box>
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+                Proposal valuation
+              </Box>
             </Button>
           </span>
         </Tooltip>
@@ -835,7 +863,10 @@ export default function AdminReports() {
         {buildFileLinks(group).map((link) => {
           const linkKey = link.label.toLowerCase();
           const tooltipLabel = linkKey === "cr" ? "CR" : link.label;
-          const isPdf = linkKey === "cr" || linkKey.includes("pdf");
+          const isPdf =
+            linkKey === "cr" ||
+            linkKey === "schedule a" ||
+            linkKey.includes("pdf");
           const isExcel = link.label.toLowerCase().includes("excel");
           const color = isPdf ? "#4f46e5" : isExcel ? "#2563eb" : "#7c3aed";
           const hover = isPdf ? "#4338ca" : isExcel ? "#1d4ed8" : "#6d28d9";
@@ -1024,8 +1055,14 @@ export default function AdminReports() {
     const previewId = getPreviewTargetId(group);
     return (
       <Stack direction="row" spacing={0.4} useFlexGap flexWrap="wrap" alignItems="center" sx={{ maxWidth: "100%", rowGap: 0.5 }}>
-        <Button variant="outlined" startIcon={<VisibilityRoundedIcon />} sx={desktopTileSx} onClick={() => previewId && openReportData(previewId)}>
-          Data
+        <Button
+          variant="outlined"
+          aria-label="Proposal valuation"
+          startIcon={<VisibilityRoundedIcon />}
+          sx={{ ...desktopTileSx, width: 64 }}
+          onClick={() => previewId && openReportData(previewId)}
+        >
+          Proposal valuation
         </Button>
         {buildFileLinks(group).map((file) => {
           const blockReason = getFileBlockReason(group, file);
