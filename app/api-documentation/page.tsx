@@ -5,15 +5,106 @@ const SERVER_URL =
   process.env.NEXT_PUBLIC_SERVER_URL || "https://api.assetinsightvaluator.com";
 
 const endpoints = [
-  ["GET", "/api/v1/assets", "List approved asset report summaries"],
-  ["GET", "/api/v1/assets/:id", "Get one approved asset report with full lots and files"],
-  ["GET", "/api/v1/assets/:id/lots", "List lots for one approved asset report"],
-  ["GET", "/api/v1/assets/:id/lots/:lotId", "Get one lot by lot_id or lot_number"],
-  ["GET", "/api/v1/lot-listings", "List approved lot listing summaries"],
-  ["GET", "/api/v1/lot-listings/:id", "Get one approved lot listing with full lots and files"],
-  ["GET", "/api/v1/lot-listings/:id/lots", "List lots for one approved lot listing"],
-  ["GET", "/api/v1/lot-listings/:id/lots/:lotId", "Get one lot listing lot by lot_id or lot_number"],
-  ["GET", "/api/v1/lots?source=asset|lot-listing", "List lots across approved records"],
+  {
+    method: "GET",
+    path: "/api/v1/users",
+    description: "List active, verified users that can be assigned by an integration.",
+    input: "page, limit, q, updatedAfter",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/assets",
+    description: "List approved and released Asset report summaries.",
+    input: "page, limit, q, from, to, updatedAfter, contractNo",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/assets/:id",
+    description: "Get one approved Asset report with its lots, media, and generated files.",
+    input: "Asset report Mongo ID",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/assets/:id/lots",
+    description: "List every lot saved in one approved Asset report.",
+    input: "Asset report Mongo ID",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/assets/:id/lots/:lotId",
+    description: "Get one Asset lot by its lot_id or visible lot_number.",
+    input: "Asset report ID and lot identifier",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lot-listings",
+    description: "List approved and released Lot Listing summaries.",
+    input: "page, limit, q, from, to, updatedAfter, contractNo",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lot-listings/:id",
+    description: "Get one Lot Listing with full lot data, media, and generated files.",
+    input: "Lot Listing Mongo ID",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lot-listings/:id/lots",
+    description: "List every lot saved in one approved Lot Listing.",
+    input: "Lot Listing Mongo ID",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lot-listings/:id/lots/:lotId",
+    description: "Get one Lot Listing lot by its lot_id or visible lot_number.",
+    input: "Lot Listing ID and lot identifier",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lots",
+    description: "Return a combined, paginated lot feed from approved reports.",
+    input: "source=asset|lot-listing, page, limit, q, contractNo, date filters",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/crm/leads",
+    description: "List CRM leads, including assignment and latest workflow information.",
+    input: "page, limit, q, status, updatedAfter",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/crm/leads/:id",
+    description: "Get one CRM lead with its complete update history.",
+    input: "CRM lead Mongo ID",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/crm/leads/:id/reply",
+    description: "Add a CRM comment and optionally advance the lead status.",
+    input: "JSON: comment (required), status, lostReason",
+  },
+] as const;
+
+const auctioneerDeliveryEndpoints = [
+  {
+    method: "PATCH",
+    path: "/api/external/lots/:lotId",
+    description: "Updates the mapped Auctioneer lot with approved CR data and estimated value.",
+  },
+  {
+    method: "POST",
+    path: "/api/external/lots/:lotId/complete-cr",
+    description: "Completes the condition report and sends its estimated value to the Lien Tracker Board.",
+  },
+] as const;
+
+const auctioneerRequestFields = [
+  ["estimatedValue", "string", "Numeric value without currency symbols or commas, for example 15000."],
+  ["conditionReport", "string", "Approved condition report text assembled from the saved lot."],
+  ["destination", "string", "LottingBoard or OpToDoBoard. Used by complete-cr."],
+  ["opTaskDescription", "string", "Required only when the selected destination is OpToDoBoard."],
+  ["completedBy", "string", "Name or email of the Asset Insight user completing the CR."],
+  ["submissionGuid", "string", "Auctioneer submission identifier when one is available."],
 ] as const;
 
 const requestSamples = [
@@ -39,6 +130,18 @@ Query: source=lot-listing&contractNo=CV-2026-104
 Query: page=1&limit=50
 Authorization: Bearer cvak_your_key_here`,
   },
+  {
+    title: "Reply to a CRM lead",
+    description: "Adds an auditable comment and can update the lead workflow status.",
+    request: `POST ${SERVER_URL}/api/v1/crm/leads/665f2a8c9f0d4d3b9e7b9999/reply
+Content-Type: application/json
+Authorization: Bearer cvak_your_key_here
+
+{
+  "comment": "Customer requested an inspection next week.",
+  "status": "inspection_required"
+}`,
+  },
 ] as const;
 
 function CodeBlock({ children }: { children: string }) {
@@ -62,8 +165,8 @@ export default function ApiDocumentationPage() {
               API Documentation
             </h1>
             <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">
-              Use read-only API keys to access approved asset reports, approved lot listings,
-              and their lot details from server-side integrations.
+              Use API keys to access approved reports, lots, assignable users, and CRM lead
+              workflows from trusted server-side integrations.
             </p>
           </div>
           <Link
@@ -85,7 +188,7 @@ export default function ApiDocumentationPage() {
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Access</div>
-            <div className="mt-2 text-sm">Approved assets and approved lot listings only</div>
+            <div className="mt-2 text-sm">Reports, lots, users, and controlled CRM updates</div>
           </div>
         </div>
 
@@ -95,7 +198,8 @@ export default function ApiDocumentationPage() {
           <h2 className="text-2xl font-bold">Authentication</h2>
           <p className="text-slate-600">
             Send the API key from a backend service. Do not expose API keys in browser,
-            mobile, or public client code.
+            mobile, or public client code. Every endpoint below requires the same API-key
+            authentication.
           </p>
           <CodeBlock>{`curl "${SERVER_URL}/api/v1/assets?limit=10" \\
   -H "Authorization: Bearer cvak_your_key_here"`}</CodeBlock>
@@ -120,26 +224,104 @@ export default function ApiDocumentationPage() {
         </section>
 
         <section className="mt-10 space-y-4">
-          <h2 className="text-2xl font-bold">Endpoints</h2>
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
+          <h2 className="text-2xl font-bold">Complete API Reference</h2>
+          <p className="text-slate-600">
+            This table documents every endpoint currently available under <code>/api/v1</code>.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-[860px] w-full text-left text-sm">
               <thead className="bg-slate-100 text-xs uppercase tracking-[0.14em] text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Method</th>
                   <th className="px-4 py-3">Path</th>
-                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3">What it does</th>
+                  <th className="px-4 py-3">Inputs</th>
                 </tr>
               </thead>
               <tbody>
-                {endpoints.map(([method, path, description]) => (
-                  <tr key={path} className="border-t border-slate-200">
-                    <td className="px-4 py-3 font-mono font-semibold text-blue-700">{method}</td>
-                    <td className="px-4 py-3 font-mono">{path}</td>
-                    <td className="px-4 py-3 text-slate-600">{description}</td>
+                {endpoints.map((endpoint) => (
+                  <tr key={`${endpoint.method}-${endpoint.path}`} className="border-t border-slate-200 align-top">
+                    <td className={`px-4 py-3 font-mono font-semibold ${endpoint.method === "POST" ? "text-emerald-700" : "text-blue-700"}`}>
+                      {endpoint.method}
+                    </td>
+                    <td className="px-4 py-3 font-mono">{endpoint.path}</td>
+                    <td className="px-4 py-3 text-slate-700">{endpoint.description}</td>
+                    <td className="px-4 py-3 text-slate-600">{endpoint.input}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section className="mt-10 space-y-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-red-700">
+              Auctioneer 2.0 delivery
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Lot Update and CR Completion</h2>
+            <p className="mt-2 max-w-3xl text-slate-600">
+              These are outbound requests sent by Asset Insight to Auctioneer 2.0 after an
+              approved report is delivered. They are not public <code>cvak_</code> endpoints.
+              Both requests now include the saved lot valuation as <code>estimatedValue</code>.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-[760px] w-full text-left text-sm">
+              <thead className="bg-slate-100 text-xs uppercase tracking-[0.14em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Method</th>
+                  <th className="px-4 py-3">Auctioneer path</th>
+                  <th className="px-4 py-3">Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auctioneerDeliveryEndpoints.map((endpoint) => (
+                  <tr key={endpoint.path} className="border-t border-slate-200">
+                    <td className="px-4 py-3 font-mono font-semibold text-red-700">{endpoint.method}</td>
+                    <td className="px-4 py-3 font-mono">{endpoint.path}</td>
+                    <td className="px-4 py-3 text-slate-700">{endpoint.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-[620px] w-full text-left text-sm">
+                <thead className="bg-slate-100 text-xs uppercase tracking-[0.14em] text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Field</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auctioneerRequestFields.map(([field, type, description]) => (
+                    <tr key={field} className="border-t border-slate-200 align-top">
+                      <td className="px-4 py-3 font-mono font-semibold">{field}</td>
+                      <td className="px-4 py-3 font-mono text-slate-600">{type}</td>
+                      <td className="px-4 py-3 text-slate-700">{description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <CodeBlock>{`PATCH /api/external/lots/:lotId
+{
+  "estimatedValue": "15000",
+  "conditionReport": "Starts and runs. Minor body wear."
+}
+
+POST /api/external/lots/:lotId/complete-cr
+{
+  "estimatedValue": "15000",
+  "conditionReport": "Starts and runs. Minor body wear.",
+  "destination": "LottingBoard",
+  "completedBy": "user@example.com"
+}`}</CodeBlock>
           </div>
         </section>
 
@@ -155,6 +337,7 @@ export default function ApiDocumentationPage() {
                 <li><code>updatedAfter</code>: filter by update date.</li>
                 <li><code>contractNo</code>: filter by contract number.</li>
                 <li><code>source</code>: only on <code>/api/v1/lots</code>, accepts <code>asset</code> or <code>lot-listing</code>.</li>
+                <li><code>status</code>: only on <code>/api/v1/crm/leads</code>, filters the CRM workflow state.</li>
               </ul>
             </div>
           </div>

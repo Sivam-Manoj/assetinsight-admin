@@ -6,9 +6,11 @@ const PUBLIC_API_BASE_URL =
   process.env.NEXT_PUBLIC_SERVER_URL || "https://api.assetinsightvaluator.com";
 
 const API_TEST_PRESETS = [
+  { label: "Users", url: "/api/v1/users?limit=5" },
   { label: "Assets", url: "/api/v1/assets?limit=5" },
   { label: "Lot listings", url: "/api/v1/lot-listings?limit=5" },
   { label: "Lots", url: "/api/v1/lots?limit=5" },
+  { label: "CRM leads", url: "/api/v1/crm/leads?limit=5" },
 ] as const;
 
 type ApiTestResult = {
