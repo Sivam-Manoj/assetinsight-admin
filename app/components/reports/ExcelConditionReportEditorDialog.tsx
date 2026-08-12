@@ -33,6 +33,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -471,22 +472,32 @@ function SpecValueControl({
 
   if (Array.isArray(spec.options) && spec.options.length > 0) {
     return (
-      <FormControl fullWidth size="small">
-        <Select
-          displayEmpty
-          value={spec.value || ""}
-          disabled={disabled}
-          onChange={(event) => onChange(String(event.target.value || ""))}
-          sx={{ bgcolor: "#fff", fontSize: 13 }}
-        >
-          <MenuItem value="">Blank</MenuItem>
-          {spec.options.map((option) => (
-            <MenuItem value={option} key={`${spec.field}-${option}`}>
-              {option}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+      <Autocomplete<string, false, false, true>
+        freeSolo
+        fullWidth
+        options={spec.options}
+        value={spec.value || null}
+        inputValue={spec.value || ""}
+        disabled={disabled}
+        clearOnBlur={false}
+        selectOnFocus
+        handleHomeEndKeys
+        onChange={(_event, value) => onChange(String(value || ""))}
+        onInputChange={(_event, value, reason) => {
+          if (reason === "input" || reason === "clear") onChange(value);
+        }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            size="small"
+            placeholder="Choose or type a value"
+          />
+        )}
+        sx={{
+          "& .MuiInputBase-root": { bgcolor: "#fff", fontSize: 13 },
+          "& .MuiAutocomplete-input": { minWidth: "80px !important" },
+        }}
+      />
     );
   }
 
