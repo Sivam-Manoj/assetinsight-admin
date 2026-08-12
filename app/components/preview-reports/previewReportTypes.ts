@@ -44,6 +44,8 @@ export type PreviewReportSummary = {
   jobError: string;
   transferEligible: boolean;
   transferIneligibleReason: string | null;
+  deleteEligible: boolean;
+  deleteIneligibleReason: string | null;
   previewTransferredAt: string | null;
 };
 
@@ -83,6 +85,8 @@ export type PreviewReportDetailResponse = {
     job_error: string;
     transferEligible: boolean;
     transferIneligibleReason: string | null;
+    deleteEligible: boolean;
+    deleteIneligibleReason: string | null;
     previewTransferredAt: string | null;
     transferHistory: Array<{
       fromUser: string;

@@ -31,6 +31,7 @@ import {
   ExternalLink,
   FileJson,
   Image as ImageIcon,
+  Trash2,
   UserRound,
   UserRoundCog,
   X,
@@ -45,6 +46,7 @@ type Props = {
   reportId: string | null;
   onClose: () => void;
   onTransferred?: () => void;
+  onDeleted?: () => void;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -172,6 +174,7 @@ export default function PreviewReportDrawer({
   reportId,
   onClose,
   onTransferred,
+  onDeleted,
 }: Props) {
   const [payload, setPayload] = useState<PreviewReportDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -185,6 +188,9 @@ export default function PreviewReportDrawer({
   const [transferError, setTransferError] = useState("");
   const [transferSuccess, setTransferSuccess] = useState("");
   const [transferring, setTransferring] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     if (!open || !reportId) return;
@@ -198,6 +204,8 @@ export default function PreviewReportDrawer({
     setTransferTarget(null);
     setTransferError("");
     setTransferSuccess("");
+    setDeleteOpen(false);
+    setDeleteError("");
 
     fetch(`/api/admin/preview-reports/${encodeURIComponent(reportId)}`, {
       cache: "no-store",
@@ -299,6 +307,31 @@ export default function PreviewReportDrawer({
     }
   };
 
+  const submitDelete = async () => {
+    if (!reportId || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch(
+        `/api/admin/preview-reports/${encodeURIComponent(reportId)}`,
+        { method: "DELETE" }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message || "Unable to delete this preview report.");
+      }
+      setDeleteOpen(false);
+      onDeleted?.();
+      onClose();
+    } catch (reason) {
+      setDeleteError(
+        reason instanceof Error ? reason.message : "Unable to delete this preview report."
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <Drawer
       anchor="right"
@@ -344,6 +377,32 @@ export default function PreviewReportDrawer({
                       sx={{ borderRadius: "4px", whiteSpace: "nowrap" }}
                     >
                       Reassign
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : null}
+              {payload ? (
+                <Tooltip
+                  title={
+                    payload.report.deleteEligible
+                      ? "Permanently delete this preview report"
+                      : payload.report.deleteIneligibleReason ||
+                        "This preview cannot be deleted."
+                  }
+                >
+                  <span>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<Trash2 size={17} />}
+                      disabled={!payload.report.deleteEligible}
+                      onClick={() => {
+                        setDeleteError("");
+                        setDeleteOpen(true);
+                      }}
+                      sx={{ borderRadius: "4px", whiteSpace: "nowrap" }}
+                    >
+                      Delete
                     </Button>
                   </span>
                 </Tooltip>
@@ -589,6 +648,42 @@ export default function PreviewReportDrawer({
               }
             >
               {transferring ? "Reassigning" : "Confirm reassignment"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={deleteOpen}
+          onClose={() => {
+            if (!deleting) setDeleteOpen(false);
+          }}
+          fullWidth
+          maxWidth="sm"
+          PaperProps={{ sx: { borderRadius: "6px" } }}
+        >
+          <DialogTitle sx={{ fontWeight: 750 }}>Delete preview report?</DialogTitle>
+          <DialogContent dividers>
+            {deleteError ? <Alert severity="error" sx={{ mb: 2 }}>{deleteError}</Alert> : null}
+            <Typography sx={{ fontSize: 14, lineHeight: 1.65 }}>
+              <strong>{payload?.preview.title || "This preview"}</strong>
+              {payload?.report.contractNo ? ` (contract ${payload.report.contractNo})` : ""} will be permanently removed with its generated preview files and processing history.
+            </Typography>
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              This action cannot be undone. Source photos that may be shared with another report are retained.
+            </Alert>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 1.5 }}>
+            <Button color="inherit" disabled={deleting} onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              disabled={deleting}
+              onClick={submitDelete}
+              startIcon={deleting ? <CircularProgress color="inherit" size={16} /> : <Trash2 size={17} />}
+            >
+              {deleting ? "Deleting" : "Delete permanently"}
             </Button>
           </DialogActions>
         </Dialog>

@@ -8,6 +8,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   IconButton,
   LinearProgress,
@@ -35,6 +39,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import type {
@@ -123,7 +128,15 @@ function WorkflowBadge({ report }: { report: PreviewReportSummary }) {
   );
 }
 
-function ReportCard({ report, onOpen }: { report: PreviewReportSummary; onOpen: () => void }) {
+function ReportCard({
+  report,
+  onOpen,
+  onDelete,
+}: {
+  report: PreviewReportSummary;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
   return (
     <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "5px", bgcolor: "background.paper", p: 1.5 }}>
       <Stack direction="row" spacing={1.25}>
@@ -144,7 +157,22 @@ function ReportCard({ report, onOpen }: { report: PreviewReportSummary; onOpen: 
         <Box><Typography sx={{ color: "text.secondary", fontSize: 10.5, fontWeight: 750 }}>LAST ACTIVITY</Typography><Typography sx={{ mt: 0.2, fontSize: 12.5 }}>{relativeTime(report.updatedAt)}</Typography></Box>
       </Box>
       <Box sx={{ mt: 1.25 }}><WorkflowBadge report={report} /></Box>
-      <Button fullWidth variant="outlined" startIcon={<Eye size={16} />} onClick={onOpen} sx={{ mt: 1.25, borderRadius: "4px" }}>Open full report</Button>
+      <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
+        <Button fullWidth variant="outlined" startIcon={<Eye size={16} />} onClick={onOpen} sx={{ borderRadius: "4px" }}>Open full report</Button>
+        <Tooltip title={report.deleteEligible ? "Delete preview report" : report.deleteIneligibleReason || "This preview cannot be deleted."}>
+          <span>
+            <IconButton
+              aria-label={`Delete ${report.title}`}
+              color="error"
+              disabled={!report.deleteEligible}
+              onClick={onDelete}
+              sx={{ border: "1px solid", borderColor: "error.light", borderRadius: "4px" }}
+            >
+              <Trash2 size={17} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
     </Box>
   );
 }
@@ -166,6 +194,9 @@ export default function PreviewReportsPage() {
   const [limit, setLimit] = useState(25);
   const [reloadToken, setReloadToken] = useState(0);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PreviewReportSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -244,6 +275,37 @@ export default function PreviewReportsPage() {
     setPage(1);
   }
 
+  async function confirmDelete() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch(
+        `/api/admin/preview-reports/${encodeURIComponent(deleteTarget.id)}`,
+        { method: "DELETE" }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.message || "Unable to delete this preview report.");
+
+      setSelectedReportId((current) => current === deleteTarget.id ? null : current);
+      setData((current) => current ? {
+        ...current,
+        items: current.items.filter((item) => item.id !== deleteTarget.id),
+        total: Math.max(0, current.total - 1),
+        stageCounts: {
+          ...current.stageCounts,
+          [deleteTarget.workflowStage]: Math.max(0, (current.stageCounts[deleteTarget.workflowStage] || 0) - 1),
+        },
+      } : current);
+      setDeleteTarget(null);
+      setReloadToken((value) => value + 1);
+    } catch (reason) {
+      setDeleteError(reason instanceof Error ? reason.message : "Unable to delete this preview report.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Box className="desktop-admin-page" sx={{ minHeight: "100vh", overflowX: "hidden", p: { xs: 2, md: 3, xl: 4 } }}>
       <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} justifyContent="space-between" spacing={2}>
@@ -302,12 +364,19 @@ export default function PreviewReportsPage() {
         ) : (
           <>
             <Box sx={{ display: { xs: "grid", lg: "none" }, gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" }, gap: 1 }}>
-              {data.items.map((report) => <ReportCard key={report.id} report={report} onOpen={() => setSelectedReportId(report.id)} />)}
+              {data.items.map((report) => (
+                <ReportCard
+                  key={report.id}
+                  report={report}
+                  onOpen={() => setSelectedReportId(report.id)}
+                  onDelete={() => { setDeleteError(""); setDeleteTarget(report); }}
+                />
+              ))}
             </Box>
 
             <TableContainer sx={{ display: { xs: "none", lg: "block" }, overflow: "hidden", border: "1px solid", borderColor: "divider", borderRadius: "5px", bgcolor: "background.paper" }}>
               <Table size="small" sx={{ tableLayout: "fixed" }}>
-                <TableHead><TableRow>{[["Report", "29%"], ["Creator", "18%"], ["Workload", "13%"], ["Activity", "15%"], ["Workflow", "19%"], ["", "6%"]].map(([label, width]) => <TableCell key={label || "actions"} sx={{ width, py: 1.25, fontSize: 12, fontWeight: 750 }}>{label}</TableCell>)}</TableRow></TableHead>
+                <TableHead><TableRow>{[["Report", "28%"], ["Creator", "17%"], ["Workload", "12%"], ["Activity", "15%"], ["Workflow", "19%"], ["Actions", "9%"]].map(([label, width]) => <TableCell key={label} sx={{ width, py: 1.25, fontSize: 12, fontWeight: 750 }}>{label}</TableCell>)}</TableRow></TableHead>
                 <TableBody>
                   {data.items.map((report) => (
                     <TableRow key={report.id} hover sx={{ "&:last-child td": { borderBottom: 0 } }}>
@@ -318,7 +387,14 @@ export default function PreviewReportsPage() {
                       <TableCell><Typography sx={{ fontSize: 12.5 }}>{report.lotCount} lots</Typography><Typography sx={{ mt: 0.25, color: "text.secondary", fontSize: 11.5 }}>{report.imageCount} images</Typography></TableCell>
                       <TableCell><Stack direction="row" spacing={0.75} alignItems="flex-start"><CalendarClock size={15} /><Box><Typography sx={{ fontSize: 12 }}>{formatDateTime(report.updatedAt)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{relativeTime(report.updatedAt)}</Typography></Box></Stack></TableCell>
                       <TableCell><WorkflowBadge report={report} /></TableCell>
-                      <TableCell align="center"><Tooltip title="Open complete preview"><IconButton aria-label={`Open ${report.title}`} onClick={() => setSelectedReportId(report.id)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}><Eye size={17} /></IconButton></Tooltip></TableCell>
+                      <TableCell align="center">
+                        <Stack direction="row" justifyContent="center" spacing={0.75}>
+                          <Tooltip title="Open complete preview"><IconButton aria-label={`Open ${report.title}`} onClick={() => setSelectedReportId(report.id)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}><Eye size={17} /></IconButton></Tooltip>
+                          <Tooltip title={report.deleteEligible ? "Delete preview report" : report.deleteIneligibleReason || "This preview cannot be deleted."}>
+                            <span><IconButton aria-label={`Delete ${report.title}`} color="error" disabled={!report.deleteEligible} onClick={() => { setDeleteError(""); setDeleteTarget(report); }} sx={{ border: "1px solid", borderColor: report.deleteEligible ? "error.light" : "divider", borderRadius: "4px" }}><Trash2 size={17} /></IconButton></span>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -340,7 +416,34 @@ export default function PreviewReportsPage() {
         reportId={selectedReportId}
         onClose={() => setSelectedReportId(null)}
         onTransferred={() => setReloadToken((value) => value + 1)}
+        onDeleted={() => {
+          setSelectedReportId(null);
+          setReloadToken((value) => value + 1);
+        }}
       />
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => { if (!deleting) setDeleteTarget(null); }}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{ sx: { borderRadius: "6px" } }}
+      >
+        <DialogTitle sx={{ fontWeight: 750 }}>Delete preview report?</DialogTitle>
+        <DialogContent dividers>
+          {deleteError ? <Alert severity="error" sx={{ mb: 2 }}>{deleteError}</Alert> : null}
+          <Typography sx={{ fontSize: 14, lineHeight: 1.65 }}>
+            <strong>{deleteTarget?.title}</strong>{deleteTarget?.contractNo ? ` (contract ${deleteTarget.contractNo})` : ""} will be permanently removed from Preview Reports. Generated preview files and processing history will also be removed.
+          </Typography>
+          <Alert severity="warning" sx={{ mt: 2 }}>This action cannot be undone. Source photos that may be shared with another report are retained.</Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <Button color="inherit" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button variant="contained" color="error" disabled={deleting} onClick={confirmDelete} startIcon={deleting ? <CircularProgress color="inherit" size={16} /> : <Trash2 size={17} />}>
+            {deleting ? "Deleting" : "Delete permanently"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

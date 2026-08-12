@@ -12,3 +12,15 @@ export async function GET(
     { method: "GET" }
   );
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  return proxyJsonWithAdminAuth(
+    request,
+    `/api/admin/preview-reports/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
