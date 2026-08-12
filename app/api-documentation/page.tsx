@@ -21,7 +21,13 @@ const endpoints = [
     method: "GET",
     path: "/api/v1/assets/:id",
     description: "Get one approved Asset report with its lots, media, and generated files.",
-    input: "Asset report Mongo ID",
+    input: "Asset report Mongo ID; optional includeImageBase64=true, imagePage, imageLimit",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/assets/:id/images",
+    description: "Get ordered Asset images with both the saved R2 URL and Base64 bytes.",
+    input: "Asset report Mongo ID; page, limit (maximum 5)",
   },
   {
     method: "GET",
@@ -33,7 +39,13 @@ const endpoints = [
     method: "GET",
     path: "/api/v1/assets/:id/lots/:lotId",
     description: "Get one Asset lot by its lot_id or visible lot_number.",
-    input: "Asset report ID and lot identifier",
+    input: "Asset report ID and lot identifier; optional includeImageBase64=true, imagePage, imageLimit",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/assets/:id/lots/:lotId/images",
+    description: "Get one Asset lot's ordered images with R2 URLs and Base64 bytes.",
+    input: "Asset report ID and lot identifier; page, limit (maximum 5)",
   },
   {
     method: "GET",
@@ -45,7 +57,13 @@ const endpoints = [
     method: "GET",
     path: "/api/v1/lot-listings/:id",
     description: "Get one Lot Listing with full lot data, media, and generated files.",
-    input: "Lot Listing Mongo ID",
+    input: "Lot Listing Mongo ID; optional includeImageBase64=true, imagePage, imageLimit",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lot-listings/:id/images",
+    description: "Get ordered Lot Listing images with both the saved R2 URL and Base64 bytes.",
+    input: "Lot Listing Mongo ID; page, limit (maximum 5)",
   },
   {
     method: "GET",
@@ -57,7 +75,13 @@ const endpoints = [
     method: "GET",
     path: "/api/v1/lot-listings/:id/lots/:lotId",
     description: "Get one Lot Listing lot by its lot_id or visible lot_number.",
-    input: "Lot Listing ID and lot identifier",
+    input: "Lot Listing ID and lot identifier; optional includeImageBase64=true, imagePage, imageLimit",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lot-listings/:id/lots/:lotId/images",
+    description: "Get one Lot Listing lot's ordered images with R2 URLs and Base64 bytes.",
+    input: "Lot Listing ID and lot identifier; page, limit (maximum 5)",
   },
   {
     method: "GET",
@@ -121,6 +145,12 @@ Authorization: Bearer cvak_your_key_here`,
     description: "Returns full report metadata, files, image URLs, preview data, and lots.",
     request: `GET ${SERVER_URL}/api/v1/assets/665f2a8c9f0d4d3b9e7b1234
 x-api-key: cvak_your_key_here`,
+  },
+  {
+    title: "Get image bytes for Auctioneer 2.0",
+    description: "Returns a bounded page of ordered images. Each item keeps its R2 URL and adds raw Base64 for upload to Auctioneer's S3 bucket.",
+    request: `GET ${SERVER_URL}/api/v1/assets/665f2a8c9f0d4d3b9e7b1234/images?page=1&limit=5
+Authorization: Bearer cvak_your_key_here`,
   },
   {
     title: "List lots",
@@ -338,6 +368,9 @@ POST /api/external/lots/:lotId/complete-cr
                 <li><code>contractNo</code>: filter by contract number.</li>
                 <li><code>source</code>: only on <code>/api/v1/lots</code>, accepts <code>asset</code> or <code>lot-listing</code>.</li>
                 <li><code>status</code>: only on <code>/api/v1/crm/leads</code>, filters the CRM workflow state.</li>
+                <li><code>includeImageBase64</code>: on Asset/Lot Listing detail endpoints, set to <code>true</code> to include a bounded image page.</li>
+                <li><code>imagePage</code> and <code>imageLimit</code>: page the optional Base64 data embedded in a detail response.</li>
+                <li><code>page</code> and <code>limit</code>: on dedicated <code>/images</code> endpoints, default to page 1 with 2 images; image limit is capped at 5.</li>
               </ul>
             </div>
           </div>
@@ -351,6 +384,7 @@ POST /api/external/lots/:lotId/complete-cr
                 <li><code>403 revoked_api_key</code>: key has been revoked.</li>
                 <li><code>429 rate_limited</code>: key exceeded the request limit.</li>
                 <li><code>404 not_found</code>: approved record or lot was not found.</li>
+                <li><code>422 image_encoding_failed</code>: an image could not be loaded safely from approved storage.</li>
               </ul>
             </div>
           </div>
@@ -369,6 +403,40 @@ POST /api/external/lots/:lotId/complete-cr
     "limit": 25,
     "total": 0,
     "totalPages": 0
+  }
+}`}</CodeBlock>
+        </section>
+
+        <section className="mt-10 space-y-4">
+          <h2 className="text-2xl font-bold">Auctioneer Image Payloads</h2>
+          <p className="max-w-3xl text-slate-600">
+            Image endpoints are intended for trusted Auctioneer 2.0 server integrations.
+            The <code>base64</code> field contains raw Base64 without a data-URL prefix. Use
+            <code>content_type</code> when rebuilding the binary file, and continue requesting
+            pages until <code>hasNextPage</code> is false. Images are returned lot-by-lot in
+            saved photo order, and deleted preview images are excluded.
+          </p>
+          <CodeBlock>{`{
+  "data": [
+    {
+      "url": "https://images.sellsnap.store/reports/photo-001.jpg",
+      "base64": "/9j/4AAQSkZJRgABAQ...",
+      "content_type": "image/jpeg",
+      "filename": "lot-001-photo-001.jpg",
+      "size_bytes": 1842331,
+      "sha256": "64-character-sha256-checksum",
+      "encoding": "base64",
+      "order": 0,
+      "lot_index": 0,
+      "photo_index": 0
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 5,
+    "total": 18,
+    "totalPages": 4,
+    "hasNextPage": true
   }
 }`}</CodeBlock>
         </section>
