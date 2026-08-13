@@ -130,6 +130,8 @@ type ExcelCrPayload = {
   reportType: "Asset" | "LotListing" | string;
   revision: string;
   filesBusy: boolean;
+  fileJobStatus?: string;
+  fileJobError?: string;
   masterDamageEnabled: boolean;
   rows: ExcelCrRow[];
 };
@@ -741,6 +743,55 @@ export default function ExcelConditionReportEditorDialog({
   }, [loadEditor, open, reportId]);
 
   useEffect(() => {
+    if (!open || !reportId || !payload?.filesBusy) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let terminal = false;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/admin/reports/${reportId}/excel-condition-reports`,
+          { cache: "no-store" }
+        );
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+        const next = (json as { data?: ExcelCrPayload }).data;
+        if (!next || next.filesBusy || stopped) return;
+
+        terminal = true;
+        setPayload((current) =>
+          current
+            ? {
+                ...current,
+                filesBusy: false,
+                fileJobStatus: next.fileJobStatus,
+                fileJobError: next.fileJobError,
+              }
+            : current
+        );
+        const failed = next.fileJobStatus === "error";
+        const message = failed
+          ? `File regeneration failed. ${next.fileJobError || "Please try again."}`
+          : "Excel, CR PDF, and CR DOCX regeneration finished.";
+        setFeedback({ severity: failed ? "error" : "success", message });
+        await onSaved?.({ regenerated: !failed, message });
+      } catch {
+        // A transient polling failure should not turn a healthy worker job into
+        // a UI error. The next poll will reconcile the persisted report state.
+      } finally {
+        if (!stopped && !terminal) timer = setTimeout(poll, 5000);
+      }
+    };
+
+    timer = setTimeout(poll, 4000);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [onSaved, open, payload?.filesBusy, reportId]);
+
+  useEffect(() => {
     if (!open || !dirty) return;
     const guard = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -922,6 +973,10 @@ export default function ExcelConditionReportEditorDialog({
       return true;
     };
     try {
+      if (savedPayload.filesBusy) {
+        throw new Error("This report is generating files. Wait until it finishes before saving more changes.");
+      }
+
       if (!regenerate) {
         const response = await fetch(`/api/admin/reports/${reportId}/excel-condition-reports`, {
           method: "PATCH",
@@ -939,10 +994,6 @@ export default function ExcelConditionReportEditorDialog({
         return;
       }
 
-      if (savedPayload.filesBusy) {
-        throw new Error("This report is already generating files. Try file regeneration again when it finishes.");
-      }
-
       const response = await fetch(`/api/admin/reports/${reportId}/rerun-excel-cr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -950,7 +1001,7 @@ export default function ExcelConditionReportEditorDialog({
       });
       const json = await response.json().catch(() => ({}));
       const responseData = (json as {
-        data?: { editor?: ExcelCrPayload; saved?: boolean };
+        data?: { editor?: ExcelCrPayload; saved?: boolean; queued?: boolean };
       }).data;
       if (responseData?.editor) acceptSavedEditor(responseData.editor);
       if (!response.ok) {
@@ -964,7 +1015,14 @@ export default function ExcelConditionReportEditorDialog({
         throw new Error(detail);
       }
       if (!savedChanges) {
-        throw new Error("The server regenerated files without confirming the saved editor snapshot.");
+        throw new Error("The server queued file regeneration without confirming the saved editor snapshot.");
+      }
+      if (responseData?.queued || response.status === 202) {
+        setPayload((current) => (current ? { ...current, filesBusy: true } : current));
+        const message = "Changes saved. Excel, CR PDF, and CR DOCX regeneration is queued.";
+        setFeedback({ severity: "success", message });
+        await onSaved?.({ regenerated: false, message });
+        return;
       }
       const message = "Changes saved and Excel, CR PDF, and CR DOCX regenerated.";
       setFeedback({ severity: "success", message });
@@ -1155,7 +1213,7 @@ export default function ExcelConditionReportEditorDialog({
                 ) : null}
                 {payload?.filesBusy ? (
                   <Alert severity="info" icon={<RefreshRoundedIcon />} sx={{ mb: 2 }}>
-                    This report is currently generating files. You can edit and save, but file regeneration is temporarily unavailable.
+                    This report is currently generating files. You can keep editing; saving becomes available when regeneration finishes.
                   </Alert>
                 ) : null}
                 {activeRow ? (
@@ -1416,7 +1474,7 @@ export default function ExcelConditionReportEditorDialog({
             <Button variant="text" disabled={saving} onClick={requestClose} sx={{ color: "#4f534f" }}>
               Close
             </Button>
-            <Button variant="outlined" startIcon={saving ? <CircularProgress size={15} /> : <SaveRoundedIcon />} disabled={saving || loading || !payload || !dirty} onClick={() => void save(false)}>
+            <Button variant="outlined" startIcon={saving ? <CircularProgress size={15} /> : <SaveRoundedIcon />} disabled={saving || loading || !payload || !dirty || Boolean(payload?.filesBusy)} onClick={() => void save(false)}>
               Save changes
             </Button>
             <Button variant="contained" startIcon={saving ? <CircularProgress size={15} color="inherit" /> : <TableChartRoundedIcon />} disabled={saving || loading || !payload || Boolean(payload?.filesBusy)} onClick={() => void save(true)} sx={{ bgcolor: "#df111b", boxShadow: "none", "&:hover": { bgcolor: "#c91019", boxShadow: "none" } }}>
