@@ -31,6 +31,7 @@ import {
   Typography,
 } from "@mui/material";
 import {
+  BellRing,
   CalendarClock,
   Eye,
   FileClock,
@@ -98,6 +99,14 @@ function stageMeta(stage: PreviewWorkflowStage) {
   return STAGE_META[stage] || { label: stage.replaceAll("_", " "), color: "default" as const };
 }
 
+function buildReminderMessage(report: PreviewReportSummary) {
+  const reportLabel = report.reportType === "Asset" ? "Asset Report" : "Lot Listing";
+  const contract = report.contractNo || report.id;
+  return `Your ${reportLabel} preview for contract ${contract} has been waiting for review since ${formatDateTime(
+    report.reminderWaitingSince || report.updatedAt
+  )}. Please review the preview, confirm the report details, and submit it as soon as possible.`;
+}
+
 function ReportThumbnail({ report }: { report: PreviewReportSummary }) {
   return report.thumbnailUrl ? (
     <Box
@@ -131,10 +140,12 @@ function WorkflowBadge({ report }: { report: PreviewReportSummary }) {
 function ReportCard({
   report,
   onOpen,
+  onReminder,
   onDelete,
 }: {
   report: PreviewReportSummary;
   onOpen: () => void;
+  onReminder: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -159,6 +170,18 @@ function ReportCard({
       <Box sx={{ mt: 1.25 }}><WorkflowBadge report={report} /></Box>
       <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
         <Button fullWidth variant="outlined" startIcon={<Eye size={16} />} onClick={onOpen} sx={{ borderRadius: "4px" }}>Open full report</Button>
+        <Tooltip title={report.reminderEligible ? "Email a review reminder" : report.reminderIneligibleReason || "A reminder is not available yet."}>
+          <span>
+            <IconButton
+              aria-label={`Remind owner about ${report.title}`}
+              disabled={!report.reminderEligible}
+              onClick={onReminder}
+              sx={{ border: "1px solid", borderColor: report.reminderEligible ? "warning.light" : "divider", borderRadius: "4px", color: "warning.dark" }}
+            >
+              <BellRing size={17} />
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title={report.deleteEligible ? "Delete preview report" : report.deleteIneligibleReason || "This preview cannot be deleted."}>
           <span>
             <IconButton
@@ -197,6 +220,11 @@ export default function PreviewReportsPage() {
   const [deleteTarget, setDeleteTarget] = useState<PreviewReportSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [reminderTarget, setReminderTarget] = useState<PreviewReportSummary | null>(null);
+  const [reminderMessage, setReminderMessage] = useState("");
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [reminderError, setReminderError] = useState("");
+  const [reminderSuccess, setReminderSuccess] = useState("");
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -306,6 +334,53 @@ export default function PreviewReportsPage() {
     }
   }
 
+  function openReminder(report: PreviewReportSummary) {
+    setReminderError("");
+    setReminderSuccess("");
+    setReminderMessage(buildReminderMessage(report));
+    setReminderTarget(report);
+  }
+
+  async function sendReminder() {
+    if (!reminderTarget || sendingReminder) return;
+    const message = reminderMessage.trim();
+    if (message.length < 10) {
+      setReminderError("Enter a reminder message of at least 10 characters.");
+      return;
+    }
+
+    setSendingReminder(true);
+    setReminderError("");
+    try {
+      const response = await fetch(
+        `/api/admin/preview-reports/${encodeURIComponent(reminderTarget.id)}/reminder`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message || "Unable to send the preview reminder.");
+      }
+
+      const sentAt = String(body?.sentAt || new Date().toISOString());
+      setData((current) => current ? {
+        ...current,
+        items: current.items.map((item) =>
+          item.id === reminderTarget.id ? { ...item, reminderSentAt: sentAt } : item
+        ),
+      } : current);
+      setReminderSuccess(body?.message || "Preview reminder sent successfully.");
+      setReminderTarget(null);
+    } catch (reason) {
+      setReminderError(reason instanceof Error ? reason.message : "Unable to send the preview reminder.");
+    } finally {
+      setSendingReminder(false);
+    }
+  }
+
   return (
     <Box className="desktop-admin-page" sx={{ minHeight: "100vh", overflowX: "hidden", p: { xs: 2, md: 3, xl: 4 } }}>
       <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} justifyContent="space-between" spacing={2}>
@@ -352,6 +427,7 @@ export default function PreviewReportsPage() {
       </Box>
 
       {error ? <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert> : null}
+      {reminderSuccess ? <Alert severity="success" onClose={() => setReminderSuccess("")} sx={{ mt: 2 }}>{reminderSuccess}</Alert> : null}
       {data?.truncated ? <Alert severity="warning" sx={{ mt: 2 }}>The active queue is unusually large. Narrow the date or report-type filters for a complete result set.</Alert> : null}
 
       <Box sx={{ mt: 2 }}>
@@ -369,6 +445,7 @@ export default function PreviewReportsPage() {
                   key={report.id}
                   report={report}
                   onOpen={() => setSelectedReportId(report.id)}
+                  onReminder={() => openReminder(report)}
                   onDelete={() => { setDeleteError(""); setDeleteTarget(report); }}
                 />
               ))}
@@ -376,7 +453,7 @@ export default function PreviewReportsPage() {
 
             <TableContainer sx={{ display: { xs: "none", lg: "block" }, overflow: "hidden", border: "1px solid", borderColor: "divider", borderRadius: "5px", bgcolor: "background.paper" }}>
               <Table size="small" sx={{ tableLayout: "fixed" }}>
-                <TableHead><TableRow>{[["Report", "28%"], ["Creator", "17%"], ["Workload", "12%"], ["Activity", "15%"], ["Workflow", "19%"], ["Actions", "9%"]].map(([label, width]) => <TableCell key={label} sx={{ width, py: 1.25, fontSize: 12, fontWeight: 750 }}>{label}</TableCell>)}</TableRow></TableHead>
+                <TableHead><TableRow>{[["Report", "27%"], ["Creator", "16%"], ["Workload", "11%"], ["Activity", "14%"], ["Workflow", "20%"], ["Actions", "12%"]].map(([label, width]) => <TableCell key={label} sx={{ width, py: 1.25, fontSize: 12, fontWeight: 750 }}>{label}</TableCell>)}</TableRow></TableHead>
                 <TableBody>
                   {data.items.map((report) => (
                     <TableRow key={report.id} hover sx={{ "&:last-child td": { borderBottom: 0 } }}>
@@ -390,6 +467,9 @@ export default function PreviewReportsPage() {
                       <TableCell align="center">
                         <Stack direction="row" justifyContent="center" spacing={0.75}>
                           <Tooltip title="Open complete preview"><IconButton aria-label={`Open ${report.title}`} onClick={() => setSelectedReportId(report.id)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}><Eye size={17} /></IconButton></Tooltip>
+                          <Tooltip title={report.reminderEligible ? "Email a review reminder" : report.reminderIneligibleReason || "A reminder is not available yet."}>
+                            <span><IconButton aria-label={`Remind owner about ${report.title}`} disabled={!report.reminderEligible} onClick={() => openReminder(report)} sx={{ border: "1px solid", borderColor: report.reminderEligible ? "warning.light" : "divider", borderRadius: "4px", color: "warning.dark" }}><BellRing size={17} /></IconButton></span>
+                          </Tooltip>
                           <Tooltip title={report.deleteEligible ? "Delete preview report" : report.deleteIneligibleReason || "This preview cannot be deleted."}>
                             <span><IconButton aria-label={`Delete ${report.title}`} color="error" disabled={!report.deleteEligible} onClick={() => { setDeleteError(""); setDeleteTarget(report); }} sx={{ border: "1px solid", borderColor: report.deleteEligible ? "error.light" : "divider", borderRadius: "4px" }}><Trash2 size={17} /></IconButton></span>
                           </Tooltip>
@@ -421,6 +501,77 @@ export default function PreviewReportsPage() {
           setReloadToken((value) => value + 1);
         }}
       />
+
+      <Dialog
+        open={Boolean(reminderTarget)}
+        onClose={() => { if (!sendingReminder) setReminderTarget(null); }}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{ sx: { borderRadius: "6px" } }}
+      >
+        <DialogTitle sx={{ pb: 1.25 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Box sx={{ display: "grid", width: 34, height: 34, placeItems: "center", borderRadius: "4px", bgcolor: "warning.light", color: "warning.contrastText" }}>
+              <BellRing size={18} />
+            </Box>
+            <Box>
+              <Typography sx={{ fontSize: 19, fontWeight: 760 }}>Send preview reminder</Typography>
+              <Typography sx={{ mt: 0.1, color: "text.secondary", fontSize: 12.5 }}>Email the report owner and add an in-app notification.</Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers sx={{ py: 2.5 }}>
+          {reminderError ? <Alert severity="error" sx={{ mb: 2 }}>{reminderError}</Alert> : null}
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1, mb: 2 }}>
+            <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px", p: 1.25 }}>
+              <Typography sx={{ color: "text.secondary", fontSize: 10.5, fontWeight: 750, textTransform: "uppercase" }}>Recipient</Typography>
+              <Typography noWrap sx={{ mt: 0.35, fontSize: 13.5, fontWeight: 700 }}>{reminderTarget?.creatorDisplay || "Report owner"}</Typography>
+              <Typography noWrap sx={{ mt: 0.15, color: "text.secondary", fontSize: 11.5 }}>{reminderTarget?.creator?.email || "Email unavailable"}</Typography>
+            </Box>
+            <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px", p: 1.25 }}>
+              <Typography sx={{ color: "text.secondary", fontSize: 10.5, fontWeight: 750, textTransform: "uppercase" }}>Preview</Typography>
+              <Typography noWrap sx={{ mt: 0.35, fontSize: 13.5, fontWeight: 700 }}>{reminderTarget?.reportType === "Asset" ? "Asset Report" : "Lot Listing"}</Typography>
+              <Typography noWrap sx={{ mt: 0.15, color: "text.secondary", fontSize: 11.5 }}>Contract: {reminderTarget?.contractNo || "Not provided"}</Typography>
+            </Box>
+            <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px", p: 1.25 }}>
+              <Typography sx={{ color: "text.secondary", fontSize: 10.5, fontWeight: 750, textTransform: "uppercase" }}>Waiting since</Typography>
+              <Typography sx={{ mt: 0.35, fontSize: 13.5, fontWeight: 700 }}>{formatDateTime(reminderTarget?.reminderWaitingSince || reminderTarget?.updatedAt)}</Typography>
+              <Typography sx={{ mt: 0.15, color: "text.secondary", fontSize: 11.5 }}>{relativeTime(reminderTarget?.reminderWaitingSince || reminderTarget?.updatedAt)}</Typography>
+            </Box>
+          </Box>
+
+          {reminderTarget?.reminderSentAt ? (
+            <Alert severity="info" sx={{ mb: 2 }}>A reminder was last sent {relativeTime(reminderTarget.reminderSentAt)} ({formatDateTime(reminderTarget.reminderSentAt)}).</Alert>
+          ) : null}
+
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={6}
+            maxRows={12}
+            label="Reminder message"
+            value={reminderMessage}
+            onChange={(event) => {
+              setReminderMessage(event.target.value.slice(0, 2_000));
+              if (reminderError) setReminderError("");
+            }}
+            helperText={`${reminderMessage.length}/2,000 characters. The report details and review button are added automatically.`}
+            inputProps={{ maxLength: 2_000 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <Button color="inherit" disabled={sendingReminder} onClick={() => setReminderTarget(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={sendingReminder || reminderMessage.trim().length < 10}
+            onClick={sendReminder}
+            startIcon={sendingReminder ? <CircularProgress color="inherit" size={16} /> : <BellRing size={17} />}
+          >
+            {sendingReminder ? "Sending reminder" : "Send reminder"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={Boolean(deleteTarget)}

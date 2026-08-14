@@ -46,6 +46,10 @@ export type PreviewReportSummary = {
   transferIneligibleReason: string | null;
   deleteEligible: boolean;
   deleteIneligibleReason: string | null;
+  reminderEligible: boolean;
+  reminderIneligibleReason: string | null;
+  reminderWaitingSince: string;
+  reminderSentAt: string | null;
   previewTransferredAt: string | null;
 };
 
@@ -87,6 +91,10 @@ export type PreviewReportDetailResponse = {
     transferIneligibleReason: string | null;
     deleteEligible: boolean;
     deleteIneligibleReason: string | null;
+    reminderEligible: boolean;
+    reminderIneligibleReason: string | null;
+    reminderWaitingSince: string;
+    reminderSentAt: string | null;
     previewTransferredAt: string | null;
     transferHistory: Array<{
       fromUser: string;
