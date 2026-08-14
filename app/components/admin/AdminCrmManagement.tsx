@@ -296,6 +296,39 @@ type AssignmentRepairResponse = {
 
 type ExcelRow = Record<string, unknown>;
 
+const MAX_CRM_SPREADSHEET_BYTES = 25 * 1024 * 1024;
+const XLS_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+
+function hasBytes(bytes: Uint8Array, expected: number[]) {
+  return expected.every((value, index) => bytes[index] === value);
+}
+
+function spreadsheetExtension(file: File): "xlsx" | "xls" | "csv" {
+  const extension = file.name.toLowerCase().match(/\.([^.]+)$/)?.[1];
+  if (extension !== "xlsx" && extension !== "xls" && extension !== "csv") {
+    throw new Error("Choose a valid XLSX, XLS, or CSV file.");
+  }
+  return extension;
+}
+
+function validateSpreadsheetBytes(file: File, bytes: Uint8Array, extension: "xlsx" | "xls" | "csv") {
+  if (file.size > MAX_CRM_SPREADSHEET_BYTES) {
+    throw new Error("The spreadsheet exceeds the 25 MB upload limit.");
+  }
+  if (extension === "xlsx" && !hasBytes(bytes, [0x50, 0x4b])) {
+    throw new Error("This file is not a valid XLSX workbook. Export it from Excel and try again.");
+  }
+  if (extension === "xls" && !hasBytes(bytes, XLS_SIGNATURE)) {
+    throw new Error("This file is not a valid legacy XLS workbook. Export it again and retry.");
+  }
+  if (extension === "csv") {
+    const sample = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 4096));
+    if (bytes.slice(0, 4096).includes(0) || /^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(sample)) {
+      throw new Error("This file is not a valid CSV export.");
+    }
+  }
+}
+
 type ImportPreviewSource = "excel" | "autoFind";
 
 type PreviewLeadRow = {
@@ -1712,20 +1745,30 @@ export default function AdminCrmManagement() {
     try {
       setParsingPreview(true);
       const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+      const extension = spreadsheetExtension(file);
+      const bytes = new Uint8Array(buffer);
+      validateSpreadsheetBytes(file, bytes, extension);
+      const workbook = extension === "csv"
+        ? XLSX.read(new TextDecoder("utf-8").decode(bytes), { type: "string", cellDates: true })
+        : XLSX.read(buffer, { type: "array", cellDates: true });
       const firstSheet = workbook.SheetNames[0];
-      if (!firstSheet) throw new Error("Excel file has no sheets");
+      if (!firstSheet) throw new Error("The spreadsheet does not contain a worksheet.");
 
       const worksheet = workbook.Sheets[firstSheet];
       const rows = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, { defval: "" });
-      if (!rows.length) throw new Error("Excel file has no data rows");
+      if (!rows.length) throw new Error("The spreadsheet does not contain any importable data rows.");
 
       const built = buildPreviewRows(rows);
       setPreviewRows(built.parsedRows);
       setDuplicateIssues(built.duplicateIssues);
       setPreviewSheetName(firstSheet);
     } catch (e: unknown) {
-      setPreviewParseError(e instanceof Error ? e.message : "Failed to parse Excel file");
+      const message = e instanceof Error ? e.message : "The spreadsheet could not be read.";
+      setPreviewParseError(
+        /central directory|zip|cfb|password|encrypt|unsupported/i.test(message)
+          ? "This file is not a valid Excel workbook. Export it again and retry."
+          : message
+      );
     } finally {
       setParsingPreview(false);
     }
@@ -4097,7 +4140,7 @@ export default function AdminCrmManagement() {
         <Dialog open={showImportModal} onClose={closeImportPreviewModal} maxWidth="xl" fullWidth fullScreen={!matchesMd} scroll="paper">
           <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
             <Box>
-              <Typography variant="h6" fontWeight={800}>CRM Excel Upload Preview</Typography>
+              <Typography variant="h6" fontWeight={800}>CRM Spreadsheet Upload Preview</Typography>
               <Typography variant="body2" color="text.secondary">Extracted rows shown below. Duplicate rows are skipped during upload.</Typography>
             </Box>
             <IconButton size="small" disabled={importPreviewBusy} onClick={closeImportPreviewModal}><CloseRoundedIcon /></IconButton>
@@ -4297,7 +4340,7 @@ export default function AdminCrmManagement() {
                   <Box sx={{ textAlign: "center", py: 8, color: "text.secondary" }}>
                     <CloudUploadRoundedIcon sx={{ fontSize: 48, opacity: 0.3 }} />
                     <Typography variant="body2" sx={{ mt: 1.5 }}>
-                      {isAutoFindImportPreview ? "Select auto-found leads to preview" : "Upload an Excel file to preview leads"}
+                      {isAutoFindImportPreview ? "Select auto-found leads to preview" : "Upload a spreadsheet to preview leads"}
                     </Typography>
                     <Typography variant="caption">
                       {isAutoFindImportPreview ? "Auto Find rows will appear here before import" : "Supported: .xlsx, .xls, .csv"}

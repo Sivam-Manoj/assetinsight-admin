@@ -455,6 +455,18 @@ function SpecValueControl({
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(spec.value || "");
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraftValue(spec.value || "");
+  }, [spec.value]);
+
+  const updateValue = (value: string) => {
+    setDraftValue(value);
+    onChange(value);
+  };
+
   if (spec.type === "checkbox") {
     return (
       <FormControlLabel
@@ -478,21 +490,27 @@ function SpecValueControl({
         freeSolo
         fullWidth
         options={spec.options}
-        value={spec.value || null}
-        inputValue={spec.value || ""}
+        value={null}
+        inputValue={draftValue}
         disabled={disabled}
         clearOnBlur={false}
         selectOnFocus
         handleHomeEndKeys
-        onChange={(_event, value) => onChange(String(value || ""))}
+        onChange={(_event, value) => updateValue(String(value || ""))}
         onInputChange={(_event, value, reason) => {
-          if (reason === "input" || reason === "clear") onChange(value);
+          if (reason === "input" || reason === "clear") updateValue(value);
         }}
         renderInput={(params) => (
           <TextField
             {...params}
             size="small"
             placeholder="Choose or type a value"
+            onFocus={() => {
+              focusedRef.current = true;
+            }}
+            onBlur={() => {
+              focusedRef.current = false;
+            }}
           />
         )}
         sx={{
@@ -507,9 +525,15 @@ function SpecValueControl({
     <TextField
       fullWidth
       size="small"
-      value={spec.value}
+      value={draftValue}
       disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+      }}
+      onChange={(event) => updateValue(event.target.value)}
       inputProps={spec.type === "number" ? { inputMode: "decimal" } : undefined}
       placeholder="Enter value"
       sx={{ "& .MuiInputBase-root": { bgcolor: "#fff", fontSize: 13 } }}
