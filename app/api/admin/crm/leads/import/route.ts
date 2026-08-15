@@ -1,10 +1,10 @@
 import { type NextRequest } from "next/server";
-import { proxyJsonWithAdminAuth } from "@/lib/adminProxy";
+import { proxyMultipartWithAdminAuth } from "@/lib/adminProxy";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 3600;
 
 export async function POST(request: NextRequest) {
-  const formData = await request.formData();
-  return proxyJsonWithAdminAuth(request, `/api/crm/admin/leads/import`, {
-    method: "POST",
-    body: formData,
-  });
+  return proxyMultipartWithAdminAuth(request, "/api/crm/admin/leads/import");
 }

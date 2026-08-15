@@ -296,12 +296,7 @@ type AssignmentRepairResponse = {
 
 type ExcelRow = Record<string, unknown>;
 
-const MAX_CRM_SPREADSHEET_BYTES = 25 * 1024 * 1024;
-const XLS_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
-
-function hasBytes(bytes: Uint8Array, expected: number[]) {
-  return expected.every((value, index) => bytes[index] === value);
-}
+const MAX_CRM_SPREADSHEET_BYTES = 150 * 1024 * 1024;
 
 function spreadsheetExtension(file: File): "xlsx" | "xls" | "csv" {
   const extension = file.name.toLowerCase().match(/\.([^.]+)$/)?.[1];
@@ -311,22 +306,9 @@ function spreadsheetExtension(file: File): "xlsx" | "xls" | "csv" {
   return extension;
 }
 
-function validateSpreadsheetBytes(file: File, bytes: Uint8Array, extension: "xlsx" | "xls" | "csv") {
-  if (file.size > MAX_CRM_SPREADSHEET_BYTES) {
-    throw new Error("The spreadsheet exceeds the 25 MB upload limit.");
-  }
-  if (extension === "xlsx" && !hasBytes(bytes, [0x50, 0x4b])) {
-    throw new Error("This file is not a valid XLSX workbook. Export it from Excel and try again.");
-  }
-  if (extension === "xls" && !hasBytes(bytes, XLS_SIGNATURE)) {
-    throw new Error("This file is not a valid legacy XLS workbook. Export it again and retry.");
-  }
-  if (extension === "csv") {
-    const sample = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 4096));
-    if (bytes.slice(0, 4096).includes(0) || /^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(sample)) {
-      throw new Error("This file is not a valid CSV export.");
-    }
-  }
+function formatSpreadsheetSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 type ImportPreviewSource = "excel" | "autoFind";
@@ -1393,8 +1375,8 @@ export default function AdminCrmManagement() {
     }
   }
 
-  async function loadImportJobs() {
-    setLoadingImportJobs(true);
+  async function loadImportJobs(options: { silent?: boolean } = {}) {
+    if (!options.silent) setLoadingImportJobs(true);
     try {
       const res = await fetch(`/api/admin/crm/leads/import-jobs?page=1&limit=50`, { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
@@ -1403,7 +1385,7 @@ export default function AdminCrmManagement() {
     } catch (e: unknown) {
       pushToast(e instanceof Error ? e.message : "Failed to load CRM import jobs", "error");
     } finally {
-      setLoadingImportJobs(false);
+      if (!options.silent) setLoadingImportJobs(false);
     }
   }
 
@@ -1582,7 +1564,7 @@ export default function AdminCrmManagement() {
     const hasRunningImportJob = (importJobs?.items || []).some((job) => job.status === "queued" || job.status === "processing");
     if (!hasRunningImportJob) return;
     const timer = setInterval(() => {
-      void loadImportJobs();
+      void loadImportJobs({ silent: true });
       void loadLeads();
       void loadImportFiles();
       void loadAssignmentsByUpload();
@@ -1744,31 +1726,20 @@ export default function AdminCrmManagement() {
 
     try {
       setParsingPreview(true);
-      const buffer = await file.arrayBuffer();
-      const extension = spreadsheetExtension(file);
-      const bytes = new Uint8Array(buffer);
-      validateSpreadsheetBytes(file, bytes, extension);
-      const workbook = extension === "csv"
-        ? XLSX.read(new TextDecoder("utf-8").decode(bytes), { type: "string", cellDates: true })
-        : XLSX.read(buffer, { type: "array", cellDates: true });
-      const firstSheet = workbook.SheetNames[0];
-      if (!firstSheet) throw new Error("The spreadsheet does not contain a worksheet.");
+      spreadsheetExtension(file);
+      if (file.size <= 0) throw new Error("The spreadsheet is empty.");
+      if (file.size > MAX_CRM_SPREADSHEET_BYTES) {
+        throw new Error("The spreadsheet exceeds the 150 MB upload limit.");
+      }
 
-      const worksheet = workbook.Sheets[firstSheet];
-      const rows = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, { defval: "" });
-      if (!rows.length) throw new Error("The spreadsheet does not contain any importable data rows.");
-
-      const built = buildPreviewRows(rows);
-      setPreviewRows(built.parsedRows);
-      setDuplicateIssues(built.duplicateIssues);
-      setPreviewSheetName(firstSheet);
+      // Large spreadsheets are validated and streamed by the backend. Reading them here
+      // would duplicate work and can freeze the browser for high-row-count imports.
+      setExcelFile(file);
+      setPreviewSheetName("Server processing");
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "The spreadsheet could not be read.";
-      setPreviewParseError(
-        /central directory|zip|cfb|password|encrypt|unsupported/i.test(message)
-          ? "This file is not a valid Excel workbook. Export it again and retry."
-          : message
-      );
+      setExcelFile(null);
+      setPreviewParseError(message);
     } finally {
       setParsingPreview(false);
     }
@@ -1780,7 +1751,7 @@ export default function AdminCrmManagement() {
       return;
     }
 
-    if (readyPreviewRows === 0) {
+    if (importPreviewSource === "autoFind" && readyPreviewRows === 0) {
       pushToast("No ready rows to import. Remove duplicates or choose a different file.", "error");
       return;
     }
@@ -1813,7 +1784,12 @@ export default function AdminCrmManagement() {
       if (!res.ok) throw new Error(json?.message || "Failed to import CRM leads");
 
       if (res.status === 202 || json?.jobId) {
-        pushToast(`CRM import queued (${json?.totalRows || previewRows.length} row${(json?.totalRows || previewRows.length) === 1 ? "" : "s"})`, "success");
+        pushToast(
+          wasAutoFindPreview
+            ? `CRM import queued (${json?.totalRows || previewRows.length} row${(json?.totalRows || previewRows.length) === 1 ? "" : "s"})`
+            : "Spreadsheet uploaded. The server is processing it in the background.",
+          "success"
+        );
         resetPreviewState();
         setImportPreviewSource("excel");
         if (wasAutoFindPreview) {
@@ -2428,8 +2404,9 @@ export default function AdminCrmManagement() {
   const importPreviewCanImport =
     !importPreviewBusy &&
     !parsingPreview &&
-    readyPreviewRows > 0 &&
-    Boolean(excelFile);
+    Boolean(excelFile) &&
+    !previewParseError &&
+    (!isAutoFindImportPreview || readyPreviewRows > 0);
   useEffect(() => {
     setAutoFindRegions((prev) => prev.filter((region) => autoFindRegionOptions.includes(region)));
   }, [autoFindRegionOptions]);
@@ -3612,6 +3589,8 @@ export default function AdminCrmManagement() {
                     <TableRow><TableCell colSpan={8} sx={{ color: "text.secondary", py: 3, textAlign: "center" }}>No CRM import jobs</TableCell></TableRow>
                   ) : (importJobs?.items || []).map((job) => {
                     const progress = Math.max(0, Math.min(100, Number(job.progress) || 0));
+                    const hasKnownTotal = Number(job.totalRows) > 0;
+                    const isActive = job.status === "queued" || job.status === "processing";
                     const statusColor = job.status === "completed" ? "success" : job.status === "failed" ? "error" : job.status === "processing" ? "info" : "default";
                     return (
                       <TableRow key={job.jobId} hover>
@@ -3628,13 +3607,25 @@ export default function AdminCrmManagement() {
                         </TableCell>
                         <TableCell>
                           <Stack spacing={0.5}>
-                            <LinearProgress variant="determinate" value={progress} sx={{ height: 7, borderRadius: 1 }} />
+                            <LinearProgress
+                              variant={isActive && !hasKnownTotal ? "indeterminate" : "determinate"}
+                              value={progress}
+                              sx={{ height: 7, borderRadius: 1 }}
+                            />
                             <Typography variant="caption" color="text.secondary">
-                              {progress}% · {job.message || "-"}
+                              {isActive && !hasKnownTotal
+                                ? `${Number(job.processedRows || 0).toLocaleString()} rows read · ${job.message || "Processing"}`
+                                : `${progress}% · ${job.message || "-"}`}
                             </Typography>
                           </Stack>
                         </TableCell>
-                        <TableCell align="right">{job.totalRows || 0}</TableCell>
+                        <TableCell align="right">
+                          {hasKnownTotal
+                            ? Number(job.totalRows).toLocaleString()
+                            : job.processedRows
+                              ? `${Number(job.processedRows).toLocaleString()}+`
+                              : "Pending"}
+                        </TableCell>
                         <TableCell align="right">{job.importedCount || 0}</TableCell>
                         <TableCell align="right">{job.duplicateCount || 0}</TableCell>
                         <TableCell align="right">{job.errorCount || 0}</TableCell>
@@ -4140,8 +4131,14 @@ export default function AdminCrmManagement() {
         <Dialog open={showImportModal} onClose={closeImportPreviewModal} maxWidth="xl" fullWidth fullScreen={!matchesMd} scroll="paper">
           <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
             <Box>
-              <Typography variant="h6" fontWeight={800}>CRM Spreadsheet Upload Preview</Typography>
-              <Typography variant="body2" color="text.secondary">Extracted rows shown below. Duplicate rows are skipped during upload.</Typography>
+              <Typography variant="h6" fontWeight={800}>
+                {isAutoFindImportPreview ? "CRM Lead Import Preview" : "CRM Spreadsheet Import"}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {isAutoFindImportPreview
+                  ? "Review selected leads before importing them into CRM."
+                  : "The spreadsheet is uploaded once, then validated and processed safely by the server."}
+              </Typography>
             </Box>
             <IconButton size="small" disabled={importPreviewBusy} onClick={closeImportPreviewModal}><CloseRoundedIcon /></IconButton>
           </DialogTitle>
@@ -4159,9 +4156,13 @@ export default function AdminCrmManagement() {
                     onClick={() => void onImportLeads()}
                     disabled={!importPreviewCanImport}
                   >
-                    {importPreviewBusy ? "Importing..." : rowCountWithDuplicates > 0 ? "Import Ready Leads" : "Import Leads to CRM"}
+                    {importPreviewBusy
+                      ? (isAutoFindImportPreview ? "Queueing..." : "Uploading...")
+                      : isAutoFindImportPreview
+                        ? (rowCountWithDuplicates > 0 ? "Import Ready Leads" : "Import Leads to CRM")
+                        : "Upload & Process"}
                   </Button>
-                  {previewRows.length > 0 && (excelFile || isAutoFindImportPreview) && (
+                  {isAutoFindImportPreview && previewRows.length > 0 && (
                     <Typography
                       variant="caption"
                       color={rowCountWithDuplicates > 0 ? "warning.main" : "success.main"}
@@ -4216,18 +4217,32 @@ export default function AdminCrmManagement() {
                   {parsingPreview && <LinearProgress sx={{ mt: 2 }} />}
                   {previewParseError && <Alert severity="error" sx={{ mt: 2 }}>{previewParseError}</Alert>}
 
+                  {!isAutoFindImportPreview && excelFile && !previewParseError && (
+                    <Alert severity="success" sx={{ mt: 2 }}>
+                      Ready to upload. Validation, duplicate detection, assignment, and database writes run in the background without freezing this page.
+                    </Alert>
+                  )}
+
                   <Alert severity="info" sx={{ mt: 2 }}>
                     Imported CRM leads now start as <strong>New Lead</strong>. Reminder scheduling is handled automatically from the selected status.
                   </Alert>
 
                   {/* Stats */}
                   <Grid container spacing={1} sx={{ mt: 1.5 }}>
-                    {([
-                      { label: "Sheet", value: previewSheetName || "-" },
-                      { label: "Rows", value: previewRows.length },
-                      { label: "Ready", value: readyPreviewRows },
-                      { label: "Duplicates", value: rowCountWithDuplicates },
-                    ] as const).map((s) => (
+                    {(isAutoFindImportPreview
+                      ? [
+                          { label: "Source", value: "Auto Find" },
+                          { label: "Rows", value: previewRows.length },
+                          { label: "Ready", value: readyPreviewRows },
+                          { label: "Duplicates", value: rowCountWithDuplicates },
+                        ]
+                      : [
+                          { label: "File", value: excelFile?.name || "-" },
+                          { label: "Size", value: excelFile ? formatSpreadsheetSize(excelFile.size) : "-" },
+                          { label: "Processing", value: previewSheetName || "Server" },
+                          { label: "Mode", value: "Background" },
+                        ]
+                    ).map((s) => (
                       <Grid key={s.label} size={{ xs: 6 }}>
                         <Card variant="outlined" sx={{ textAlign: "center", py: 0.75 }}>
                           <Typography variant="overline" sx={{ fontSize: "0.55rem" }}>{s.label}</Typography>
@@ -4255,7 +4270,9 @@ export default function AdminCrmManagement() {
                     <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
                       <Typography variant="subtitle2" fontWeight={700}>Due Date Setup</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Set one default due date, then override individual rows or selected rows.
+                        {isAutoFindImportPreview
+                          ? "Set one default due date, then override individual rows or selected rows."
+                          : "Set an optional default due date for every imported lead."}
                       </Typography>
                       <TextField
                         label="Default due date"
@@ -4267,32 +4284,36 @@ export default function AdminCrmManagement() {
                         InputLabelProps={{ shrink: true }}
                         sx={{ mt: 1.5 }}
                       />
-                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
-                        <TextField
-                          label="Selected rows due date"
-                          type="date"
-                          size="small"
-                          fullWidth
-                          value={bulkPreviewDueDate}
-                          onChange={(e) => setBulkPreviewDueDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                        <Button variant="outlined" onClick={applyBulkPreviewDueDate} disabled={selectedReadyPreviewRows.length === 0}>
-                          Apply
-                        </Button>
-                      </Stack>
-                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
-                        <Checkbox
-                          size="small"
-                          checked={allReadyPreviewRowsSelected}
-                          indeterminate={selectedReadyPreviewRows.length > 0 && !allReadyPreviewRowsSelected}
-                          disabled={readyPreviewRowNumbers.length === 0}
-                          onChange={(e) => setSelectedPreviewRows(e.target.checked ? readyPreviewRowNumbers : [])}
-                        />
-                        <Typography variant="caption" color="text.secondary">
-                          {selectedReadyPreviewRows.length} selected for bulk due date
-                        </Typography>
-                      </Stack>
+                      {isAutoFindImportPreview && (
+                        <>
+                          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
+                            <TextField
+                              label="Selected rows due date"
+                              type="date"
+                              size="small"
+                              fullWidth
+                              value={bulkPreviewDueDate}
+                              onChange={(e) => setBulkPreviewDueDate(e.target.value)}
+                              InputLabelProps={{ shrink: true }}
+                            />
+                            <Button variant="outlined" onClick={applyBulkPreviewDueDate} disabled={selectedReadyPreviewRows.length === 0}>
+                              Apply
+                            </Button>
+                          </Stack>
+                          <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                            <Checkbox
+                              size="small"
+                              checked={allReadyPreviewRowsSelected}
+                              indeterminate={selectedReadyPreviewRows.length > 0 && !allReadyPreviewRowsSelected}
+                              disabled={readyPreviewRowNumbers.length === 0}
+                              onChange={(e) => setSelectedPreviewRows(e.target.checked ? readyPreviewRowNumbers : [])}
+                            />
+                            <Typography variant="caption" color="text.secondary">
+                              {selectedReadyPreviewRows.length} selected for bulk due date
+                            </Typography>
+                          </Stack>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -4330,13 +4351,48 @@ export default function AdminCrmManagement() {
               {/* Right — preview cards */}
               <Grid size={{ xs: 12, lg: 8 }} sx={{ overflow: "auto", p: 2 }}>
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" fontWeight={700}>Extracted Lead Details</Typography>
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    {isAutoFindImportPreview ? "Extracted Lead Details" : "Server Processing"}
+                  </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {previewRows.length} lead{previewRows.length !== 1 ? "s" : ""} parsed · {readyPreviewRows} ready · {rowCountWithDuplicates} duplicate{rowCountWithDuplicates !== 1 ? "s" : ""}
+                    {isAutoFindImportPreview
+                      ? `${previewRows.length} lead${previewRows.length !== 1 ? "s" : ""} parsed · ${readyPreviewRows} ready · ${rowCountWithDuplicates} duplicate${rowCountWithDuplicates !== 1 ? "s" : ""}`
+                      : "Large files are streamed in bounded batches so the browser and server remain responsive."}
                   </Typography>
                 </Box>
 
-                {previewRows.length === 0 ? (
+                {!isAutoFindImportPreview ? (
+                  <Box sx={{ maxWidth: 720, mx: "auto", py: { xs: 3, md: 8 } }}>
+                    <Card variant="outlined">
+                      <CardContent sx={{ p: { xs: 2.5, md: 4 } }}>
+                        <Stack spacing={2.5} alignItems="center" textAlign="center">
+                          <CloudUploadRoundedIcon color="primary" sx={{ fontSize: 56 }} />
+                          <Box>
+                            <Typography variant="h6" fontWeight={800}>Designed for large CRM spreadsheets</Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                              Upload XLSX, XLS, or CSV files up to 150 MB. The server validates the file, streams rows, skips duplicates, distributes assignments, and writes records in batches.
+                            </Typography>
+                          </Box>
+                          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} width="100%">
+                            {[
+                              ["1", "Upload once"],
+                              ["2", "Track progress"],
+                              ["3", "Review results"],
+                            ].map(([step, label]) => (
+                              <Box key={step} sx={{ flex: 1, p: 1.5, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
+                                <Typography variant="overline" color="primary.main" fontWeight={800}>Step {step}</Typography>
+                                <Typography variant="body2" fontWeight={700}>{label}</Typography>
+                              </Box>
+                            ))}
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            After upload, close this window if needed. Progress and final counts remain available in CRM Import Processing.
+                          </Typography>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Box>
+                ) : previewRows.length === 0 ? (
                   <Box sx={{ textAlign: "center", py: 8, color: "text.secondary" }}>
                     <CloudUploadRoundedIcon sx={{ fontSize: 48, opacity: 0.3 }} />
                     <Typography variant="body2" sx={{ mt: 1.5 }}>

@@ -137,3 +137,44 @@ export async function proxyStreamWithAdminAuth(
   if (refreshedInitially) setAccessCookie(response, token);
   return response;
 }
+
+/**
+ * Forward multipart uploads without materializing FormData in the Next.js
+ * process. The body is a one-shot stream, so authentication is refreshed
+ * before forwarding and the upload is never replayed after consumption.
+ */
+export async function proxyMultipartWithAdminAuth(request: NextRequest, targetPath: string) {
+  const currentToken = request.cookies.get("cv_admin")?.value;
+  const refreshedToken = await tryRefresh(request);
+  const token = refreshedToken || currentToken;
+  if (!token) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
+
+  const contentType = request.headers.get("content-type");
+  if (!contentType?.toLowerCase().startsWith("multipart/form-data")) {
+    return NextResponse.json({ message: "A multipart form upload is required" }, { status: 400 });
+  }
+
+  const headers = new Headers({ Authorization: `Bearer ${token}` });
+  headers.set("content-type", contentType);
+  const contentLength = request.headers.get("content-length");
+  if (contentLength) headers.set("content-length", contentLength);
+
+  const response = await fetch(`${SERVER_URL}${targetPath}`, {
+    method: request.method,
+    headers,
+    body: request.body,
+    cache: "no-store",
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+
+  const responseText = await response.text();
+  let data: Record<string, unknown>;
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    data = { message: responseText || "The upload could not be processed" };
+  }
+  const proxied = NextResponse.json(data, { status: response.status });
+  if (refreshedToken) setAccessCookie(proxied, refreshedToken);
+  return proxied;
+}
