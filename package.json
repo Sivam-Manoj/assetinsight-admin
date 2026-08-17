@@ -7,6 +7,9 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit --pretty false",
+    "check": "npm run lint && npm run typecheck",
+    "verify": "npm run check && npm run build",
     "deploy": "git pull --ff-only && npm ci && npm run build && pm2 startOrReload ecosystem.config.cjs --update-env && pm2 save"
   },
   "dependencies": {

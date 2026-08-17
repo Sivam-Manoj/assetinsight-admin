@@ -50,6 +50,8 @@ html[data-theme="dark"] {
   --admin-border: #343634;
   --admin-text: #f4f4f3;
   --admin-text-muted: #a8aaad;
+  /* The brighter dark-mode accent keeps small operational labels readable. */
+  --admin-red: #ff5c64;
 }
 
 html,

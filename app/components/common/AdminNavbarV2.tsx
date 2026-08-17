@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   MonitorSmartphone,
+  MessageSquareText,
   Search,
   Shield,
   Smartphone,
@@ -160,6 +161,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       },
       ...(role === "superadmin" ? [{ href: "/admins", label: "Admins", icon: Shield }] : []),
       { href: "/crm", label: "CRM", icon: Headphones },
+      { href: "/support", label: "Support", icon: MessageSquareText },
       { href: "/spec-sheet", label: "CR Management", icon: ListChecks },
       ...(role === "superadmin"
         ? [{ href: "/revenue-radar", label: "Revenue Radar", icon: BarChart3 }]
@@ -212,7 +214,11 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         ) : null}
       </Box>
 
-      <List component="nav" aria-label="Admin navigation" sx={{ flex: 1, overflow: "hidden", px: 1, py: 1 }}>
+      <List
+        component="nav"
+        aria-label="Admin navigation"
+        sx={{ flex: 1, minHeight: 0, overflowX: "hidden", overflowY: "auto", overscrollBehavior: "contain", px: 1, py: 1 }}
+      >
         {items.map(({ href, label, icon: Icon, badge }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (

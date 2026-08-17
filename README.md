@@ -1,48 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Asset Insight Admin
 
-## Environment Variables
+The production administration console for Asset Insight. It is a Next.js App Router application used by verified `admin` and `superadmin` accounts to manage reports, users, devices, CRM workflows, approvals, and customer support.
 
-Create a `.env.local` file with the following variables:
+## Runtime architecture
+
+```mermaid
+flowchart LR
+  Browser["Admin browser"] -->|"HTTPS + HttpOnly session cookies"| Next["Next.js admin app"]
+  Next -->|"Bearer access token"| API["Asset Insight backend"]
+  API --> Mongo[("MongoDB")]
+  API --> R2["Cloudflare R2"]
+```
+
+Browser code calls same-origin route handlers under `/api/admin/*`; backend access and refresh tokens remain in HttpOnly cookies. The support workspace uses `/api/admin/support/*` as a strict proxy to `/api/support/admin/*`. Image and video bodies stream through the authenticated proxy to the backend, which validates and stores them in R2 before returning a renderable attachment.
+
+## Environment
+
+Create `.env.local` for local development or configure the same value in the production process environment:
 
 ```env
-# Backend server URL
-NEXT_PUBLIC_SERVER_URL=http://localhost:5000
+# Backend origin only; do not append /api.
+NEXT_PUBLIC_SERVER_URL=http://127.0.0.1:4000
 
-# HitPaw API Key for advanced photo enhancement
-HITPAW_API_KEY=your_hitpaw_api_key_here
+# Optional provider credentials used by existing image tooling.
+HITPAW_API_KEY=
+PICSART_API_KEY=
 ```
 
-## Getting Started
+Never commit real credentials. The admin application does not need MongoDB or R2 credentials; those remain in the authenticated backend.
 
-First, run the development server:
+## Commands
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npx tsc --noEmit
+npm run build
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The support feature should be checked at desktop, tablet, portrait mobile, and landscape mobile widths. Only the conversation list, message timeline, and request context are intended to scroll; the document and reply composer remain fixed to the viewport.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Production deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Production runs as the `assetinsight-admin` PM2 application from `ecosystem.config.cjs`, normally as two cluster workers on port `3001` behind Nginx.
 
-## Learn More
+```bash
+npm run deploy
+```
 
-To learn more about Next.js, take a look at the following resources:
+The deploy command fast-forwards `main`, installs the lockfile exactly, builds Next.js, reloads only `assetinsight-admin`, and saves PM2 state. Run it from the production admin checkout after the intended commit is available on `origin/main`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Post-deploy checks:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pm2 status assetinsight-admin
+curl --fail --head http://127.0.0.1:3001/login
+curl --fail --head https://admin.assetinsightvaluator.com/login
+```
 
-## Deploy on Vercel
+Then verify an authenticated support conversation, reply idempotency, todo/status updates, and one image and video upload. Do not expose port `3001` publicly; Nginx is the public TLS boundary.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+For support media, install the location in `ops/nginx/support-upload-location.conf` inside the admin HTTPS server block. It disables request buffering only for the authenticated raw-upload route and aligns the proxy timeout with the 15-minute application limit. Always run `nginx -t` before a graceful reload.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Support workflow invariants
+
+- Every support read or mutation is authorized by the backend's admin middleware.
+- Customer-visible replies and private internal notes are distinct message types.
+- A stable `clientMessageId` is reused only while retrying the same logical reply.
+- Attachments are not rendered or claimable until the backend verifies them as `ready`.
+- Uploads use the server-mediated streaming endpoint; browser R2 credentials and bucket CORS are not required.
+- Status, priority, assignment, todos, and activity remain attached to one conversation and use backend-defined values.
+- Public media URLs are bearer-like references and must not be written to application logs.
