@@ -4,6 +4,7 @@ import { proxyJsonWithAdminAuth } from "@/lib/adminProxy";
 import { SERVER_URL } from "@/lib/api";
 
 const SAFE_PATH_SEGMENT = /^[a-zA-Z0-9_-]+$/;
+const SUPPORT_ID = /^[a-fA-F0-9]{24}$/;
 const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 type RouteContext = { params: Promise<{ path: string[] }> };
@@ -42,8 +43,50 @@ function isStreamedAttachmentUpload(method: string, path: string[]): boolean {
   return method === "POST"
     && path.length === 4
     && path[0] === "conversations"
+    && SUPPORT_ID.test(path[1])
     && path[2] === "attachments"
     && path[3] === "upload";
+}
+
+/**
+ * This gateway deliberately exposes only the requester-facing support
+ * surface. The upstream ownership checks remain authoritative, while this
+ * allow-list prevents an admin browser from reaching developer queue, agent,
+ * note, todo, assignment, or status-management endpoints through the proxy.
+ */
+function isAllowedCustomerRoute(method: string, path: string[]): boolean {
+  if (method === "GET" && path.length === 1 && path[0] === "constraints") {
+    return true;
+  }
+  if (path.length === 1 && path[0] === "conversations") {
+    return method === "GET" || method === "POST";
+  }
+  if (
+    method === "GET"
+    && path.length === 2
+    && path[0] === "conversations"
+    && SUPPORT_ID.test(path[1])
+  ) {
+    return true;
+  }
+  if (
+    path.length === 3
+    && path[0] === "conversations"
+    && SUPPORT_ID.test(path[1])
+    && path[2] === "messages"
+  ) {
+    return method === "GET" || method === "POST";
+  }
+  if (
+    method === "POST"
+    && path.length === 3
+    && path[0] === "conversations"
+    && SUPPORT_ID.test(path[1])
+    && path[2] === "read"
+  ) {
+    return true;
+  }
+  return isStreamedAttachmentUpload(method, path);
 }
 
 function setAccessCookie(response: NextResponse, token: string): void {
@@ -88,16 +131,17 @@ function validDeclaredSize(value: string | null): boolean {
 }
 
 /**
- * Streams authenticated media to the backend exactly once. A consumed request
- * stream cannot safely be replayed, so an available refresh token is used
- * proactively and a 401 is returned to the browser without retrying upstream.
+ * Streams authenticated media to the ownership-scoped customer endpoint
+ * exactly once. A consumed request stream cannot safely be replayed, so an
+ * available refresh token is used proactively and a 401 is returned to the
+ * browser without retrying upstream.
  */
 async function proxyAttachmentUpload(
   request: NextRequest,
   upstreamPath: string,
 ): Promise<NextResponse> {
   const fileName = new URL(request.url).searchParams.get("fileName")?.trim();
-  if (!fileName || fileName.length > 255) {
+  if (!fileName || fileName.length > 240) {
     return NextResponse.json(
       { code: "VALIDATION_ERROR", message: "A valid fileName is required" },
       { status: 400, headers: { "Cache-Control": "no-store" } },
@@ -192,8 +236,15 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<NextR
     );
   }
 
+  if (!isAllowedCustomerRoute(request.method, path)) {
+    return NextResponse.json(
+      { code: "INVALID_SUPPORT_ROUTE", message: "Unsupported customer support route" },
+      { status: 404, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   const requestUrl = new URL(request.url);
-  const upstreamPath = `/api/support/admin/${path.map(encodeURIComponent).join("/")}${requestUrl.search}`;
+  const upstreamPath = `/api/support/${path.map(encodeURIComponent).join("/")}${requestUrl.search}`;
   if (isStreamedAttachmentUpload(request.method, path)) {
     return proxyAttachmentUpload(request, upstreamPath);
   }
@@ -211,9 +262,26 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<NextR
   return response;
 }
 
+function methodNotAllowed(): NextResponse {
+  return NextResponse.json(
+    { code: "METHOD_NOT_ALLOWED", message: "Only customer support reads and submissions are allowed" },
+    {
+      status: 405,
+      headers: {
+        Allow: "GET, POST",
+        "Cache-Control": "no-store",
+      },
+    },
+  );
+}
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const GET = proxy;
 export const POST = proxy;
-export const PATCH = proxy;
+export const DELETE = methodNotAllowed;
+export const HEAD = methodNotAllowed;
+export const OPTIONS = methodNotAllowed;
+export const PATCH = methodNotAllowed;
+export const PUT = methodNotAllowed;

@@ -1,8 +1,25 @@
 "use client";
 
-import { initials, personName, PRIORITY_LABELS, relativeTime, requestReference, STATUS_LABELS } from "@/lib/support/format";
-import type { SupportConversation } from "@/lib/support/types";
+import { Bug, HelpCircle, Lightbulb, MessageSquare, type LucideIcon } from "lucide-react";
+
+import { relativeTime, requestReference } from "@/lib/support/format";
+import type { SupportCategory, SupportConversation, SupportStatus } from "@/lib/support/types";
 import styles from "./support.module.css";
+
+const STATUS_LABELS: Record<SupportStatus, string> = {
+  open: "Open",
+  in_progress: "In progress",
+  waiting_on_user: "Waiting for you",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+const CATEGORY_META: Record<SupportCategory, { label: string; icon: LucideIcon }> = {
+  error: { label: "Problem", icon: Bug },
+  feature: { label: "Feature", icon: Lightbulb },
+  question: { label: "Question", icon: HelpCircle },
+  other: { label: "Other", icon: MessageSquare },
+};
 
 export function ConversationList({
   conversations,
@@ -27,13 +44,13 @@ export function ConversationList({
 }) {
   if (loading) {
     return (
-      <div aria-label="Loading support requests">
-        {Array.from({ length: 7 }, (_, index) => (
+      <div aria-label="Loading your support requests" aria-busy="true">
+        {Array.from({ length: 6 }, (_, index) => (
           <div className={styles.conversationButton} key={index}>
-            <span className={`${styles.skeleton} ${styles.avatar}`} />
-            <span>
+            <span className={`${styles.skeleton} ${styles.requestIcon}`} />
+            <span className={styles.conversationMain}>
               <span className={`${styles.skeleton} ${styles.skeletonLine}`} />
-              <span className={`${styles.skeleton} ${styles.skeletonLine}`} style={{ display: "block", width: "72%", marginTop: 9 }} />
+              <span className={`${styles.skeleton} ${styles.skeletonLineShort}`} />
             </span>
           </div>
         ))}
@@ -42,50 +59,60 @@ export function ConversationList({
   }
 
   if (!conversations.length) {
-    return <div className={styles.empty}>No requests match the current filters.</div>;
+    return (
+      <div className={styles.emptyList}>
+        <MessageSquare size={24} aria-hidden="true" />
+        <strong>No matching requests</strong>
+        <span>Try a different search or status filter.</span>
+      </div>
+    );
   }
 
   return (
     <>
-      <div aria-busy={loadingMore}>
+      <ul className={styles.conversationList} aria-busy={loadingMore}>
         {conversations.map((conversation) => {
           const selected = conversation.id === selectedId;
+          const category = CATEGORY_META[conversation.category];
+          const Icon = category.icon;
+          const updatedAt = conversation.lastMessage?.at || conversation.updatedAt;
           return (
-            <button
-              className={`${styles.conversationButton} ${selected ? styles.conversationSelected : ""}`}
-              type="button"
-              key={conversation.id}
-              onClick={() => onSelect(conversation.id)}
-              aria-pressed={selected}
-              disabled={disabled}
-            >
-              <span className={styles.avatar}>{initials(conversation.user)}</span>
-              <span className={styles.conversationMain}>
-                <span className={styles.conversationNameLine}>
-                  <span className={styles.conversationName}>{personName(conversation.user)}</span>
-                  {conversation.unread?.agent ? (
-                    <span className={styles.unreadDot} aria-label={`${conversation.unread.agent} unread messages`} />
-                  ) : null}
+            <li key={conversation.id}>
+              <button
+                className={`${styles.conversationButton} ${selected ? styles.conversationSelected : ""}`}
+                type="button"
+                onClick={() => onSelect(conversation.id)}
+                aria-current={selected ? "true" : undefined}
+                disabled={disabled}
+              >
+                <span className={styles.requestIcon} data-category={conversation.category}>
+                  <Icon size={17} aria-hidden="true" />
                 </span>
-                <span className={styles.conversationSubject}>{conversation.subject}</span>
-                <span className={styles.conversationPreview}>{conversation.lastMessage?.preview || requestReference(conversation.id)}</span>
-              </span>
-              <span className={styles.conversationSide}>
-                <time dateTime={conversation.lastMessage?.at || conversation.updatedAt}>
-                  {relativeTime(conversation.lastMessage?.at || conversation.updatedAt)}
-                </time>
-                <span className={styles.conversationState}>
-                  <span className={styles.statusText}>{STATUS_LABELS[conversation.status]}</span>
-                  <span aria-hidden="true">·</span>
-                  <span className={`${styles.priority} ${styles[`priority_${conversation.priority}`]}`}>
-                    {PRIORITY_LABELS[conversation.priority]}
+                <span className={styles.conversationMain}>
+                  <span className={styles.conversationHeading}>
+                    <span className={styles.conversationSubject}>{conversation.subject}</span>
+                    {conversation.unread.user ? (
+                      <span className={styles.unreadCount} aria-label={`${conversation.unread.user} unread developer replies`}>
+                        {conversation.unread.user > 99 ? "99+" : conversation.unread.user}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className={styles.conversationMeta}>
+                    <span>{category.label}</span>
+                    <span aria-hidden="true">·</span>
+                    <span data-status={conversation.status}>{STATUS_LABELS[conversation.status]}</span>
+                    <span aria-hidden="true">·</span>
+                    <time dateTime={updatedAt}>{relativeTime(updatedAt)}</time>
+                  </span>
+                  <span className={styles.conversationPreview}>
+                    {conversation.lastMessage?.preview || requestReference(conversation.id)}
                   </span>
                 </span>
-              </span>
-            </button>
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
       {hasMore || loadMoreError ? (
         <div className={styles.paginationControls}>
           {loadMoreError ? <span className={styles.paginationError} role="alert">{loadMoreError}</span> : null}
@@ -96,7 +123,7 @@ export function ConversationList({
               disabled={disabled || loadingMore}
               onClick={onLoadMore}
             >
-              {loadingMore ? "Loading…" : loadMoreError ? "Retry older requests" : "Load older requests"}
+              {loadingMore ? "Loading…" : loadMoreError ? "Try again" : "Load older requests"}
             </button>
           ) : null}
         </div>

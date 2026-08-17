@@ -2,21 +2,19 @@
 
 import {
   AlertCircle,
-  CheckCircle2,
-  ChevronLeft,
+  ArrowLeft,
   FileImage,
   FileVideo,
-  Info,
   LoaderCircle,
-  LockKeyhole,
+  MessageSquareText,
   Paperclip,
   Send,
   X,
 } from "lucide-react";
 import { type FormEvent, useLayoutEffect, useRef, useState } from "react";
 
-import { bytes, dateTime, initials, personName, PRIORITY_LABELS, requestReference, STATUS_LABELS } from "@/lib/support/format";
-import type { SupportConversation, SupportMessage } from "@/lib/support/types";
+import { bytes, dateTime, requestReference } from "@/lib/support/format";
+import type { SupportConversation, SupportMessage, SupportStatus } from "@/lib/support/types";
 import { AttachmentCard } from "./AttachmentCard";
 import styles from "./support.module.css";
 
@@ -28,6 +26,21 @@ export type PreparedFile = {
   progress: number;
   state: "queued" | "uploading" | "ready" | "error";
 };
+
+const STATUS_LABELS: Record<SupportStatus, string> = {
+  open: "Open",
+  in_progress: "In progress",
+  waiting_on_user: "Waiting for you",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+const CATEGORY_LABELS = {
+  error: "Problem",
+  feature: "Feature request",
+  question: "Question",
+  other: "Other",
+} as const;
 
 export function MessageThread({
   conversation,
@@ -47,8 +60,7 @@ export function MessageThread({
   onRetryMessages,
   onLoadOlderMessages,
   onSend,
-  onResolve,
-  onOpenDetails,
+  onCreateRequest,
 }: {
   conversation: SupportConversation | null;
   messages: SupportMessage[];
@@ -66,12 +78,10 @@ export function MessageThread({
   onDraftChanged: () => void;
   onRetryMessages: () => void;
   onLoadOlderMessages: () => void;
-  onSend: (body: string, internalNote: boolean) => Promise<boolean>;
-  onResolve: () => Promise<void>;
-  onOpenDetails: () => void;
+  onSend: (body: string) => Promise<boolean>;
+  onCreateRequest: () => void;
 }) {
   const [body, setBody] = useState("");
-  const [internalNote, setInternalNote] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const timelineSnapshot = useRef<{
     conversationId: string;
@@ -89,17 +99,13 @@ export function MessageThread({
     const firstId = messages[0]?.id || null;
     const lastId = messages.at(-1)?.id || null;
     const previous = timelineSnapshot.current;
-    const prependedOlderMessages = previous?.conversationId === conversation.id
+    const prependedHistory = previous?.conversationId === conversation.id
       && previous.firstId !== firstId
       && previous.lastId === lastId;
 
-    if (prependedOlderMessages) {
-      // Keep the same message under the agent's eyes when an older cursor page
-      // is inserted above the current viewport.
+    if (prependedHistory) {
       timeline.scrollTop += timeline.scrollHeight - previous.scrollHeight;
     } else if (!previous || previous.conversationId !== conversation.id || previous.lastId !== lastId) {
-      // Only the timeline moves; scrollIntoView would also shift the page and
-      // can hide the pinned composer.
       timeline.scrollTop = timeline.scrollHeight;
     }
     timelineSnapshot.current = {
@@ -112,76 +118,38 @@ export function MessageThread({
 
   if (!conversation) {
     return (
-      <>
-        <div className={styles.mobileThreadBar}>
-          <button className={styles.mobileBack} type="button" onClick={onBack} disabled={sending} aria-label="Back to support inbox">
-            <ChevronLeft size={23} aria-hidden="true" />
-          </button>
-          <span className={styles.mobileThreadIdentity}><strong>Request unavailable</strong></span>
-        </div>
-        <div className={styles.threadPlaceholder}>
-          <span>Select a request to open the conversation.</span>
-        </div>
-      </>
+      <div className={styles.threadPlaceholder}>
+        <span className={styles.placeholderIcon}><MessageSquareText size={25} aria-hidden="true" /></span>
+        <h2>Your developer conversations</h2>
+        <p>Select a request to read replies, share more details, or attach a screenshot or recording.</p>
+        <button className={styles.button} type="button" onClick={onCreateRequest}>
+          Create a request
+        </button>
+      </div>
     );
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
     if ((!body.trim() && !pendingFiles.length) || sending) return;
-    if (await onSend(body.trim(), internalNote)) setBody("");
-  }
-
-  function toggleInternalNote() {
-    if (sending) return;
-    const next = !internalNote;
-    setInternalNote(next);
-    onDraftChanged();
-    // Internal notes are private and the backend deliberately rejects media.
-    if (next) pendingFiles.forEach((item) => onRemoveFile(item.id));
+    if (await onSend(body.trim())) setBody("");
   }
 
   return (
     <>
-      <div className={styles.mobileThreadBar}>
-        <button className={styles.mobileBack} type="button" onClick={onBack} disabled={sending} aria-label="Back to support inbox">
-          <ChevronLeft size={23} aria-hidden="true" />
-        </button>
-        <span className={styles.mobileThreadIdentity}>
-          <strong>{conversation.subject}</strong>
-          <span><span className={styles.mobileStatusDot} />{STATUS_LABELS[conversation.status]}</span>
-        </span>
-        <button className={styles.mobileMore} type="button" onClick={onOpenDetails} aria-label="Open request details">
-          <Info size={18} aria-hidden="true" /><span>Details</span>
-        </button>
-      </div>
-
       <header className={styles.threadHeader}>
-        <span className={styles.avatar}>{initials(conversation.user)}</span>
+        <button className={styles.mobileBack} type="button" onClick={onBack} disabled={sending} aria-label="Back to your requests">
+          <ArrowLeft size={19} aria-hidden="true" />
+        </button>
         <div className={styles.threadIdentity}>
           <h2>{conversation.subject}</h2>
-          <p>{personName(conversation.user)}</p>
           <div className={styles.threadMeta}>
+            <span>{CATEGORY_LABELS[conversation.category]}</span>
+            <span aria-hidden="true">·</span>
+            <span data-status={conversation.status}>{STATUS_LABELS[conversation.status]}</span>
+            <span aria-hidden="true">·</span>
             <span>{requestReference(conversation.id)}</span>
-            <span className={styles.metaDot} />
-            <span className={conversation.status === "resolved" ? styles.statusResolved : styles.statusText}>
-              {STATUS_LABELS[conversation.status]}
-            </span>
-            <span className={styles.metaDot} />
-            <span className={`${styles.priority} ${styles[`priority_${conversation.priority}`]}`}>
-              {PRIORITY_LABELS[conversation.priority]}
-            </span>
           </div>
-        </div>
-        <div className={styles.threadActions}>
-          <button className={`${styles.buttonSecondary} ${styles.detailsButton}`} type="button" onClick={onOpenDetails}>
-            <Info size={16} aria-hidden="true" />Details
-          </button>
-          {conversation.status !== "resolved" && conversation.status !== "closed" ? (
-            <button className={styles.buttonSecondary} type="button" onClick={onResolve} disabled={sending}>
-              <CheckCircle2 size={16} aria-hidden="true" />Resolve
-            </button>
-          ) : null}
         </div>
       </header>
 
@@ -189,7 +157,7 @@ export function MessageThread({
         className={styles.messageScroller}
         ref={timelineRef}
         role="log"
-        aria-label="Conversation messages"
+        aria-label="Conversation with the developer team"
         aria-live="polite"
         tabIndex={0}
       >
@@ -197,6 +165,7 @@ export function MessageThread({
           <div className={styles.empty}>Loading conversation…</div>
         ) : messagesError && !messages.length ? (
           <div className={styles.errorState} role="alert">
+            <AlertCircle size={22} aria-hidden="true" />
             <span>{messagesError}</span>
             <button type="button" onClick={onRetryMessages}>Try again</button>
           </div>
@@ -211,7 +180,7 @@ export function MessageThread({
                 ) : null}
                 {hasOlderMessages ? (
                   <button className={styles.buttonSecondary} type="button" disabled={loadingOlderMessages} onClick={onLoadOlderMessages}>
-                    {loadingOlderMessages ? "Loading…" : olderMessagesError ? "Retry older messages" : "Load older messages"}
+                    {loadingOlderMessages ? "Loading…" : olderMessagesError ? "Try again" : "Load older messages"}
                   </button>
                 ) : null}
               </div>
@@ -219,43 +188,32 @@ export function MessageThread({
             {messages.length ? (
               <ol className={styles.messageList}>
                 {messages.map((message) => {
-                  const internal = message.type === "internal_note";
                   const system = message.senderRole === "system" || message.type === "system";
-                  const agent = message.senderRole === "agent";
-                  const display = system ? "System" : agent ? personName(message.sender) : personName(message.sender || conversation.user);
+                  const mine = message.senderRole === "user";
+                  const displayName = mine ? "You" : system ? "System" : "Asset Insight Developer";
                   return (
                     <li
-                      className={`${styles.messageRow} ${agent ? styles.messageAgent : ""} ${internal ? styles.internalNote : ""} ${system ? styles.systemMessage : ""}`}
+                      className={`${styles.messageRow} ${mine ? styles.messageMine : ""} ${system ? styles.systemMessage : ""}`}
                       key={message.id}
                     >
-                      <span className={styles.messageAvatar}>{system ? "AI" : initials(message.sender || conversation.user)}</span>
+                      {!system ? (
+                        <span className={styles.messageAvatar} data-sender={mine ? "user" : "developer"} aria-hidden="true">
+                          {mine ? "You" : "AI"}
+                        </span>
+                      ) : null}
                       <div className={styles.messageContent}>
                         <div className={styles.messageByline}>
-                          <span>{display}</span>
+                          <strong>{displayName}</strong>
                           <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>
                         </div>
                         <div className={styles.messageBubble}>
-                          {internal ? <span className={styles.internalLabel}>Internal note</span> : null}
-                          {message.body ? <div>{message.body}</div> : null}
-                          {message.attachments?.length ? (
+                          {message.body ? <p>{message.body}</p> : null}
+                          {message.attachments.length ? (
                             <div className={styles.mediaGrid}>
                               {message.attachments.map((attachment) => (
                                 <AttachmentCard attachment={attachment} key={attachment.id} />
                               ))}
                             </div>
-                          ) : null}
-                          {message.diagnostics && Object.keys(message.diagnostics).length ? (
-                            <details className={styles.diagnostics}>
-                              <summary>Diagnostics · {Object.keys(message.diagnostics).length} details</summary>
-                              <dl className={styles.diagnosticGrid}>
-                                {Object.entries(message.diagnostics).map(([key, value]) => (
-                                  <div key={key} style={{ display: "contents" }}>
-                                    <dt>{key.replace(/([A-Z])/g, " $1")}</dt>
-                                    <dd>{String(value ?? "—")}</dd>
-                                  </div>
-                                ))}
-                              </dl>
-                            </details>
                           ) : null}
                         </div>
                       </div>
@@ -270,10 +228,10 @@ export function MessageThread({
         )}
       </div>
 
-      <form className={styles.composer} onSubmit={submit}>
+      <form className={styles.composer} onSubmit={(event) => void submit(event)}>
         <div className={styles.composerBox}>
           {pendingFiles.length ? (
-            <ul className={styles.uploadList} aria-label="Attachments queued for this reply">
+            <ul className={styles.uploadList} aria-label="Attachments queued for your reply">
               {pendingFiles.map((item) => {
                 const FileIcon = item.file.type.startsWith("video/") ? FileVideo : FileImage;
                 return (
@@ -296,45 +254,38 @@ export function MessageThread({
             </ul>
           ) : null}
 
-          <label className="sr-only" htmlFor="admin-support-reply">
-            {internalNote ? "Write an internal note" : `Write a reply to ${personName(conversation.user)}`}
-          </label>
+          <label className="sr-only" htmlFor="admin-support-reply">Reply to the developer team</label>
           <textarea
             id="admin-support-reply"
             value={body}
             onChange={(event) => { setBody(event.target.value); onDraftChanged(); }}
-            placeholder={internalNote ? "Write an internal note…" : "Write a reply…"}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                void submit();
+              }
+            }}
+            placeholder="Write a reply to the developer team…"
             maxLength={12_000}
             rows={2}
             disabled={sending}
           />
           <div className={styles.composerToolbar}>
-            <label className={styles.composerAction} aria-disabled={internalNote || sending}>
-              <Paperclip size={17} aria-hidden="true" /><span>Attach media</span>
+            <label className={styles.composerAction} aria-disabled={sending}>
+              <Paperclip size={17} aria-hidden="true" /><span>Attach image or video</span>
               <input
                 className="sr-only"
                 type="file"
+                aria-label="Attach image or video"
                 accept={acceptedTypes}
                 multiple
-                disabled={internalNote || sending}
+                disabled={sending}
                 onChange={(event) => { onFiles(Array.from(event.target.files || [])); event.target.value = ""; }}
               />
             </label>
-            <span className={styles.composerSpacer} />
-            <label className={styles.toggleLabel}>
-              <LockKeyhole size={15} aria-hidden="true" /><span>Internal note</span>
-              <button
-                className={`${styles.toggle} ${internalNote ? styles.toggleOn : ""}`}
-                type="button"
-                role="switch"
-                aria-checked={internalNote}
-                aria-label="Internal note"
-                onClick={toggleInternalNote}
-                disabled={sending}
-              />
-            </label>
+            <span className={styles.composerHint}>Ctrl/⌘ + Enter</span>
             <button className={styles.button} type="submit" disabled={sending || (!body.trim() && !pendingFiles.length)}>
-              {sending ? "Sending…" : <><Send size={16} aria-hidden="true" /><span className={styles.sendFullLabel}>Send reply</span><span className={styles.sendShortLabel}>Send</span></>}
+              {sending ? "Sending…" : <><Send size={16} aria-hidden="true" /><span>Send</span></>}
             </button>
           </div>
         </div>

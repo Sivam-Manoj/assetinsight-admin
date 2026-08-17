@@ -1,33 +1,3 @@
-import type { SupportPerson, SupportPriority, SupportStatus } from "./types";
-
-export const STATUS_LABELS: Record<SupportStatus, string> = {
-  open: "Open",
-  in_progress: "In progress",
-  waiting_on_user: "Waiting on user",
-  resolved: "Resolved",
-  closed: "Closed",
-};
-
-export const PRIORITY_LABELS: Record<SupportPriority, string> = {
-  low: "Low",
-  normal: "Normal",
-  high: "High",
-  urgent: "Urgent",
-};
-
-export function personName(person?: SupportPerson | null): string {
-  return person?.username || person?.email || "Unassigned";
-}
-
-export function initials(person?: SupportPerson | null): string {
-  return personName(person)
-    .split(/[\s@]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "?";
-}
-
 export function relativeTime(value?: string | null): string {
   if (!value) return "—";
   const timestamp = new Date(value).getTime();

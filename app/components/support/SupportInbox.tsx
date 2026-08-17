@@ -1,37 +1,48 @@
 "use client";
 
-import { RefreshCw, Search, X } from "lucide-react";
+import { AlertCircle, Inbox, Plus, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { supportRequest, supportUploadAttachment } from "@/lib/support/client";
+import {
+  createSupportClientMessageId,
+  getSupportConstraints,
+  getSupportConversation,
+  listSupportConversations,
+  listSupportMessages,
+  markSupportConversationRead,
+  sendSupportMessage,
+  SupportApiError,
+  supportUploadAttachment,
+} from "@/lib/support/client";
 import type {
-  SupportActivity,
   SupportConversation,
+  SupportCursorPage,
   SupportMessage,
-  SupportPerson,
-  SupportPriority,
   SupportStatus,
-  SupportTodo,
   SupportUploadConstraints,
 } from "@/lib/support/types";
 import { ConversationList } from "./ConversationList";
 import { MessageThread, type PreparedFile } from "./MessageThread";
-import { RequestContext, RequestDetailsDrawer } from "./RequestContext";
+import { NewSupportRequest } from "./NewSupportRequest";
 import styles from "./support.module.css";
 
-type ListResponse<T> = { items: T[]; nextCursor?: string | null };
-type ConversationResponse = { conversation: SupportConversation };
-type ConstraintsResponse = { constraints: SupportUploadConstraints };
-type ResourceState<T> = { path: string | null; data: T | null; error: Error | null; loading: boolean };
+type ResourceState<T> = {
+  key: string | null;
+  data: T | null;
+  error: Error | null;
+  loading: boolean;
+};
+
 type CursorTail<T> = {
   key: string;
   items: T[];
   nextCursor: string | null;
+  loaded: boolean;
   loading: boolean;
   error: Error | null;
 };
 
-const defaultConstraints: SupportUploadConstraints = {
+const DEFAULT_CONSTRAINTS: SupportUploadConstraints = {
   imageContentTypes: ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"],
   videoContentTypes: ["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"],
   maxImageBytes: 20 * 1024 * 1024,
@@ -40,90 +51,72 @@ const defaultConstraints: SupportUploadConstraints = {
   maxPendingUploads: 8,
 };
 
-const emptyConversations: SupportConversation[] = [];
-const emptyMessages: SupportMessage[] = [];
-const emptyActivity: SupportActivity[] = [];
-const emptyTodos: SupportTodo[] = [];
-const emptyAgents: SupportPerson[] = [];
-
-/**
- * Small visibility-aware polling hook. Support data changes while an agent is
- * reading, but polling is paused in background tabs to avoid unnecessary load.
- */
-function useSupportResource<T>(path: string | null, intervalMs: number) {
-  const [state, setState] = useState<ResourceState<T>>({ path, data: null, error: null, loading: Boolean(path) });
-  const activePath = useRef(path);
-  const sequence = useRef(0);
-  const inFlight = useRef<{
-    path: string;
-    sequence: number;
-    controller: AbortController;
-    promise: Promise<void>;
-  } | null>(null);
-  activePath.current = path;
+function usePollingResource<T>(
+  key: string | null,
+  loader: (signal: AbortSignal) => Promise<T>,
+  intervalMs: number,
+) {
+  const [state, setState] = useState<ResourceState<T>>({ key, data: null, error: null, loading: Boolean(key) });
+  const activeKey = useRef(key);
+  const requestSequence = useRef(0);
+  const inFlight = useRef<{ key: string; controller: AbortController; promise: Promise<void> } | null>(null);
+  activeKey.current = key;
 
   const load = useCallback((showLoading = false): Promise<void> => {
-    if (!path) return Promise.resolve();
-    if (inFlight.current?.path === path) return inFlight.current.promise;
-
-    // A path change invalidates the previous response. The sequence check also
-    // protects the A -> B -> A case where path equality alone is insufficient.
+    if (!key) return Promise.resolve();
+    if (inFlight.current?.key === key) return inFlight.current.promise;
     inFlight.current?.controller.abort();
-    const requestSequence = ++sequence.current;
+    const sequence = ++requestSequence.current;
     const controller = new AbortController();
     if (showLoading) {
-      setState((current) => current.path === path
+      setState((current) => current.key === key
         ? { ...current, loading: current.data === null }
-        : { path, data: null, error: null, loading: true });
+        : { key, data: null, error: null, loading: true });
     }
 
-    const promise = supportRequest<T>(path, { signal: controller.signal })
+    const promise = loader(controller.signal)
       .then((data) => {
-        if (activePath.current !== path || sequence.current !== requestSequence) return;
-        setState({ path, data, error: null, loading: false });
+        if (activeKey.current !== key || requestSequence.current !== sequence) return;
+        setState({ key, data, error: null, loading: false });
       })
-      .catch((error) => {
-        if (controller.signal.aborted || activePath.current !== path || sequence.current !== requestSequence) return;
+      .catch((reason) => {
+        if (controller.signal.aborted || activeKey.current !== key || requestSequence.current !== sequence) return;
         setState((current) => ({
-          path,
-          data: current.path === path ? current.data : null,
-          error: error instanceof Error ? error : new Error("The support service could not be reached."),
+          key,
+          data: current.key === key ? current.data : null,
+          error: reason instanceof Error ? reason : new Error("The support service could not be reached."),
           loading: false,
         }));
       })
       .finally(() => {
-        if (inFlight.current?.sequence === requestSequence) inFlight.current = null;
+        if (inFlight.current?.controller === controller) inFlight.current = null;
       });
-    inFlight.current = { path, sequence: requestSequence, controller, promise };
+    inFlight.current = { key, controller, promise };
     return promise;
-  }, [path]);
+  }, [key, loader]);
 
   useEffect(() => {
-    if (!path) return;
+    if (!key) return;
     void load(true);
-
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void load(false);
+      if (document.visibilityState === "visible" && navigator.onLine) void load(false);
     };
     const timer = intervalMs ? window.setInterval(refreshWhenVisible, intervalMs) : null;
     if (intervalMs) document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       if (timer !== null) window.clearInterval(timer);
       if (intervalMs) document.removeEventListener("visibilitychange", refreshWhenVisible);
-      if (inFlight.current?.path === path) {
+      if (inFlight.current?.key === key) {
         inFlight.current.controller.abort();
         inFlight.current = null;
       }
-      sequence.current += 1;
+      requestSequence.current += 1;
     };
-  }, [intervalMs, load, path]);
+  }, [intervalMs, key, load]);
 
-  const current = state.path === path ? state : { path, data: null, error: null, loading: Boolean(path) };
-  return {
-    ...current,
-    refresh: () => load(false),
-    setData: (data: T) => setState({ path, data, error: null, loading: false }),
-  };
+  const refresh = useCallback(() => load(false), [load]);
+  const current = state.key === key ? state : { key, data: null, error: null, loading: Boolean(key) };
+  return { ...current, refresh };
 }
 
 function mergeUniqueById<T extends { id: string }>(...groups: T[][]): T[] {
@@ -135,13 +128,7 @@ function mergeUniqueById<T extends { id: string }>(...groups: T[][]): T[] {
   }));
 }
 
-function errorStatus(error: Error | null): number | null {
-  if (!error || !("status" in error)) return null;
-  const status = (error as Error & { status?: unknown }).status;
-  return typeof status === "number" ? status : null;
-}
-
-function errorMessage(error: unknown, fallback: string) {
+function supportError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
@@ -155,144 +142,90 @@ function updateRequestUrl(requestId: string | null) {
 export function SupportInbox({ initialRequest = null }: { initialRequest?: string | null }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialRequest);
   const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query.trim());
-  const [status, setStatus] = useState<SupportStatus | "">("");
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const [statusFilter, setStatusFilter] = useState<"active" | "all" | SupportStatus>("active");
+  const [newRequestOpen, setNewRequestOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PreparedFile[]>([]);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [conversationTail, setConversationTail] = useState<CursorTail<SupportConversation>>({ key: "root", items: [], nextCursor: null, loaded: false, loading: false, error: null });
+  const [messageHead, setMessageHead] = useState<CursorTail<SupportMessage>>({ key: "", items: [], nextCursor: null, loaded: false, loading: false, error: null });
   const retryClientMessageId = useRef<string | null>(null);
-  const readAcknowledgement = useRef<{ conversationId: string | null; candidate: string | null; inFlight: boolean }>({
-    conversationId: null,
-    candidate: null,
-    inFlight: false,
-  });
+  const readReceipt = useRef("");
 
-  const listPath = useMemo(() => {
-    const params = new URLSearchParams({ limit: "50" });
-    if (status) params.set("status", status);
-    if (deferredQuery) params.set("query", deferredQuery);
-    return `conversations?${params.toString()}`;
-  }, [deferredQuery, status]);
+  const listLoader = useCallback((signal: AbortSignal) => listSupportConversations(undefined, signal), []);
+  const detailLoader = useCallback((signal: AbortSignal) => getSupportConversation(selectedId!, signal), [selectedId]);
+  const messagesLoader = useCallback((signal: AbortSignal) => listSupportMessages(selectedId!, undefined, signal), [selectedId]);
+  const constraintsLoader = useCallback((signal: AbortSignal) => getSupportConstraints(signal), []);
 
-  const messagePath = selectedId ? `conversations/${selectedId}/messages?limit=100` : null;
-  const listResource = useSupportResource<ListResponse<SupportConversation>>(listPath, 15_000);
-  const conversationResource = useSupportResource<ConversationResponse>(selectedId ? `conversations/${selectedId}` : null, 15_000);
-  const messagesResource = useSupportResource<ListResponse<SupportMessage>>(messagePath, 8_000);
-  const activityResource = useSupportResource<ListResponse<SupportActivity>>(selectedId ? `conversations/${selectedId}/activity?limit=40` : null, 15_000);
-  const todosResource = useSupportResource<ListResponse<SupportTodo>>(selectedId ? `conversations/${selectedId}/todos` : null, 15_000);
-  const agentsResource = useSupportResource<ListResponse<SupportPerson>>("agents", 0);
-  const constraintsResource = useSupportResource<ConstraintsResponse>("constraints", 0);
+  const listResource = usePollingResource<SupportCursorPage<SupportConversation>>("root", listLoader, 30_000);
+  const conversationResource = usePollingResource<SupportConversation>(selectedId, detailLoader, 30_000);
+  const messagesResource = usePollingResource<SupportCursorPage<SupportMessage>>(selectedId, messagesLoader, 12_000);
+  const constraintsResource = usePollingResource<SupportUploadConstraints>("constraints", constraintsLoader, 0);
 
-  const [conversationTail, setConversationTail] = useState<CursorTail<SupportConversation>>({
-    key: listPath,
-    items: [],
-    nextCursor: null,
-    loading: false,
-    error: null,
-  });
-  const [messageHead, setMessageHead] = useState<CursorTail<SupportMessage>>({
-    key: selectedId || "",
-    items: [],
-    nextCursor: null,
-    loading: false,
-    error: null,
-  });
-
-  const activeConversationTail = conversationTail.key === listPath ? conversationTail : null;
-  const activeMessageHead = messageHead.key === (selectedId || "") ? messageHead : null;
-  const conversations = mergeUniqueById(
-    listResource.data?.items || emptyConversations,
-    activeConversationTail?.items || emptyConversations,
+  const activeConversationTail = conversationTail.key === "root" ? conversationTail : null;
+  const conversations = useMemo(
+    () => mergeUniqueById(listResource.data?.items || [], activeConversationTail?.items || []),
+    [activeConversationTail?.items, listResource.data?.items],
   );
-  const conversation = conversationResource.data?.conversation || conversations.find((item) => item.id === selectedId) || null;
-  const messages = mergeUniqueById(
-    activeMessageHead?.items || emptyMessages,
-    messagesResource.data?.items || emptyMessages,
-  );
-  const activity = activityResource.data?.items || emptyActivity;
-  const todos = todosResource.data?.items || emptyTodos;
-  const agents = agentsResource.data?.items || emptyAgents;
-  const constraints = constraintsResource.data?.constraints || defaultConstraints;
-  const conversationNextCursor = activeConversationTail?.items.length
+  const conversationNextCursor = activeConversationTail?.loaded
     ? activeConversationTail.nextCursor
     : listResource.data?.nextCursor || null;
-  const messageNextCursor = activeMessageHead?.items.length
+
+  const activeMessageHead = messageHead.key === selectedId ? messageHead : null;
+  const messages = useMemo(
+    () => mergeUniqueById(activeMessageHead?.items || [], messagesResource.data?.items || []),
+    [activeMessageHead?.items, messagesResource.data?.items],
+  );
+  const messageNextCursor = activeMessageHead?.loaded
     ? activeMessageHead.nextCursor
     : messagesResource.data?.nextCursor || null;
-  const refreshConversationList = listResource.refresh;
-  const refreshSelectedConversation = conversationResource.refresh;
+
+  const selectedSummary = conversations.find((conversation) => conversation.id === selectedId) || null;
+  const conversation = conversationResource.data || selectedSummary;
+  const constraints = constraintsResource.data || DEFAULT_CONSTRAINTS;
+
+  const visibleConversations = useMemo(() => conversations.filter((candidate) => {
+    const active = candidate.status !== "resolved" && candidate.status !== "closed";
+    const statusMatches = statusFilter === "all"
+      || (statusFilter === "active" ? active : candidate.status === statusFilter);
+    const searchMatches = !deferredQuery
+      || candidate.subject.toLowerCase().includes(deferredQuery)
+      || candidate.lastMessage?.preview.toLowerCase().includes(deferredQuery)
+      || candidate.category.toLowerCase().includes(deferredQuery);
+    return statusMatches && searchMatches;
+  }), [conversations, deferredQuery, statusFilter]);
+
+  const openCount = conversations.filter((candidate) => candidate.status !== "resolved" && candidate.status !== "closed").length;
 
   useEffect(() => {
-    const handleExpiredSession = () => window.location.replace("/login");
-    window.addEventListener("admin-session-expired", handleExpiredSession);
-    return () => window.removeEventListener("admin-session-expired", handleExpiredSession);
-  }, []);
-
-  useEffect(() => {
-    setConversationTail({ key: listPath, items: [], nextCursor: null, loading: false, error: null });
-  }, [listPath]);
-
-  useEffect(() => {
-    setMessageHead({ key: selectedId || "", items: [], nextCursor: null, loading: false, error: null });
-    readAcknowledgement.current = { conversationId: selectedId, candidate: null, inFlight: false };
+    setMessageHead({ key: selectedId || "", items: [], nextCursor: null, loaded: false, loading: false, error: null });
+    setPendingFiles([]);
+    retryClientMessageId.current = null;
+    readReceipt.current = "";
   }, [selectedId]);
 
   useEffect(() => {
-    if (!selectedId || errorStatus(conversationResource.error) !== 404) return;
-    // A stale bookmarked URL must not strand a phone-sized layout in an empty
-    // thread pane with the request list hidden.
+    if (!selectedId || !(conversationResource.error instanceof SupportApiError) || conversationResource.error.status !== 404) return;
+    setNotice("That support request is unavailable or does not belong to this account.");
     setSelectedId(null);
-    setPendingFiles([]);
-    retryClientMessageId.current = null;
-    setDetailsOpen(false);
-    setNotice("That support request no longer exists.");
     updateRequestUrl(null);
   }, [conversationResource.error, selectedId]);
 
-  const latestCustomerMessageId = useMemo(
-    () => messages.findLast((message) => message.senderRole === "user")?.id || null,
-    [messages],
-  );
-
   useEffect(() => {
-    if (!selectedId) return;
-    const tracker = readAcknowledgement.current;
-    if (tracker.conversationId !== selectedId) {
-      tracker.conversationId = selectedId;
-      tracker.candidate = null;
-      tracker.inFlight = false;
-    }
-    const fallbackUnreadCandidate = conversation?.unread.agent
-      ? `unread:${conversation.lastMessage?.at || conversation.updatedAt}:${conversation.unread.agent}`
-      : null;
-    const candidate = latestCustomerMessageId || fallbackUnreadCandidate;
-    if (!candidate || tracker.candidate === candidate || tracker.inFlight) return;
-
-    tracker.inFlight = true;
-    // Mark the selected thread as read again when polling reveals a newer
-    // customer message, not only when the agent first selects the request.
-    supportRequest(`conversations/${selectedId}/read`, { method: "POST", body: "{}" })
-      .then(() => {
-        if (readAcknowledgement.current.conversationId !== selectedId) return;
-        readAcknowledgement.current.candidate = candidate;
-        void Promise.allSettled([refreshConversationList(), refreshSelectedConversation()]);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (readAcknowledgement.current.conversationId === selectedId) {
-          readAcknowledgement.current.inFlight = false;
-        }
-      });
-    // A fresh messages payload intentionally retries a failed best-effort read.
-  }, [conversation?.lastMessage?.at, conversation?.unread.agent, conversation?.updatedAt, latestCustomerMessageId, messagesResource.data, refreshConversationList, refreshSelectedConversation, selectedId]);
+    if (!selectedId || !conversation?.unread.user || !messagesResource.data) return;
+    const latestDeveloperReply = messages.findLast((message) => message.senderRole === "agent")?.id || conversation.updatedAt;
+    const receipt = `${selectedId}:${latestDeveloperReply}`;
+    if (readReceipt.current === receipt) return;
+    readReceipt.current = receipt;
+    void markSupportConversationRead(selectedId)
+      .then(() => Promise.allSettled([listResource.refresh(), conversationResource.refresh()]))
+      .catch(() => { readReceipt.current = ""; });
+  }, [conversation?.unread.user, conversation?.updatedAt, conversationResource, listResource, messages, messagesResource.data, selectedId]);
 
   function selectConversation(id: string) {
     if (sending || id === selectedId) return;
     setSelectedId(id);
-    setPendingFiles([]);
-    retryClientMessageId.current = null;
-    setDetailsOpen(false);
     setNotice("");
     updateRequestUrl(id);
   }
@@ -300,276 +233,202 @@ export function SupportInbox({ initialRequest = null }: { initialRequest?: strin
   function closeConversation() {
     if (sending) return;
     setSelectedId(null);
-    setPendingFiles([]);
-    retryClientMessageId.current = null;
-    setDetailsOpen(false);
     setNotice("");
     updateRequestUrl(null);
   }
 
-  function changeStatus(nextStatus: SupportStatus | "") {
-    if (sending) return;
-    setStatus(nextStatus);
-    closeConversation();
-  }
-
   async function loadMoreConversations() {
     if (!conversationNextCursor || activeConversationTail?.loading) return;
-    const requestKey = listPath;
     const cursor = conversationNextCursor;
-    setConversationTail((current) => ({
-      key: requestKey,
-      items: current.key === requestKey ? current.items : [],
-      nextCursor: current.key === requestKey ? current.nextCursor : null,
-      loading: true,
-      error: null,
-    }));
+    setConversationTail((current) => ({ ...current, key: "root", loading: true, error: null }));
     try {
-      const page = await supportRequest<ListResponse<SupportConversation>>(
-        `${requestKey}&cursor=${encodeURIComponent(cursor)}`,
-      );
-      setConversationTail((current) => current.key !== requestKey ? current : {
-        key: requestKey,
+      const page = await listSupportConversations(cursor);
+      setConversationTail((current) => ({
+        key: "root",
         items: mergeUniqueById(current.items, page.items),
-        nextCursor: page.nextCursor || null,
+        nextCursor: page.nextCursor,
+        loaded: true,
         loading: false,
         error: null,
-      });
-    } catch (error) {
-      setConversationTail((current) => current.key !== requestKey ? current : {
-        ...current,
-        loading: false,
-        error: error instanceof Error ? error : new Error("Older requests could not be loaded."),
-      });
+      }));
+    } catch (reason) {
+      setConversationTail((current) => ({ ...current, loading: false, error: reason instanceof Error ? reason : new Error("Older requests could not be loaded.") }));
     }
   }
 
   async function loadOlderMessages() {
     if (!selectedId || !messageNextCursor || activeMessageHead?.loading) return;
-    const requestKey = selectedId;
+    const conversationId = selectedId;
     const cursor = messageNextCursor;
     setMessageHead((current) => ({
-      key: requestKey,
-      items: current.key === requestKey ? current.items : [],
-      nextCursor: current.key === requestKey ? current.nextCursor : null,
+      key: conversationId,
+      items: current.key === conversationId ? current.items : [],
+      nextCursor: current.key === conversationId ? current.nextCursor : null,
+      loaded: current.key === conversationId ? current.loaded : false,
       loading: true,
       error: null,
     }));
     try {
-      const page = await supportRequest<ListResponse<SupportMessage>>(
-        `conversations/${requestKey}/messages?limit=100&before=${encodeURIComponent(cursor)}`,
-      );
-      setMessageHead((current) => current.key !== requestKey ? current : {
-        key: requestKey,
+      const page = await listSupportMessages(conversationId, cursor);
+      setMessageHead((current) => current.key !== conversationId ? current : {
+        key: conversationId,
         items: mergeUniqueById(page.items, current.items),
-        nextCursor: page.nextCursor || null,
+        nextCursor: page.nextCursor,
+        loaded: true,
         loading: false,
         error: null,
       });
-    } catch (error) {
-      setMessageHead((current) => current.key !== requestKey ? current : {
+    } catch (reason) {
+      setMessageHead((current) => current.key !== conversationId ? current : {
         ...current,
         loading: false,
-        error: error instanceof Error ? error : new Error("Older messages could not be loaded."),
+        error: reason instanceof Error ? reason : new Error("Older messages could not be loaded."),
       });
     }
   }
 
-  function addFiles(files: File[]) {
+  function addFiles(incoming: File[]) {
     retryClientMessageId.current = null;
+    const attachmentLimit = Math.min(constraints.maxAttachmentsPerMessage, constraints.maxPendingUploads);
     const next = [...pendingFiles];
-    let validationNotice = "";
-
-    for (const file of files) {
+    let validationError = "";
+    for (const file of incoming) {
       const isImage = constraints.imageContentTypes.includes(file.type);
       const isVideo = constraints.videoContentTypes.includes(file.type);
       if (!isImage && !isVideo) {
-        validationNotice = `${file.name} is not a supported image or video.`;
+        validationError = `${file.name} is not a supported image or video.`;
         continue;
       }
       const sizeLimit = isImage ? constraints.maxImageBytes : constraints.maxVideoBytes;
       if (file.size > sizeLimit) {
-        validationNotice = `${file.name} exceeds the ${Math.round(sizeLimit / 1024 / 1024)} MB ${isImage ? "image" : "video"} limit.`;
+        validationError = `${file.name} exceeds the ${Math.round(sizeLimit / 1024 / 1024)} MB limit.`;
         continue;
       }
-      const attachmentLimit = Math.min(constraints.maxAttachmentsPerMessage, constraints.maxPendingUploads);
       if (next.length >= attachmentLimit) {
-        validationNotice = `A message can contain at most ${attachmentLimit} attachments.`;
+        validationError = `A reply can contain up to ${attachmentLimit} attachments.`;
         break;
       }
-      next.push({ id: crypto.randomUUID(), file, progress: 0, state: "queued" });
+      const duplicate = next.some((item) => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified);
+      if (!duplicate) next.push({ id: crypto.randomUUID(), file, progress: 0, state: "queued" });
     }
-
     setPendingFiles(next);
-    setNotice(validationNotice);
+    setNotice(validationError);
   }
 
   async function uploadPreparedFile(conversationId: string, prepared: PreparedFile): Promise<string> {
     if (prepared.attachmentId) return prepared.attachmentId;
-
-    setPendingFiles((current) => current.map((item) => item.id === prepared.id
-      ? { ...item, error: undefined, progress: 0, state: "uploading" }
-      : item));
+    setPendingFiles((current) => current.map((item) => item.id === prepared.id ? { ...item, error: undefined, progress: 0, state: "uploading" } : item));
     try {
       const uploaded = await supportUploadAttachment(conversationId, prepared.file, (progress) => {
-        setPendingFiles((current) => current.map((item) => item.id === prepared.id
-          ? { ...item, progress, state: "uploading" }
-          : item));
+        setPendingFiles((current) => current.map((item) => item.id === prepared.id ? { ...item, progress, state: "uploading" } : item));
       });
-      setPendingFiles((current) => current.map((item) => item.id === prepared.id
-        ? { ...item, attachmentId: uploaded.attachment.id, progress: 100, state: "ready" }
-        : item));
+      setPendingFiles((current) => current.map((item) => item.id === prepared.id ? { ...item, attachmentId: uploaded.attachment.id, progress: 100, state: "ready" } : item));
       return uploaded.attachment.id;
-    } catch (error) {
-      setPendingFiles((current) => current.map((item) => item.id === prepared.id
-        ? { ...item, error: errorMessage(error, `Upload failed for ${prepared.file.name}`), state: "error" }
-        : item));
-      throw error;
+    } catch (reason) {
+      setPendingFiles((current) => current.map((item) => item.id === prepared.id ? { ...item, error: supportError(reason, `Upload failed for ${prepared.file.name}.`), state: "error" } : item));
+      throw reason;
     }
   }
 
-  async function refreshConversationData() {
-    await Promise.allSettled([
-      messagesResource.refresh(),
-      conversationResource.refresh(),
-      listResource.refresh(),
-      activityResource.refresh(),
-      todosResource.refresh(),
-    ]);
-  }
-
-  async function sendMessage(body: string, internalNote: boolean): Promise<boolean> {
+  async function sendMessage(body: string): Promise<boolean> {
     if (!selectedId || sending) return false;
-    if (internalNote && pendingFiles.length) {
-      setNotice("Internal notes cannot include customer-visible attachments.");
-      return false;
-    }
-
     setSending(true);
     setNotice("");
     try {
-      if (internalNote) {
-        await supportRequest(`conversations/${selectedId}/notes`, {
-          method: "POST",
-          body: JSON.stringify({ body }),
-        });
-      } else {
-        // The same UUID survives upload or send failures. Retrying therefore
-        // cannot create a duplicate customer-visible reply.
-        retryClientMessageId.current ||= crypto.randomUUID();
-        const prepared = [...pendingFiles];
-        const uploadResults = await Promise.allSettled(prepared.map((file) => uploadPreparedFile(selectedId, file)));
-        const failedUpload = uploadResults.find((result) => result.status === "rejected");
-        if (failedUpload?.status === "rejected") throw failedUpload.reason;
-        const attachmentIds = uploadResults.map((result) => result.status === "fulfilled" ? result.value : "").filter(Boolean);
-
-        await supportRequest(`conversations/${selectedId}/messages`, {
-          method: "POST",
-          body: JSON.stringify({ body, attachmentIds, clientMessageId: retryClientMessageId.current }),
-          signal: AbortSignal.timeout(45_000),
-        });
-      }
-
+      retryClientMessageId.current ||= createSupportClientMessageId();
+      const uploadResults = await Promise.allSettled([...pendingFiles].map((file) => uploadPreparedFile(selectedId, file)));
+      const failedUpload = uploadResults.find((result) => result.status === "rejected");
+      if (failedUpload?.status === "rejected") throw failedUpload.reason;
+      const attachmentIds = uploadResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      await sendSupportMessage(selectedId, {
+        body,
+        attachmentIds,
+        clientMessageId: retryClientMessageId.current,
+      });
       setPendingFiles([]);
       retryClientMessageId.current = null;
-      void refreshConversationData();
+      await Promise.allSettled([messagesResource.refresh(), conversationResource.refresh(), listResource.refresh()]);
       return true;
-    } catch (error) {
-      setNotice(errorMessage(error, "The reply could not be sent."));
+    } catch (reason) {
+      setNotice(supportError(reason, "Your reply could not be sent. Try again."));
       return false;
     } finally {
       setSending(false);
     }
   }
 
-  async function patchConversation(patch: { status?: SupportStatus; priority?: SupportPriority; assigneeId?: string | null }) {
-    if (!selectedId) return;
-    setNotice("");
-    try {
-      const updated = await supportRequest<ConversationResponse>(`conversations/${selectedId}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      });
-      conversationResource.setData(updated);
-      await Promise.allSettled([listResource.refresh(), activityResource.refresh()]);
-    } catch (error) {
-      setNotice(errorMessage(error, "The request could not be updated."));
-    }
-  }
-
-  async function addTodo(title: string) {
-    if (!selectedId) return;
-    try {
-      await supportRequest(`conversations/${selectedId}/todos`, {
-        method: "POST",
-        body: JSON.stringify({ title }),
-      });
-      await Promise.allSettled([todosResource.refresh(), activityResource.refresh()]);
-    } catch (error) {
-      setNotice(errorMessage(error, "The todo could not be added."));
-      throw error;
-    }
-  }
-
-  async function toggleTodo(todo: SupportTodo) {
-    if (!selectedId) return;
-    try {
-      await supportRequest(`conversations/${selectedId}/todos/${todo.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: todo.status === "done" ? "todo" : "done" }),
-      });
-      await Promise.allSettled([todosResource.refresh(), activityResource.refresh()]);
-    } catch (error) {
-      setNotice(errorMessage(error, "The todo could not be updated."));
-    }
+  async function handleCreated(created: SupportConversation, warning?: string) {
+    setSelectedId(created.id);
+    updateRequestUrl(created.id);
+    setNotice(warning || "Your request was sent to the developer team.");
+    setConversationTail({ key: "root", items: [], nextCursor: null, loaded: false, loading: false, error: null });
+    await listResource.refresh();
   }
 
   return (
-    <div className={styles.supportPage}>
-      <div className={`${styles.workspace} ${selectedId ? styles.hasSelection : ""}`}>
-        <aside className={styles.conversationRail} aria-label="Support requests">
-          <header className={styles.inboxHeader}>
-            <div className={styles.eyebrow}>Customer operations</div>
-            <div className={styles.inboxTitleRow}>
-              <div>
-                <h1>Support</h1>
-                <span>{listResource.error ? "Service unavailable" : `${conversations.length} loaded`}</span>
-              </div>
-              <button className={styles.refreshButton} type="button" onClick={() => void listResource.refresh()} aria-label="Refresh support inbox">
-                <RefreshCw size={16} aria-hidden="true" />
-              </button>
-            </div>
-            <div className={styles.inboxFilters}>
-              <div className={styles.searchWrap}>
-                <Search className={styles.searchIcon} size={16} aria-hidden="true" />
-                <label className="sr-only" htmlFor="admin-support-search">Search request subject or message</label>
-                <input id="admin-support-search" className={styles.search} type="search" placeholder="Search subject or message" value={query} onChange={(event) => setQuery(event.target.value)} />
-              </div>
-              <label className="sr-only" htmlFor="admin-support-status">Filter requests by status</label>
-              <select id="admin-support-status" className={styles.select} value={status} disabled={sending} onChange={(event) => changeStatus(event.target.value as SupportStatus | "")}>
-                <option value="">All statuses</option>
+    <div className={`${styles.supportPage} ${selectedId ? styles.threadOpen : ""}`}>
+      <h1 className="sr-only">Asset Insight support</h1>
+      <header className={styles.pageHeader}>
+        <div>
+          <h2>Support</h2>
+          <p>Get help from the Asset Insight developer team.</p>
+        </div>
+        <div className={styles.pageHeaderActions}>
+          <button className={styles.iconButton} type="button" onClick={() => void listResource.refresh()} aria-label="Refresh your support requests" title="Refresh requests">
+            <RefreshCw size={17} aria-hidden="true" />
+          </button>
+          <button className={styles.button} type="button" onClick={() => setNewRequestOpen(true)}>
+            <Plus size={17} aria-hidden="true" />New request
+          </button>
+        </div>
+      </header>
+
+      <section className={styles.workspace} aria-label="Your support workspace">
+        <aside className={styles.conversationRail} aria-label="Your support requests">
+          <div className={styles.listHeader}>
+            <div><h2>My requests</h2><span>{openCount} active</span></div>
+          </div>
+          <div className={styles.inboxFilters}>
+            <label className={styles.searchWrap}>
+              <span className="sr-only">Search your requests</span>
+              <Search className={styles.searchIcon} size={16} aria-hidden="true" />
+              <input className={styles.search} type="search" placeholder="Search requests" value={query} onChange={(event) => setQuery(event.target.value)} />
+            </label>
+            <label>
+              <span className="sr-only">Filter your requests by status</span>
+              <select className={styles.select} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+                <option value="active">Active</option>
+                <option value="all">All</option>
                 <option value="open">Open</option>
                 <option value="in_progress">In progress</option>
-                <option value="waiting_on_user">Waiting</option>
+                <option value="waiting_on_user">Waiting for you</option>
                 <option value="resolved">Resolved</option>
                 <option value="closed">Closed</option>
               </select>
-            </div>
-          </header>
-          <div className={styles.railTop}><span>Requests</span><span>Newest activity</span></div>
+            </label>
+          </div>
           <div className={styles.conversationListScroller}>
             {listResource.error && !conversations.length ? (
-              <div className={styles.errorState}>
-                <span>The inbox could not be loaded.</span>
+              <div className={styles.errorState} role="alert">
+                <AlertCircle size={22} aria-hidden="true" />
+                <strong>Requests unavailable</strong>
+                <span>{supportError(listResource.error, "Your requests could not be loaded.")}</span>
                 <button type="button" onClick={() => void listResource.refresh()}>Try again</button>
+              </div>
+            ) : !listResource.loading && !conversations.length ? (
+              <div className={styles.emptyList}>
+                <Inbox size={25} aria-hidden="true" />
+                <strong>No support requests yet</strong>
+                <span>Create one when you need help, want to report a problem, or have an idea.</span>
+                <button className={styles.button} type="button" onClick={() => setNewRequestOpen(true)}>Create request</button>
               </div>
             ) : (
               <ConversationList
-                conversations={conversations}
+                conversations={visibleConversations}
                 selectedId={selectedId}
                 loading={listResource.loading}
                 loadingMore={Boolean(activeConversationTail?.loading)}
-                loadMoreError={activeConversationTail?.error ? errorMessage(activeConversationTail.error, "Older requests could not be loaded.") : null}
+                loadMoreError={activeConversationTail?.error ? supportError(activeConversationTail.error, "Older requests could not be loaded.") : null}
                 hasMore={Boolean(conversationNextCursor)}
                 disabled={sending}
                 onSelect={selectConversation}
@@ -579,80 +438,54 @@ export function SupportInbox({ initialRequest = null }: { initialRequest?: strin
           </div>
         </aside>
 
-        <section className={styles.threadPanel} aria-label="Selected support conversation">
-          <MessageThread
-            key={conversation?.id || "empty-thread"}
-            conversation={conversation}
-            messages={messages}
-            loading={conversationResource.loading || messagesResource.loading}
-            messagesError={messagesResource.error ? errorMessage(messagesResource.error, "The conversation messages could not be loaded.") : null}
-            olderMessagesError={activeMessageHead?.error ? errorMessage(activeMessageHead.error, "Older messages could not be loaded.") : null}
-            hasOlderMessages={Boolean(messageNextCursor)}
-            loadingOlderMessages={Boolean(activeMessageHead?.loading)}
-            pendingFiles={pendingFiles}
-            acceptedTypes={[...constraints.imageContentTypes, ...constraints.videoContentTypes].join(",")}
-            sending={sending}
-            onBack={closeConversation}
-            onFiles={addFiles}
-            onRemoveFile={(id) => {
-              retryClientMessageId.current = null;
-              setPendingFiles((current) => current.filter((item) => item.id !== id));
-            }}
-            onDraftChanged={() => { retryClientMessageId.current = null; }}
-            onRetryMessages={() => void messagesResource.refresh()}
-            onLoadOlderMessages={() => void loadOlderMessages()}
-            onSend={sendMessage}
-            onResolve={() => patchConversation({ status: "resolved" })}
-            onOpenDetails={() => setDetailsOpen(true)}
-          />
-        </section>
-
-        <aside className={styles.contextRail} aria-label="Request context">
-          {conversation ? (
-            <RequestContext
-              idPrefix="desktop-request-context"
+        <section className={styles.threadPanel} aria-label="Selected developer conversation">
+          {selectedId && !conversation && conversationResource.error ? (
+            <div className={styles.threadPlaceholder} role="alert">
+              <AlertCircle size={25} aria-hidden="true" />
+              <h2>Request unavailable</h2>
+              <p>{supportError(conversationResource.error, "This request could not be loaded.")}</p>
+              <button className={styles.buttonSecondary} type="button" onClick={() => void conversationResource.refresh()}>Try again</button>
+            </div>
+          ) : (
+            <MessageThread
+              key={conversation?.id || "empty-thread"}
               conversation={conversation}
-              agents={agents}
-              activity={activity}
-              todos={todos}
-              agentsError={agentsResource.error ? errorMessage(agentsResource.error, "Agents could not be loaded.") : null}
-              activityError={activityResource.error ? errorMessage(activityResource.error, "Activity could not be loaded.") : null}
-              todosError={todosResource.error ? errorMessage(todosResource.error, "Todos could not be loaded.") : null}
-              onRetryAgents={() => void agentsResource.refresh()}
-              onRetryActivity={() => void activityResource.refresh()}
-              onRetryTodos={() => void todosResource.refresh()}
-              onPatch={patchConversation}
-              onAddTodo={addTodo}
-              onToggleTodo={toggleTodo}
+              messages={messages}
+              loading={conversationResource.loading || messagesResource.loading}
+              messagesError={messagesResource.error ? supportError(messagesResource.error, "Messages could not be loaded.") : null}
+              olderMessagesError={activeMessageHead?.error ? supportError(activeMessageHead.error, "Older messages could not be loaded.") : null}
+              hasOlderMessages={Boolean(messageNextCursor)}
+              loadingOlderMessages={Boolean(activeMessageHead?.loading)}
+              pendingFiles={pendingFiles}
+              acceptedTypes={[...constraints.imageContentTypes, ...constraints.videoContentTypes].join(",")}
+              sending={sending}
+              onBack={closeConversation}
+              onFiles={addFiles}
+              onRemoveFile={(id) => {
+                retryClientMessageId.current = null;
+                setPendingFiles((current) => current.filter((item) => item.id !== id));
+              }}
+              onDraftChanged={() => { retryClientMessageId.current = null; }}
+              onRetryMessages={() => void messagesResource.refresh()}
+              onLoadOlderMessages={() => void loadOlderMessages()}
+              onSend={sendMessage}
+              onCreateRequest={() => setNewRequestOpen(true)}
             />
-          ) : <div className={styles.empty}>Select a request.</div>}
-        </aside>
-      </div>
+          )}
+        </section>
+      </section>
 
-      {conversation ? (
-        <RequestDetailsDrawer
-          conversation={conversation}
-          agents={agents}
-          activity={activity}
-          todos={todos}
-          agentsError={agentsResource.error ? errorMessage(agentsResource.error, "Agents could not be loaded.") : null}
-          activityError={activityResource.error ? errorMessage(activityResource.error, "Activity could not be loaded.") : null}
-          todosError={todosResource.error ? errorMessage(todosResource.error, "Todos could not be loaded.") : null}
-          onRetryAgents={() => void agentsResource.refresh()}
-          onRetryActivity={() => void activityResource.refresh()}
-          onRetryTodos={() => void todosResource.refresh()}
-          open={detailsOpen}
-          onClose={() => setDetailsOpen(false)}
-          onPatch={patchConversation}
-          onAddTodo={addTodo}
-          onToggleTodo={toggleTodo}
-        />
-      ) : null}
+      <NewSupportRequest
+        open={newRequestOpen}
+        constraints={constraints}
+        onClose={() => setNewRequestOpen(false)}
+        onCreated={handleCreated}
+      />
 
       {notice ? (
-        <div className={styles.notice} role="alert">
+        <div className={styles.notice} role="status" aria-live="polite">
           <span>{notice}</span>
-          <button type="button" onClick={() => setNotice("")} aria-label="Dismiss notification"><X size={15} /></button>
+          <button type="button" onClick={() => setNotice("")} aria-label="Dismiss notification"><X size={15} aria-hidden="true" /></button>
         </div>
       ) : null}
     </div>

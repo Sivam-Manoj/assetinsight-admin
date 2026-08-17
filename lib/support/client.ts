@@ -4,7 +4,18 @@ import type {
   SupportApiErrorPayload,
   SupportAttachment,
   SupportAttachmentResponse,
+  SupportConversation,
+  SupportConversationCreate,
+  SupportConversationCreatedResponse,
+  SupportConversationResponse,
+  SupportConversationsResponse,
+  SupportConstraintsResponse,
   SupportMessageCreate,
+  SupportMessage,
+  SupportMessageResponse,
+  SupportMessagesResponse,
+  SupportReadResponse,
+  SupportUploadConstraints,
 } from "./types";
 
 const SUPPORT_API_ROOT = "/api/admin/support";
@@ -117,6 +128,100 @@ export function createSupportClientMessageId(): string {
 
 export function createSupportMessage(input: Omit<SupportMessageCreate, "clientMessageId">): SupportMessageCreate {
   return { ...input, clientMessageId: createSupportClientMessageId() };
+}
+
+function supportPathWithQuery(
+  path: string,
+  values: Record<string, string | number | undefined>,
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function jsonBody(value: unknown): Pick<RequestInit, "body" | "headers"> {
+  return {
+    body: JSON.stringify(value),
+    headers: { "Content-Type": "application/json" },
+  };
+}
+
+/** Load the server-owned media limits before accepting files in the composer. */
+export async function getSupportConstraints(signal?: AbortSignal): Promise<SupportUploadConstraints> {
+  const response = await supportRequest<SupportConstraintsResponse>("constraints", { signal });
+  return response.constraints;
+}
+
+/** List only requests owned by the currently authenticated admin account. */
+export function listSupportConversations(
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<SupportConversationsResponse> {
+  return supportRequest<SupportConversationsResponse>(
+    supportPathWithQuery("conversations", { limit: 50, cursor }),
+    { signal },
+  );
+}
+
+export function createSupportConversation(
+  input: SupportConversationCreate,
+  signal?: AbortSignal,
+): Promise<SupportConversationCreatedResponse> {
+  return supportRequest<SupportConversationCreatedResponse>("conversations", {
+    method: "POST",
+    ...jsonBody(input),
+    signal,
+  });
+}
+
+export async function getSupportConversation(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<SupportConversation> {
+  const response = await supportRequest<SupportConversationResponse>(
+    `conversations/${encodeURIComponent(conversationId)}`,
+    { signal },
+  );
+  return response.conversation;
+}
+
+export function listSupportMessages(
+  conversationId: string,
+  before?: string,
+  signal?: AbortSignal,
+): Promise<SupportMessagesResponse> {
+  return supportRequest<SupportMessagesResponse>(
+    supportPathWithQuery(
+      `conversations/${encodeURIComponent(conversationId)}/messages`,
+      { limit: 50, before },
+    ),
+    { signal },
+  );
+}
+
+export async function sendSupportMessage(
+  conversationId: string,
+  input: SupportMessageCreate,
+  signal?: AbortSignal,
+): Promise<SupportMessage> {
+  const response = await supportRequest<SupportMessageResponse>(
+    `conversations/${encodeURIComponent(conversationId)}/messages`,
+    { method: "POST", ...jsonBody(input), signal },
+  );
+  return response.message;
+}
+
+export function markSupportConversationRead(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<SupportReadResponse> {
+  return supportRequest<SupportReadResponse>(
+    `conversations/${encodeURIComponent(conversationId)}/read`,
+    { method: "POST", ...jsonBody({}), signal },
+  );
 }
 
 function isNonEmptyString(value: unknown): value is string {

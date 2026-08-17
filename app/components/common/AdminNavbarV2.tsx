@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChart3,
   CheckCircle2,
   FileCheck2,
   FileClock,
@@ -15,7 +14,6 @@ import {
   MessageSquareText,
   Search,
   Shield,
-  Smartphone,
   Users,
   X,
   type LucideIcon,
@@ -163,13 +161,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       { href: "/crm", label: "CRM", icon: Headphones },
       { href: "/support", label: "Support", icon: MessageSquareText },
       { href: "/spec-sheet", label: "CR Management", icon: ListChecks },
-      ...(role === "superadmin"
-        ? [{ href: "/revenue-radar", label: "Revenue Radar", icon: BarChart3 }]
-        : []),
       { href: "/approvals", label: "Released Appraisals", icon: CheckCircle2 },
-      ...(role === "superadmin"
-        ? [{ href: "/apk-manager", label: "APK Manager", icon: Smartphone }]
-        : []),
       ...(role === "superadmin"
         ? [{ href: "/api", label: "API", icon: KeyRound }]
         : []),
