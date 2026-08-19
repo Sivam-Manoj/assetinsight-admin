@@ -105,3 +105,44 @@ export type PreviewReportDetailResponse = {
   };
   preview: ReportPreviewPayload;
 };
+
+export type DraftPreviewStatus =
+  | "idle"
+  | "queued"
+  | "processing"
+  | "ready"
+  | "error";
+
+export type DraftPreviewSummary = {
+  id: string;
+  type: "asset" | "lotListing";
+  title: string;
+  contractNo: string;
+  clientDraftId: string;
+  storageMode: "standard" | "smart_upload";
+  revision: number;
+  lotCount: number;
+  imageCount: number;
+  videoCount: number;
+  thumbnailUrl: string | null;
+  previewStatus: DraftPreviewStatus;
+  previewReportId: string | null;
+  previewJobId: string | null;
+  previewError: string | null;
+  previewRequestedRevision: number | null;
+  previewProcessedRevision: number | null;
+  previewRequestedAt: string | null;
+  previewReadyAt: string | null;
+  creator: PreviewReportCreator | null;
+  creatorDisplay: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DraftPreviewsResponse = {
+  items: DraftPreviewSummary[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+};

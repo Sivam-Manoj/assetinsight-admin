@@ -54,6 +54,17 @@ const PreviewReportDrawer = dynamic(() => import("./PreviewReportDrawer"), {
   loading: () => null,
 });
 
+const DraftPreviewsPanel = dynamic(() => import("./DraftPreviewsPanel"), {
+  ssr: false,
+  loading: () => (
+    <Stack spacing={1} sx={{ mt: 2.5 }}>
+      {Array.from({ length: 6 }).map((_, index) => (
+        <Skeleton key={index} variant="rounded" height={82} />
+      ))}
+    </Stack>
+  ),
+});
+
 const EMPTY_STAGE_COUNTS: Record<PreviewWorkflowStage, number> = {
   preparing_preview: 0,
   preview_ready: 0,
@@ -201,6 +212,7 @@ function ReportCard({
 }
 
 export default function PreviewReportsPage() {
+  const [viewMode, setViewMode] = useState<"reports" | "drafts">("reports");
   const [data, setData] = useState<PreviewReportsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -217,6 +229,7 @@ export default function PreviewReportsPage() {
   const [limit, setLimit] = useState(25);
   const [reloadToken, setReloadToken] = useState(0);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [selectedReportReadOnly, setSelectedReportReadOnly] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PreviewReportSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -236,6 +249,7 @@ export default function PreviewReportsPage() {
   }, [search]);
 
   useEffect(() => {
+    if (viewMode !== "reports") return;
     const controller = new AbortController();
     const initial = !hasLoadedRef.current;
     if (initial) setLoading(true);
@@ -276,7 +290,7 @@ export default function PreviewReportsPage() {
       });
 
     return () => controller.abort();
-  }, [creatorId, debouncedSearch, from, limit, page, reloadToken, reportType, sort, to, workflowStage]);
+  }, [creatorId, debouncedSearch, from, limit, page, reloadToken, reportType, sort, to, viewMode, workflowStage]);
 
   const hasActiveJobs = data?.items.some((item) => item.workflowStage === "preparing_preview" || item.workflowStage === "generating_files");
   useEffect(() => {
@@ -301,6 +315,16 @@ export default function PreviewReportsPage() {
     setTo("");
     setSort("updated_desc");
     setPage(1);
+  }
+
+  function openReport(reportId: string) {
+    setSelectedReportReadOnly(false);
+    setSelectedReportId(reportId);
+  }
+
+  function openDraftPreview(reportId: string) {
+    setSelectedReportReadOnly(true);
+    setSelectedReportId(reportId);
   }
 
   async function confirmDelete() {
@@ -388,7 +412,9 @@ export default function PreviewReportsPage() {
           <Stack direction="row" alignItems="center" spacing={1}>
             <FileClock size={25} />
             <Typography component="h1" className="desktop-page-title" sx={{ fontSize: { xs: 26, md: 32 }, fontWeight: 760 }}>Preview Reports</Typography>
-            <Chip size="small" label={data?.total ?? 0} sx={{ borderRadius: "4px", fontWeight: 750 }} />
+            {viewMode === "reports" ? (
+              <Chip size="small" label={data?.total ?? 0} sx={{ borderRadius: "4px", fontWeight: 750 }} />
+            ) : null}
           </Stack>
           <Typography sx={{ mt: 0.5, color: "text.secondary", fontSize: 14 }}>Monitor every user preview, file-generation job, approval handoff, and release wait.</Typography>
         </Box>
@@ -396,6 +422,28 @@ export default function PreviewReportsPage() {
           Refresh
         </Button>
       </Stack>
+
+      <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
+        <Button
+          variant={viewMode === "reports" ? "contained" : "outlined"}
+          onClick={() => setViewMode("reports")}
+          sx={{ borderRadius: "4px" }}
+        >
+          Report previews
+        </Button>
+        <Button
+          variant={viewMode === "drafts" ? "contained" : "outlined"}
+          onClick={() => setViewMode("drafts")}
+          sx={{ borderRadius: "4px" }}
+        >
+          Draft previews
+        </Button>
+      </Stack>
+
+      {viewMode === "drafts" ? (
+        <DraftPreviewsPanel onOpenPreview={openDraftPreview} />
+      ) : (
+        <>
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(3, minmax(0, 1fr))", xl: "repeat(6, minmax(0, 1fr))" }, gap: 1, mt: 2.5 }}>
         {visibleStageCards.map((stage) => {
@@ -444,7 +492,7 @@ export default function PreviewReportsPage() {
                 <ReportCard
                   key={report.id}
                   report={report}
-                  onOpen={() => setSelectedReportId(report.id)}
+                  onOpen={() => openReport(report.id)}
                   onReminder={() => openReminder(report)}
                   onDelete={() => { setDeleteError(""); setDeleteTarget(report); }}
                 />
@@ -466,7 +514,7 @@ export default function PreviewReportsPage() {
                       <TableCell><WorkflowBadge report={report} /></TableCell>
                       <TableCell align="center">
                         <Stack direction="row" justifyContent="center" spacing={0.75}>
-                          <Tooltip title="Open complete preview"><IconButton aria-label={`Open ${report.title}`} onClick={() => setSelectedReportId(report.id)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}><Eye size={17} /></IconButton></Tooltip>
+                          <Tooltip title="Open complete preview"><IconButton aria-label={`Open ${report.title}`} onClick={() => openReport(report.id)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}><Eye size={17} /></IconButton></Tooltip>
                           <Tooltip title={report.reminderEligible ? "Email a review reminder" : report.reminderIneligibleReason || "A reminder is not available yet."}>
                             <span><IconButton aria-label={`Remind owner about ${report.title}`} disabled={!report.reminderEligible} onClick={() => openReminder(report)} sx={{ border: "1px solid", borderColor: report.reminderEligible ? "warning.light" : "divider", borderRadius: "4px", color: "warning.dark" }}><BellRing size={17} /></IconButton></span>
                           </Tooltip>
@@ -490,11 +538,17 @@ export default function PreviewReportsPage() {
           <Pagination count={data.pages} page={data.page} onChange={(_, value) => setPage(value)} color="primary" shape="rounded" />
         </Stack>
       ) : null}
+        </>
+      )}
 
       <PreviewReportDrawer
         open={Boolean(selectedReportId)}
         reportId={selectedReportId}
-        onClose={() => setSelectedReportId(null)}
+        readOnly={selectedReportReadOnly}
+        onClose={() => {
+          setSelectedReportId(null);
+          setSelectedReportReadOnly(false);
+        }}
         onTransferred={() => setReloadToken((value) => value + 1)}
         onDeleted={() => {
           setSelectedReportId(null);

@@ -47,6 +47,7 @@ type Props = {
   onClose: () => void;
   onTransferred?: () => void;
   onDeleted?: () => void;
+  readOnly?: boolean;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -175,6 +176,7 @@ export default function PreviewReportDrawer({
   onClose,
   onTransferred,
   onDeleted,
+  readOnly = false,
 }: Props) {
   const [payload, setPayload] = useState<PreviewReportDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -359,7 +361,7 @@ export default function PreviewReportDrawer({
               </Typography>
             </Box>
             <Stack direction="row" alignItems="center" spacing={1}>
-              {payload ? (
+              {payload && !readOnly ? (
                 <Tooltip
                   title={
                     payload.report.transferEligible
@@ -381,7 +383,7 @@ export default function PreviewReportDrawer({
                   </span>
                 </Tooltip>
               ) : null}
-              {payload ? (
+              {payload && !readOnly ? (
                 <Tooltip
                   title={
                     payload.report.deleteEligible
