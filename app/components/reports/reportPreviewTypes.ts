@@ -19,6 +19,7 @@ export type AssetAdminScheduleFileSummary = {
   total_risk_weighted_value: number | null;
   file_risk_multiplier: number | null;
   commission_percent_no_guarantee: number | null;
+  offer2_nmg_percent: number;
   capped_threshold_percent: number;
 };
 
@@ -72,4 +73,5 @@ export type ReportPreviewPayload = {
   currencyCode?: string;
   assetScheduleSheet?: AssetAdminScheduleSheet;
   files_regeneration_queued?: boolean;
+  files_regeneration_coalesced?: boolean;
 };

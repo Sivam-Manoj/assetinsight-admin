@@ -105,13 +105,20 @@ function divideOrNull(numerator: number, denominator: number) {
   return numerator / denominator;
 }
 
+function normalizeRatio(value: number | null | undefined, fallback: number) {
+  const parsed = toNumberOrNull(value);
+  if (parsed === null) return fallback;
+  return Math.max(0, Math.min(1, parsed));
+}
+
 function normalizeFileSummary(fileSummary: AssetAdminScheduleFileSummary | undefined): AssetAdminScheduleFileSummary {
   return {
     buyers_premium_basis: fileSummary?.buyers_premium_basis === "capped" ? "capped" : "uncapped",
     total_risk_weighted_value: toNumberOrNull(fileSummary?.total_risk_weighted_value),
     file_risk_multiplier: toNumberOrNull(fileSummary?.file_risk_multiplier),
     commission_percent_no_guarantee: toNumberOrNull(fileSummary?.commission_percent_no_guarantee),
-    capped_threshold_percent: toNumberOrNull(fileSummary?.capped_threshold_percent) ?? 0.1,
+    offer2_nmg_percent: normalizeRatio(fileSummary?.offer2_nmg_percent, 0.785),
+    capped_threshold_percent: normalizeRatio(fileSummary?.capped_threshold_percent, 0.1),
   };
 }
 
@@ -167,7 +174,7 @@ function recalculateRow(
   };
 }
 
-function getRowAppraiserAverage(
+export function getRowAppraiserAverage(
   row: AssetAdminScheduleRow,
   evaluatorColumns: AssetAdminScheduleEvaluatorColumn[]
 ) {
@@ -243,7 +250,7 @@ export function deriveAssetScheduleSummary(sheet: AssetAdminScheduleSheet): Asse
   const uncappedOffer1CashOffer = uncappedGet * 0.9;
   const uncappedOffer1TotalCosts = uncappedOffer1CashOffer + uncappedCosts;
   const uncappedOffer1McdTake = uncappedGet - uncappedOffer1TotalCosts;
-  const uncappedOffer2Nmg = uncappedGet * 0.785;
+  const uncappedOffer2Nmg = uncappedGet * sheet.file_summary.offer2_nmg_percent;
   const uncappedOffer2Threshold = uncappedOffer2Nmg * 0.15;
   const uncappedOffer2UpperValue = uncappedOffer2Nmg + uncappedOffer2Threshold;
   const uncappedOffer2TotalCosts = uncappedOffer2Nmg + uncappedCosts;

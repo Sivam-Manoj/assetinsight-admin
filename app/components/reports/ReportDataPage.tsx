@@ -542,9 +542,11 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
         const nextPreview = payload as ReportPreviewPayload;
         setPreview(nextPreview);
         setAssetSheetSaveSuccess(
-          nextPreview.files_regeneration_queued
-            ? "Changes saved. Files are regenerating for My Reports."
-            : "Changes saved."
+          nextPreview.files_regeneration_coalesced
+            ? "Changes saved. The latest edits will regenerate after the current file run."
+            : nextPreview.files_regeneration_queued
+              ? "Changes saved. Files are regenerating for My Reports."
+              : "Changes saved."
         );
       } catch (saveError) {
         setAssetSheetSaveError(

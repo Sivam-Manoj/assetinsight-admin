@@ -57,6 +57,7 @@ import {
   deriveAssetScheduleSummary,
   formatCurrencyCell,
   formatPercentCell,
+  getRowAppraiserAverage,
   makeEvaluatorColumnId,
   recalculateAssetScheduleSheet,
 } from "@/app/components/reports/assetScheduleSheetUtils";
@@ -112,30 +113,6 @@ function CompactReadOnlyCell({
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {displayValue}
-      </Box>
-    </Tooltip>
-  );
-}
-
-function LongTextCell({ value }: { value: string | number | null | undefined }) {
-  const displayValue = readOnlyValue(value);
-
-  return (
-    <Tooltip title={displayValue === "-" ? "" : displayValue} arrow enterDelay={350}>
-      <Box
-        sx={{
-          display: "-webkit-box",
-          width: "100%",
-          overflow: "hidden",
-          color: "text.primary",
-          fontSize: 13,
-          lineHeight: 1.45,
-          WebkitBoxOrient: "vertical",
-          WebkitLineClamp: 3,
-          overflowWrap: "anywhere",
         }}
       >
         {displayValue}
@@ -323,6 +300,98 @@ const EvaluatorNameField = memo(function EvaluatorNameField({
   );
 });
 
+const TextDraftField = memo(function TextDraftField({
+  value,
+  onCommit,
+  ariaLabel,
+  placeholder,
+  multiline = false,
+  minRows = 1,
+  minWidth = 0,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  ariaLabel: string;
+  placeholder?: string;
+  multiline?: boolean;
+  minRows?: number;
+  minWidth?: number | string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const revertOnBlurRef = useRef(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(value);
+  }, [focused, value]);
+
+  const commitDraft = useCallback(() => {
+    setFocused(false);
+    if (revertOnBlurRef.current) {
+      revertOnBlurRef.current = false;
+      setDraft(value);
+      return;
+    }
+
+    if (draft !== value) onCommit(draft);
+  }, [draft, onCommit, value]);
+
+  return (
+    <TextField
+      value={draft}
+      onFocus={() => {
+        revertOnBlurRef.current = false;
+        setFocused(true);
+      }}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commitDraft}
+      onKeyDown={(event) => {
+        if (!multiline && event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          revertOnBlurRef.current = true;
+          setDraft(value);
+          event.currentTarget.blur();
+        }
+      }}
+      multiline={multiline}
+      minRows={multiline ? minRows : undefined}
+      maxRows={multiline ? Math.max(minRows, 4) : undefined}
+      placeholder={placeholder}
+      size="small"
+      fullWidth
+      autoComplete="off"
+      inputProps={{ "aria-label": ariaLabel }}
+      sx={{
+        minWidth,
+        "& .MuiOutlinedInput-root": {
+          minHeight: multiline ? undefined : 40,
+          borderRadius: 1,
+          bgcolor: "background.paper",
+        },
+        "& .MuiOutlinedInput-input": {
+          px: 1.25,
+          py: 0.9,
+          fontSize: { xs: 16, md: 13 },
+        },
+      }}
+    />
+  );
+});
+
+function useStableEvaluatorColumns(columns: AssetAdminScheduleEvaluatorColumn[]) {
+  const stableRef = useRef(columns);
+  const current = stableRef.current;
+  const unchanged =
+    current.length === columns.length &&
+    current.every(
+      (column, index) =>
+        column.id === columns[index]?.id && column.name === columns[index]?.name
+    );
+
+  if (!unchanged) stableRef.current = columns.map((column) => ({ ...column }));
+  return stableRef.current;
+}
+
 function LabeledValue({
   label,
   value,
@@ -446,28 +515,47 @@ const MobileLotCard = memo(function MobileLotCard({
               gap: 1.25,
             }}
           >
-            <LabeledValue label="Year" value={row.year} />
-            <LabeledValue label="Make" value={row.make} />
-            <LabeledValue label="Model" value={row.model} />
-            <LabeledValue label="Serial Number" value={row.serial_number} />
-            <LabeledValue label="CR Details" value={row.cr_details} />
-            <LabeledValue label="Condition (1-5)" value={row.condition_score} />
+            {([
+              ["Asset Category", "asset_category"],
+              ["Year", "year"],
+              ["Make", "make"],
+              ["Model", "model"],
+              ["Serial Number", "serial_number"],
+              ["Condition (1-5)", "condition_score"],
+            ] as const).map(([label, key]) => (
+              <Box key={key} sx={{ minWidth: 0 }}>
+                <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
+                  {label}
+                </Typography>
+                <TextDraftField
+                  value={row[key]}
+                  onCommit={(next) => onUpdateRow(row.lot_id, key, next)}
+                  ariaLabel={`${label} for ${row.asset_id || row.lot_id}`}
+                />
+              </Box>
+            ))}
+          </Box>
+          <Box sx={{ mt: 1.25 }}>
+            <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
+              CR Details
+            </Typography>
+            <TextDraftField
+              value={row.cr_details}
+              onCommit={(next) => onUpdateRow(row.lot_id, "cr_details", next)}
+              ariaLabel={`CR details for ${row.asset_id || row.lot_id}`}
+              multiline
+              minRows={3}
+            />
           </Box>
           <Box sx={{ mt: 1.25 }}>
             <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
               Location (City, State/Prov)
             </Typography>
-            <TextField
+            <TextDraftField
               value={row.location}
-              onChange={(event) => onUpdateRow(row.lot_id, "location", event.target.value)}
+              onCommit={(next) => onUpdateRow(row.lot_id, "location", next)}
               placeholder="City, State/Prov"
-              size="small"
-              fullWidth
-              inputProps={{ "aria-label": `Location for ${row.asset_id || row.lot_id}` }}
-              sx={{
-                "& .MuiOutlinedInput-root": { minHeight: 44, borderRadius: 1 },
-                "& .MuiOutlinedInput-input": { fontSize: 16 },
-              }}
+              ariaLabel={`Location for ${row.asset_id || row.lot_id}`}
             />
           </Box>
           <Button
@@ -516,6 +604,10 @@ const MobileLotCard = memo(function MobileLotCard({
                 />
               </Box>
             ))}
+            <LabeledValue
+              label="Average"
+              value={formatCurrencyCell(getRowAppraiserAverage(row, evaluatorColumns))}
+            />
           </Box>
         </MobileSection>
 
@@ -576,19 +668,13 @@ const MobileLotCard = memo(function MobileLotCard({
             <Typography sx={{ mb: 0.5, color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
               Notes
             </Typography>
-            <TextField
+            <TextDraftField
+              value={row.notes}
+              onCommit={(next) => onUpdateRow(row.lot_id, "notes", next)}
+              placeholder="Notes"
+              ariaLabel={`Notes for ${row.asset_id || row.lot_id}`}
               multiline
               minRows={3}
-              value={row.notes}
-              onChange={(event) => onUpdateRow(row.lot_id, "notes", event.target.value)}
-              placeholder="Notes"
-              size="small"
-              fullWidth
-              inputProps={{ "aria-label": `Notes for ${row.asset_id || row.lot_id}` }}
-              sx={{
-                "& .MuiOutlinedInput-root": { borderRadius: 1 },
-                "& .MuiOutlinedInput-input": { fontSize: 16 },
-              }}
             />
           </Box>
         </MobileSection>
@@ -679,20 +765,40 @@ export default function AssetScheduleSheet({
   const [gallery, setGallery] = useState<{ title: string; urls: string[]; index: number } | null>(null);
   const [activeTab, setActiveTab] = useState<AssetSheetTab>("scheduleA");
   const [selectedMobileLot, setSelectedMobileLot] = useState(0);
+  const sheetRef = useRef(sheet);
+  const reportIdRef = useRef(preview.reportId);
+  const dirtyRef = useRef(false);
 
   useEffect(() => {
-    setSheet(preview.assetScheduleSheet ? cloneAssetScheduleSheet(preview.assetScheduleSheet) : null);
-    setActiveTab("scheduleA");
-    setSelectedMobileLot(0);
-  }, [preview]);
+    const reportChanged = reportIdRef.current !== preview.reportId;
+    if (reportChanged || !dirtyRef.current) {
+      const nextSheet = preview.assetScheduleSheet
+        ? cloneAssetScheduleSheet(preview.assetScheduleSheet)
+        : null;
+      sheetRef.current = nextSheet;
+      setSheet(nextSheet);
+    }
+    if (reportChanged) {
+      reportIdRef.current = preview.reportId;
+      dirtyRef.current = false;
+      setActiveTab("scheduleA");
+      setSelectedMobileLot(0);
+    }
+  }, [preview.assetScheduleSheet, preview.reportId]);
 
   const derivedSummary = useMemo(() => (sheet ? deriveAssetScheduleSummary(sheet) : null), [sheet]);
+  const stableEvaluatorColumns = useStableEvaluatorColumns(sheet?.evaluator_columns ?? []);
 
   const updateSheet = useCallback((mutator: (draft: AssetAdminScheduleSheet) => AssetAdminScheduleSheet) => {
-    setSheet((current) => {
-      if (!current) return current;
-      return recalculateAssetScheduleSheet(mutator(cloneAssetScheduleSheet(current)));
-    });
+    const current = sheetRef.current;
+    if (!current) return;
+
+    dirtyRef.current = true;
+    // Keep the ref current synchronously so a Save click immediately following
+    // an input blur always includes that field's last edit.
+    const nextSheet = recalculateAssetScheduleSheet(mutator(cloneAssetScheduleSheet(current)));
+    sheetRef.current = nextSheet;
+    setSheet(nextSheet);
   }, []);
 
   const updateEvaluatorName = useCallback((columnId: string, name: string) => {
@@ -761,8 +867,13 @@ export default function AssetScheduleSheet({
   }, [updateSheet]);
 
   async function handleSave() {
-    if (!sheet) return;
-    await onSave(recalculateAssetScheduleSheet(sheet));
+    const current = sheetRef.current;
+    if (!current) return;
+    const payload = recalculateAssetScheduleSheet(current);
+    await onSave(payload);
+    dirtyRef.current = false;
+    sheetRef.current = payload;
+    setSheet(payload);
   }
 
   const openGallery = useCallback((title: string, urls: string[]) => {
@@ -795,17 +906,115 @@ export default function AssetScheduleSheet({
   }, []);
 
   const scheduleColumns = useMemo<ColumnDef<AssetAdminScheduleRow>[]>(() => {
-    if (!sheet) return [];
-
     const staticColumns: ColumnDef<AssetAdminScheduleRow>[] = [
       { id: "asset_id", accessorKey: "asset_id", header: "Asset ID", size: 120, minSize: 120, maxSize: 120, cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_id} /> },
-      { id: "asset_category", accessorKey: "asset_category", header: "Asset Category", size: 168, minSize: 168, maxSize: 168, cell: ({ row }) => <LongTextCell value={row.original.asset_category} /> },
-      { id: "year", accessorKey: "year", header: "Year", size: 88, minSize: 88, maxSize: 88, cell: ({ row }) => <CompactReadOnlyCell value={row.original.year} /> },
-      { id: "make", accessorKey: "make", header: "Make", size: 120, minSize: 120, maxSize: 120, cell: ({ row }) => <CompactReadOnlyCell value={row.original.make} /> },
-      { id: "model", accessorKey: "model", header: "Model", size: 132, minSize: 132, maxSize: 132, cell: ({ row }) => <CompactReadOnlyCell value={row.original.model} /> },
-      { id: "serial_number", accessorKey: "serial_number", header: "Serial Number", size: 152, minSize: 152, maxSize: 152, cell: ({ row }) => <LongTextCell value={row.original.serial_number} /> },
-      { id: "cr_details", accessorKey: "cr_details", header: "CR Details", size: 240, minSize: 240, maxSize: 240, cell: ({ row }) => <LongTextCell value={row.original.cr_details} /> },
-      { id: "condition_score", accessorKey: "condition_score", header: "Condition (1-5)", size: 128, minSize: 128, maxSize: 128, cell: ({ row }) => <CompactReadOnlyCell value={row.original.condition_score} /> },
+      {
+        id: "asset_category",
+        accessorKey: "asset_category",
+        header: "Asset Category",
+        size: 184,
+        minSize: 184,
+        maxSize: 184,
+        cell: ({ row }) => (
+          <TextDraftField
+            value={row.original.asset_category}
+            onCommit={(next) => updateRowField(row.original.lot_id, "asset_category", next)}
+            ariaLabel={`Asset category for ${row.original.asset_id || row.original.lot_id}`}
+          />
+        ),
+      },
+      {
+        id: "year",
+        accessorKey: "year",
+        header: "Year",
+        size: 104,
+        minSize: 104,
+        maxSize: 104,
+        cell: ({ row }) => (
+          <TextDraftField
+            value={row.original.year}
+            onCommit={(next) => updateRowField(row.original.lot_id, "year", next)}
+            ariaLabel={`Year for ${row.original.asset_id || row.original.lot_id}`}
+          />
+        ),
+      },
+      {
+        id: "make",
+        accessorKey: "make",
+        header: "Make",
+        size: 136,
+        minSize: 136,
+        maxSize: 136,
+        cell: ({ row }) => (
+          <TextDraftField
+            value={row.original.make}
+            onCommit={(next) => updateRowField(row.original.lot_id, "make", next)}
+            ariaLabel={`Make for ${row.original.asset_id || row.original.lot_id}`}
+          />
+        ),
+      },
+      {
+        id: "model",
+        accessorKey: "model",
+        header: "Model",
+        size: 152,
+        minSize: 152,
+        maxSize: 152,
+        cell: ({ row }) => (
+          <TextDraftField
+            value={row.original.model}
+            onCommit={(next) => updateRowField(row.original.lot_id, "model", next)}
+            ariaLabel={`Model for ${row.original.asset_id || row.original.lot_id}`}
+          />
+        ),
+      },
+      {
+        id: "serial_number",
+        accessorKey: "serial_number",
+        header: "Serial Number",
+        size: 184,
+        minSize: 184,
+        maxSize: 184,
+        cell: ({ row }) => (
+          <TextDraftField
+            value={row.original.serial_number}
+            onCommit={(next) => updateRowField(row.original.lot_id, "serial_number", next)}
+            ariaLabel={`Serial number for ${row.original.asset_id || row.original.lot_id}`}
+          />
+        ),
+      },
+      {
+        id: "cr_details",
+        accessorKey: "cr_details",
+        header: "CR Details",
+        size: 280,
+        minSize: 280,
+        maxSize: 280,
+        cell: ({ row }) => (
+          <TextDraftField
+            value={row.original.cr_details}
+            onCommit={(next) => updateRowField(row.original.lot_id, "cr_details", next)}
+            ariaLabel={`CR details for ${row.original.asset_id || row.original.lot_id}`}
+            multiline
+            minRows={2}
+          />
+        ),
+      },
+      {
+        id: "condition_score",
+        accessorKey: "condition_score",
+        header: "Condition (1-5)",
+        size: 144,
+        minSize: 144,
+        maxSize: 144,
+        cell: ({ row }) => (
+          <TextDraftField
+            value={row.original.condition_score}
+            onCommit={(next) => updateRowField(row.original.lot_id, "condition_score", next)}
+            ariaLabel={`Condition for ${row.original.asset_id || row.original.lot_id}`}
+          />
+        ),
+      },
       {
         id: "location",
         accessorKey: "location",
@@ -814,17 +1023,11 @@ export default function AssetScheduleSheet({
         minSize: 220,
         maxSize: 220,
         cell: ({ row }) => (
-          <TextField
+          <TextDraftField
             value={row.original.location}
-            onChange={(event) => updateRowField(row.original.lot_id, "location", event.target.value)}
+            onCommit={(next) => updateRowField(row.original.lot_id, "location", next)}
             placeholder="City, State/Prov"
-            size="small"
-            variant="outlined"
-            fullWidth
-            sx={{
-              "& .MuiOutlinedInput-root": { minHeight: 40, borderRadius: 1, bgcolor: "background.paper" },
-              "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
-            }}
+            ariaLabel={`Location for ${row.original.asset_id || row.original.lot_id}`}
           />
         ),
       },
@@ -869,7 +1072,7 @@ export default function AssetScheduleSheet({
       { id: "asset_insight", accessorKey: "asset_insight", header: "Asset Insight", size: 176, minSize: 176, maxSize: 176, cell: ({ row }) => <CompactReadOnlyCell value={row.original.asset_insight} accent /> },
     ];
 
-    const evaluatorColumns: ColumnDef<AssetAdminScheduleRow>[] = sheet.evaluator_columns.map((column) => ({
+    const evaluatorColumns: ColumnDef<AssetAdminScheduleRow>[] = stableEvaluatorColumns.map((column) => ({
       id: `eval_${column.id}`,
       header: column.name || "Evaluator",
       size: 152,
@@ -889,6 +1092,20 @@ export default function AssetScheduleSheet({
       ),
     }));
 
+    const evaluatorAverageColumn: ColumnDef<AssetAdminScheduleRow> = {
+      id: "evaluator_average",
+      header: "Average",
+      size: 144,
+      minSize: 144,
+      maxSize: 144,
+      cell: ({ row }) => (
+        <CompactReadOnlyCell
+          value={formatCurrencyCell(getRowAppraiserAverage(row.original, stableEvaluatorColumns))}
+          align="right"
+        />
+      ),
+    };
+
     const resultColumns: ColumnDef<AssetAdminScheduleRow>[] = [
       { id: "low_est_sale_value", accessorKey: "low_est_sale_value", header: "Low Est. Sale Value ($)", size: 160, minSize: 160, maxSize: 160, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.low_est_sale_value)} align="right" /> },
       { id: "high_est_sale_value", accessorKey: "high_est_sale_value", header: "High Est. Sale Value ($)", size: 160, minSize: 160, maxSize: 160, cell: ({ row }) => <CompactReadOnlyCell value={formatCurrencyCell(row.original.high_est_sale_value)} align="right" /> },
@@ -904,18 +1121,13 @@ export default function AssetScheduleSheet({
         minSize: 220,
         maxSize: 220,
         cell: ({ row }) => (
-          <TextField
-            multiline
-            rows={2}
+          <TextDraftField
             value={row.original.notes}
-            onChange={(event) => updateRowField(row.original.lot_id, "notes", event.target.value)}
+            onCommit={(next) => updateRowField(row.original.lot_id, "notes", next)}
             placeholder="Notes"
-            size="small"
-            fullWidth
-            sx={{
-              "& .MuiOutlinedInput-root": { borderRadius: 1, bgcolor: "background.paper" },
-              "& .MuiOutlinedInput-input": { px: 1.25, py: 0.9, fontSize: 13 },
-            }}
+            ariaLabel={`Notes for ${row.original.asset_id || row.original.lot_id}`}
+            multiline
+            minRows={2}
           />
         ),
       },
@@ -968,7 +1180,7 @@ export default function AssetScheduleSheet({
       {
         id: "evaluator_values",
         header: "Evaluator values",
-        columns: evaluatorColumns,
+        columns: [...evaluatorColumns, evaluatorAverageColumn],
       },
       {
         id: "estimated_values",
@@ -991,7 +1203,7 @@ export default function AssetScheduleSheet({
         columns: resultColumns.slice(6),
       },
     ];
-  }, [openGallery, sheet, updateRowField]);
+  }, [openGallery, stableEvaluatorColumns, updateRowField]);
 
   const scheduleTable = useReactTable({
     data: sheet?.rows ?? [],
@@ -1066,12 +1278,31 @@ export default function AssetScheduleSheet({
         ),
       },
       {
+        label: "Offer #2 NMG / Overage %",
+        value: (
+          <SummaryInput
+            value={sheet.file_summary.offer2_nmg_percent * 100}
+            onChange={(next) =>
+              updateFileSummaryField(
+                "offer2_nmg_percent",
+                Math.max(0, Math.min(100, next ?? 78.5)) / 100
+              )
+            }
+            ariaLabel="Offer 2 NMG percent"
+            suffix="%"
+          />
+        ),
+      },
+      {
         label: "Capped Threshold %",
         value: (
           <SummaryInput
             value={sheet.file_summary.capped_threshold_percent * 100}
             onChange={(next) =>
-              updateFileSummaryField("capped_threshold_percent", (next ?? 0) / 100)
+              updateFileSummaryField(
+                "capped_threshold_percent",
+                Math.max(0, Math.min(100, next ?? 10)) / 100
+              )
             }
             ariaLabel="Capped threshold percent"
             suffix="%"
@@ -1083,6 +1314,9 @@ export default function AssetScheduleSheet({
 
   const uncappedRows = useMemo<SummaryRow[]>(() => {
     if (!sheet || !derivedSummary) return [];
+    const offer2PercentLabel = new Intl.NumberFormat("en-CA", {
+      maximumFractionDigits: 2,
+    }).format(sheet.file_summary.offer2_nmg_percent * 100);
     const commissionLabel =
       sheet.file_summary.commission_percent_no_guarantee === null
         ? "Offer #3 Commission"
@@ -1102,7 +1336,7 @@ export default function AssetScheduleSheet({
       { label: "Offer #1 McD Take", value: formatCurrencyCell(derivedSummary.uncapped.offer1_mcd_take) || "-" },
       { label: "Offer #1 ROI", value: formatPercentCell(derivedSummary.uncapped.offer1_roi) || "-" },
       { label: "Offer #1 Risk", value: formatCurrencyCell(derivedSummary.uncapped.offer1_risk) || "-" },
-      { label: "Offer #2 NMG (78.5%)", value: formatCurrencyCell(derivedSummary.uncapped.offer2_nmg) || "-" },
+      { label: `Offer #2 NMG (${offer2PercentLabel}%)`, value: formatCurrencyCell(derivedSummary.uncapped.offer2_nmg) || "-" },
       { label: "Offer #2 Threshold", value: formatCurrencyCell(derivedSummary.uncapped.offer2_threshold) || "-" },
       { label: "Offer #2 Upper Value", value: formatCurrencyCell(derivedSummary.uncapped.offer2_upper_value) || "-" },
       { label: "Offer #2 Total Costs", value: formatCurrencyCell(derivedSummary.uncapped.offer2_total_costs) || "-" },
@@ -1567,7 +1801,7 @@ export default function AssetScheduleSheet({
                     key={sheet.rows[selectedMobileLot].lot_id}
                     row={sheet.rows[selectedMobileLot]}
                     index={selectedMobileLot}
-                    evaluatorColumns={sheet.evaluator_columns}
+                    evaluatorColumns={stableEvaluatorColumns}
                     onUpdateRow={updateRowField}
                     onOpenGallery={openGallery}
                   />
