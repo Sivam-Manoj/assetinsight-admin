@@ -215,7 +215,7 @@ export default function UserProfileDrawer({
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ px: { xs: 2, sm: 3 }, py: 2, borderBottom: 1, borderColor: "divider" }}>
-        <Avatar sx={{ bgcolor: "primary.main", width: 44, height: 44 }}>{initials}</Avatar>
+        <Avatar src={profile?.avatarUrl || undefined} sx={{ bgcolor: "primary.main", width: 44, height: 44 }}>{initials}</Avatar>
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography variant="h6" fontWeight={750} noWrap>{title}</Typography>
           <Typography variant="body2" color="text.secondary" noWrap>{profile?.email || "Review and update safe account details"}</Typography>

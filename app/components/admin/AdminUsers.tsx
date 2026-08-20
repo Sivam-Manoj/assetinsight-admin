@@ -116,7 +116,7 @@ function AssignmentSelect({
 function UserIdentity({ user }: { user: AdminUserListItem }) {
   return (
     <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
-      <Avatar sx={{ width: 38, height: 38, bgcolor: user.isBlocked ? "grey.500" : "primary.main", fontSize: 14 }}>
+      <Avatar src={user.avatarUrl || undefined} sx={{ width: 38, height: 38, bgcolor: user.isBlocked ? "grey.500" : "primary.main", fontSize: 14 }}>
         {initials(user)}
       </Avatar>
       <Box sx={{ minWidth: 0 }}>

@@ -3,6 +3,8 @@ export type AssignmentOption = {
   email: string;
   username?: string;
   companyName?: string;
+  avatarUrl?: string;
+  avatarUploadedAt?: string;
   role?: string;
 };
 
@@ -11,6 +13,8 @@ export type AdminUserListItem = {
   email: string;
   username?: string;
   companyName?: string;
+  avatarUrl?: string;
+  avatarUploadedAt?: string;
   role: string;
   isBlocked: boolean;
   isCrmAgent?: boolean;
