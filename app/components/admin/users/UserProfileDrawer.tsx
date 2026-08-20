@@ -55,6 +55,7 @@ type EditableProfile = {
   crmQuadrant: string;
   crmSpecializations: string[];
   isCrmAgent: boolean;
+  proposalValuationEnabled: boolean;
   reportApprover: string;
   releaseManager: string;
 };
@@ -70,6 +71,7 @@ const EMPTY_PROFILE: EditableProfile = {
   crmQuadrant: "",
   crmSpecializations: [],
   isCrmAgent: false,
+  proposalValuationEnabled: false,
   reportApprover: "",
   releaseManager: "",
 };
@@ -86,6 +88,7 @@ function toEditable(user: AdminUserProfile): EditableProfile {
     crmQuadrant: user.crmQuadrant || "",
     crmSpecializations: Array.isArray(user.crmSpecializations) ? user.crmSpecializations : [],
     isCrmAgent: Boolean(user.isCrmAgent),
+    proposalValuationEnabled: Boolean(user.proposalValuationEnabled),
     reportApprover: assignmentId(user.reportApprover),
     releaseManager: assignmentId(user.releaseManager),
   };
@@ -289,6 +292,31 @@ export default function UserProfileDrawer({
                   {assignmentOptions.map((option) => <MenuItem key={option._id} value={option._id}>{assignmentLabel(option)}</MenuItem>)}
                 </TextField>
               </Box>
+            </Paper>
+
+            <Paper sx={{ p: 2.25 }}>
+              <SectionHeading
+                icon={<ManageAccountsRounded />}
+                title="Report capabilities"
+                description="Control optional report tools available to this user."
+              />
+              <FormControlLabel
+                sx={{ mt: 1.5, alignItems: "flex-start" }}
+                control={
+                  <Switch
+                    checked={form.proposalValuationEnabled}
+                    onChange={(event) => update("proposalValuationEnabled", event.target.checked)}
+                  />
+                }
+                label={
+                  <Box sx={{ pt: 0.25 }}>
+                    <Typography fontWeight={700}>Proposal Valuation</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Allow this user to review and edit Proposal Valuation for Asset reports they own.
+                    </Typography>
+                  </Box>
+                }
+              />
             </Paper>
 
             <Paper sx={{ p: 2.25 }}>

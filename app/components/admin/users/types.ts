@@ -14,6 +14,7 @@ export type AdminUserListItem = {
   role: string;
   isBlocked: boolean;
   isCrmAgent?: boolean;
+  proposalValuationEnabled?: boolean;
   reportApprover?: AssignmentOption | string | null;
   releaseManager?: AssignmentOption | string | null;
   createdAt: string;

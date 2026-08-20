@@ -310,10 +310,10 @@ export default function AdminUsers() {
             <Table size="small" sx={{ tableLayout: "fixed" }}>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ width: "22%" }}>User</TableCell>
-                  <TableCell sx={{ width: "12%" }}>CRM access</TableCell>
-                  <TableCell sx={{ width: "21%" }}>Report approver</TableCell>
-                  <TableCell sx={{ width: "21%" }}>Release manager</TableCell>
+                  <TableCell sx={{ width: "20%" }}>User</TableCell>
+                  <TableCell sx={{ width: "17%" }}>Access</TableCell>
+                  <TableCell sx={{ width: "20%" }}>Report approver</TableCell>
+                  <TableCell sx={{ width: "20%" }}>Release manager</TableCell>
                   <TableCell sx={{ width: "13%" }}>Status</TableCell>
                   <TableCell align="right" sx={{ width: "11%" }}>Actions</TableCell>
                 </TableRow>
@@ -327,9 +327,15 @@ export default function AdminUsers() {
                       <TableRow key={user._id} hover>
                         <TableCell><UserIdentity user={user} /></TableCell>
                         <TableCell>
-                          <Stack direction="row" spacing={0.75} alignItems="center">
-                            <Switch size="small" checked={Boolean(user.isCrmAgent)} disabled={busyUserId === user._id} onChange={() => void patchProfile(user._id, { isCrmAgent: !user.isCrmAgent }, user.isCrmAgent ? "CRM access removed" : "CRM access enabled")} />
-                            <Typography variant="body2">{user.isCrmAgent ? "Agent" : "Off"}</Typography>
+                          <Stack spacing={0.25}>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <Switch size="small" checked={Boolean(user.isCrmAgent)} disabled={busyUserId === user._id} onChange={() => void patchProfile(user._id, { isCrmAgent: !user.isCrmAgent }, user.isCrmAgent ? "CRM access removed" : "CRM access enabled")} />
+                              <Typography variant="caption">CRM</Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <Switch size="small" checked={Boolean(user.proposalValuationEnabled)} disabled={busyUserId === user._id} onChange={() => void patchProfile(user._id, { proposalValuationEnabled: !user.proposalValuationEnabled }, user.proposalValuationEnabled ? "Proposal Valuation disabled" : "Proposal Valuation enabled")} />
+                              <Typography variant="caption">PV</Typography>
+                            </Stack>
                           </Stack>
                         </TableCell>
                         <TableCell><AssignmentSelect label="Report approver" value={assignmentId(user.reportApprover)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { reportApprover: value || null }, "Report approver updated")} /></TableCell>
@@ -366,13 +372,21 @@ export default function AdminUsers() {
                         <AssignmentSelect label="Release manager" value={assignmentId(user.releaseManager)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { releaseManager: value || null }, "Release manager updated")} />
                       </Box>
                     </Box>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" mt={1.25}>
-                      <FormControl size="small">
-                        <Stack direction="row" spacing={0.75} alignItems="center">
-                          <Switch size="small" checked={Boolean(user.isCrmAgent)} disabled={busyUserId === user._id} onChange={() => void patchProfile(user._id, { isCrmAgent: !user.isCrmAgent }, user.isCrmAgent ? "CRM access removed" : "CRM access enabled")} />
-                          <Typography variant="body2">CRM {user.isCrmAgent ? "enabled" : "off"}</Typography>
-                        </Stack>
-                      </FormControl>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" mt={1.25} gap={1}>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 0.25, sm: 1.5 }}>
+                        <FormControl size="small">
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            <Switch size="small" checked={Boolean(user.isCrmAgent)} disabled={busyUserId === user._id} onChange={() => void patchProfile(user._id, { isCrmAgent: !user.isCrmAgent }, user.isCrmAgent ? "CRM access removed" : "CRM access enabled")} />
+                            <Typography variant="body2">CRM</Typography>
+                          </Stack>
+                        </FormControl>
+                        <FormControl size="small">
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            <Switch size="small" checked={Boolean(user.proposalValuationEnabled)} disabled={busyUserId === user._id} onChange={() => void patchProfile(user._id, { proposalValuationEnabled: !user.proposalValuationEnabled }, user.proposalValuationEnabled ? "Proposal Valuation disabled" : "Proposal Valuation enabled")} />
+                            <Typography variant="body2">Proposal Valuation</Typography>
+                          </Stack>
+                        </FormControl>
+                      </Stack>
                       {userActions(user)}
                     </Stack>
                   </Box>
