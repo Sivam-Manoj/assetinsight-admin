@@ -7,6 +7,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   LinearProgress,
   MenuItem,
@@ -32,6 +36,7 @@ import {
   Image as ImageIcon,
   RefreshCw,
   Search,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import type {
@@ -158,11 +163,16 @@ function DraftStatus({ draft }: { draft: DraftPreviewSummary }) {
 function DraftCard({
   draft,
   onOpenPreview,
+  onDelete,
+  deleting,
 }: {
   draft: DraftPreviewSummary;
   onOpenPreview: () => void;
+  onDelete: () => void;
+  deleting: boolean;
 }) {
   const canOpen = isCurrentPreview(draft);
+  const canDelete = !["queued", "processing"].includes(draft.previewStatus);
   return (
     <Box
       sx={{
@@ -213,22 +223,43 @@ function DraftCard({
       <Box sx={{ mt: 1.25 }}>
         <DraftStatus draft={draft} />
       </Box>
-      <Tooltip
-        title={canOpen ? "Inspect the generated draft preview" : "The current draft revision is not ready yet."}
-      >
-        <span>
-          <Button
-            fullWidth
-            variant="outlined"
-            startIcon={<Eye size={16} />}
-            disabled={!canOpen}
-            onClick={onOpenPreview}
-            sx={{ mt: 1.25, borderRadius: "4px" }}
-          >
-            Open draft preview
-          </Button>
-        </span>
-      </Tooltip>
+      {(draft.duplicateLotConflicts?.length || 0) > 0 ? (
+        <Alert severity="warning" sx={{ mt: 1.25, py: 0.25 }}>
+          Duplicate lot detected under this contract. The owner must resolve it before creating the preview.
+        </Alert>
+      ) : null}
+      <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
+        <Tooltip
+          title={canOpen ? "Inspect the generated draft preview" : "The current draft revision is not ready yet."}
+        >
+          <span style={{ flex: 1 }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<Eye size={16} />}
+              disabled={!canOpen}
+              onClick={onOpenPreview}
+              sx={{ borderRadius: "4px" }}
+            >
+              Open preview
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title={canDelete ? "Permanently delete this saved draft" : "Active draft previews cannot be deleted."}>
+          <span>
+            <Button
+              variant="outlined"
+              color="error"
+              disabled={!canDelete || deleting}
+              onClick={onDelete}
+              sx={{ minWidth: 42, px: 1, borderRadius: "4px" }}
+              aria-label={`Delete ${draft.title}`}
+            >
+              {deleting ? <CircularProgress size={16} color="inherit" /> : <Trash2 size={16} />}
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
     </Box>
   );
 }
@@ -245,6 +276,9 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [reloadToken, setReloadToken] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<DraftPreviewSummary | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState("");
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -315,6 +349,26 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
     setReportType("all");
     setPreviewStatus("all");
     setPage(1);
+  }
+
+  async function deleteDraft() {
+    if (!deleteTarget || deletingId) return;
+    setDeletingId(deleteTarget.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/preview-reports/drafts/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.message || "Unable to delete the saved draft.");
+      setDeleteTarget(null);
+      setFeedback("Saved draft deleted permanently.");
+      setReloadToken((value) => value + 1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to delete the saved draft.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -402,6 +456,7 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
       </Box>
 
       {error ? <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert> : null}
+      {feedback ? <Alert severity="success" onClose={() => setFeedback("")} sx={{ mt: 2 }}>{feedback}</Alert> : null}
 
       <Box sx={{ mt: 2 }}>
         {loading ? (
@@ -448,6 +503,8 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
                   key={draft.id}
                   draft={draft}
                   onOpenPreview={() => draft.previewReportId && onOpenPreview(draft.previewReportId)}
+                  onDelete={() => setDeleteTarget(draft)}
+                  deleting={deletingId === draft.id}
                 />
               ))}
             </Box>
@@ -470,8 +527,8 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
                       ["Creator", "20%"],
                       ["Media", "12%"],
                       ["Last saved", "15%"],
-                      ["Preview", "16%"],
-                      ["Action", "7%"],
+                      ["Preview", "14%"],
+                      ["Actions", "9%"],
                     ].map(([label, width]) => (
                       <TableCell key={label} sx={{ width, py: 1.25, fontSize: 12, fontWeight: 750 }}>
                         {label}
@@ -532,21 +589,35 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
                         </TableCell>
                         <TableCell><DraftStatus draft={draft} /></TableCell>
                         <TableCell align="center">
-                          <Tooltip
-                            title={canOpen ? "Inspect generated draft preview" : "The current revision is not ready yet."}
-                          >
-                            <span>
+                          <Stack direction="row" justifyContent="center" spacing={0.75}>
+                            <Tooltip title={canOpen ? "Inspect generated draft preview" : "The current revision is not ready yet."}>
+                              <span>
+                                <Button
+                                  variant="outlined"
+                                  disabled={!canOpen}
+                                  onClick={() => draft.previewReportId && onOpenPreview(draft.previewReportId)}
+                                  sx={{ minWidth: 36, px: 0.75, borderRadius: "4px" }}
+                                  aria-label={`Open ${draft.title}`}
+                                >
+                                  <Eye size={16} />
+                                </Button>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title={["queued", "processing"].includes(draft.previewStatus) ? "Active draft previews cannot be deleted." : "Permanently delete saved draft"}>
+                              <span>
                               <Button
                                 variant="outlined"
-                                disabled={!canOpen}
-                                onClick={() => draft.previewReportId && onOpenPreview(draft.previewReportId)}
-                                sx={{ minWidth: 38, px: 1, borderRadius: "4px" }}
-                                aria-label={`Open ${draft.title}`}
+                                color="error"
+                                disabled={["queued", "processing"].includes(draft.previewStatus) || deletingId === draft.id}
+                                onClick={() => setDeleteTarget(draft)}
+                                sx={{ minWidth: 36, px: 0.75, borderRadius: "4px" }}
+                                aria-label={`Delete ${draft.title}`}
                               >
-                                <Eye size={17} />
+                                {deletingId === draft.id ? <CircularProgress size={15} color="inherit" /> : <Trash2 size={16} />}
                               </Button>
-                            </span>
-                          </Tooltip>
+                              </span>
+                            </Tooltip>
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     );
@@ -593,6 +664,23 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
           />
         </Stack>
       ) : null}
+
+      <Dialog open={Boolean(deleteTarget)} onClose={deletingId ? undefined : () => setDeleteTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete saved draft?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            This permanently removes <strong>{deleteTarget?.title}</strong>
+            {deleteTarget?.contractNo ? ` (contract ${deleteTarget.contractNo})` : ""}, its saved media references,
+            and its generated draft preview. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setDeleteTarget(null)} disabled={Boolean(deletingId)}>Cancel</Button>
+          <Button variant="contained" color="error" startIcon={<Trash2 size={16} />} onClick={() => void deleteDraft()} disabled={Boolean(deletingId)}>
+            Delete draft
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -58,6 +58,7 @@ type EditableProfile = {
   proposalValuationEnabled: boolean;
   reportApprover: string;
   releaseManager: string;
+  previewSupervisor: string;
 };
 
 const EMPTY_PROFILE: EditableProfile = {
@@ -74,6 +75,7 @@ const EMPTY_PROFILE: EditableProfile = {
   proposalValuationEnabled: false,
   reportApprover: "",
   releaseManager: "",
+  previewSupervisor: "",
 };
 
 function toEditable(user: AdminUserProfile): EditableProfile {
@@ -91,6 +93,7 @@ function toEditable(user: AdminUserProfile): EditableProfile {
     proposalValuationEnabled: Boolean(user.proposalValuationEnabled),
     reportApprover: assignmentId(user.reportApprover),
     releaseManager: assignmentId(user.releaseManager),
+    previewSupervisor: assignmentId(user.previewSupervisor),
   };
 }
 
@@ -281,13 +284,28 @@ export default function UserProfileDrawer({
             </Paper>
 
             <Paper sx={{ p: 2.25 }}>
-              <SectionHeading icon={<VerifiedUserRounded />} title="Report workflow" description="Assign the people responsible for approval and release." />
+              <SectionHeading
+                icon={<VerifiedUserRounded />}
+                title="Report workflow"
+                description="Assign approval, release, and saved-work follow-up responsibilities."
+              />
               <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5, mt: 2 }}>
                 <TextField select label="Report approver" value={form.reportApprover} onChange={(event) => update("reportApprover", event.target.value)}>
                   <MenuItem value="">Not assigned</MenuItem>
                   {assignmentOptions.map((option) => <MenuItem key={option._id} value={option._id}>{assignmentLabel(option)}</MenuItem>)}
                 </TextField>
                 <TextField select label="Release manager" value={form.releaseManager} onChange={(event) => update("releaseManager", event.target.value)}>
+                  <MenuItem value="">Not assigned</MenuItem>
+                  {assignmentOptions.map((option) => <MenuItem key={option._id} value={option._id}>{assignmentLabel(option)}</MenuItem>)}
+                </TextField>
+                <TextField
+                  select
+                  label="Preview Supervisor"
+                  value={form.previewSupervisor}
+                  onChange={(event) => update("previewSupervisor", event.target.value)}
+                  helperText="Receives the 12-hour saved-draft and preview reminder for this user."
+                  sx={{ gridColumn: { sm: "1 / -1" } }}
+                >
                   <MenuItem value="">Not assigned</MenuItem>
                   {assignmentOptions.map((option) => <MenuItem key={option._id} value={option._id}>{assignmentLabel(option)}</MenuItem>)}
                 </TextField>

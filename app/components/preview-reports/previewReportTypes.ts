@@ -133,6 +133,15 @@ export type DraftPreviewSummary = {
   previewProcessedRevision: number | null;
   previewRequestedAt: string | null;
   previewReadyAt: string | null;
+  duplicateLotConflicts: Array<{
+    contractNo?: string;
+    lotNumber?: string;
+    sourceType?: string;
+    sourceId?: string;
+    ownerDisplay?: string;
+    message?: string;
+  }>;
+  reviewReminderSentAt: string | null;
   creator: PreviewReportCreator | null;
   creatorDisplay: string;
   createdAt: string;

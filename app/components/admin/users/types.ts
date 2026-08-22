@@ -21,6 +21,7 @@ export type AdminUserListItem = {
   proposalValuationEnabled?: boolean;
   reportApprover?: AssignmentOption | string | null;
   releaseManager?: AssignmentOption | string | null;
+  previewSupervisor?: AssignmentOption | string | null;
   createdAt: string;
   updatedAt?: string;
 };

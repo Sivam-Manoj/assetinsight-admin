@@ -310,18 +310,19 @@ export default function AdminUsers() {
             <Table size="small" sx={{ tableLayout: "fixed" }}>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ width: "20%" }}>User</TableCell>
-                  <TableCell sx={{ width: "17%" }}>Access</TableCell>
-                  <TableCell sx={{ width: "20%" }}>Report approver</TableCell>
-                  <TableCell sx={{ width: "20%" }}>Release manager</TableCell>
-                  <TableCell sx={{ width: "13%" }}>Status</TableCell>
-                  <TableCell align="right" sx={{ width: "11%" }}>Actions</TableCell>
+                  <TableCell sx={{ width: "18%" }}>User</TableCell>
+                  <TableCell sx={{ width: "12%" }}>Access</TableCell>
+                  <TableCell sx={{ width: "17%" }}>Report approver</TableCell>
+                  <TableCell sx={{ width: "17%" }}>Release manager</TableCell>
+                  <TableCell sx={{ width: "17%" }}>Preview Supervisor</TableCell>
+                  <TableCell sx={{ width: "10%" }}>Status</TableCell>
+                  <TableCell align="right" sx={{ width: "9%" }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {loading && rows.length === 0
                   ? Array.from({ length: 6 }, (_, index) => (
-                      <TableRow key={index}>{Array.from({ length: 6 }, (__, cell) => <TableCell key={cell}><Skeleton height={34} /></TableCell>)}</TableRow>
+                      <TableRow key={index}>{Array.from({ length: 7 }, (__, cell) => <TableCell key={cell}><Skeleton height={34} /></TableCell>)}</TableRow>
                     ))
                   : rows.map((user) => (
                       <TableRow key={user._id} hover>
@@ -340,6 +341,7 @@ export default function AdminUsers() {
                         </TableCell>
                         <TableCell><AssignmentSelect label="Report approver" value={assignmentId(user.reportApprover)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { reportApprover: value || null }, "Report approver updated")} /></TableCell>
                         <TableCell><AssignmentSelect label="Release manager" value={assignmentId(user.releaseManager)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { releaseManager: value || null }, "Release manager updated")} /></TableCell>
+                        <TableCell><AssignmentSelect label="Preview Supervisor" value={assignmentId(user.previewSupervisor)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { previewSupervisor: value || null }, "Preview Supervisor updated")} /></TableCell>
                         <TableCell>
                           <Stack spacing={0.25} alignItems="flex-start">
                             <Chip size="small" label={user.isBlocked ? "Blocked" : "Active"} color={user.isBlocked ? "error" : "success"} variant="outlined" icon={user.isBlocked ? <BlockRounded /> : <CheckCircleOutlineRounded />} />
@@ -370,6 +372,10 @@ export default function AdminUsers() {
                       <Box>
                         <Typography variant="caption" color="text.secondary">Release manager</Typography>
                         <AssignmentSelect label="Release manager" value={assignmentId(user.releaseManager)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { releaseManager: value || null }, "Release manager updated")} />
+                      </Box>
+                      <Box sx={{ gridColumn: { sm: "1 / -1" } }}>
+                        <Typography variant="caption" color="text.secondary">Preview Supervisor</Typography>
+                        <AssignmentSelect label="Preview Supervisor" value={assignmentId(user.previewSupervisor)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { previewSupervisor: value || null }, "Preview Supervisor updated")} />
                       </Box>
                     </Box>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" mt={1.25} gap={1}>
