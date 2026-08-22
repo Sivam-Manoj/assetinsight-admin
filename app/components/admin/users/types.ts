@@ -21,7 +21,6 @@ export type AdminUserListItem = {
   proposalValuationEnabled?: boolean;
   reportApprover?: AssignmentOption | string | null;
   releaseManager?: AssignmentOption | string | null;
-  previewSupervisor?: AssignmentOption | string | null;
   createdAt: string;
   updatedAt?: string;
 };
@@ -50,6 +49,11 @@ export type AdminUsersResponse = {
   page: number;
   limit: number;
   assignmentOptions?: AssignmentOption[];
+};
+
+export type PreviewSupervisorSettingResponse = {
+  previewSupervisor?: AssignmentOption | null;
+  options: AssignmentOption[];
 };
 
 export function assignmentId(value?: AssignmentOption | string | null): string {

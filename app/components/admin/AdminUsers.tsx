@@ -46,13 +46,16 @@ import {
   LockOpenRounded,
   RefreshRounded,
   RestartAltRounded,
+  SaveRounded,
   SearchRounded,
+  SupervisorAccountRounded,
 } from "@mui/icons-material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AdminUserListItem,
   type AdminUsersResponse,
   type AssignmentOption,
+  type PreviewSupervisorSettingResponse,
   assignmentId,
   assignmentLabel,
   userDisplayName,
@@ -141,6 +144,11 @@ export default function AdminUsers() {
   const [limit, setLimit] = useState(20);
   const [data, setData] = useState<AdminUsersResponse | null>(null);
   const [assignmentOptions, setAssignmentOptions] = useState<AssignmentOption[]>([]);
+  const [previewSupervisorOptions, setPreviewSupervisorOptions] = useState<AssignmentOption[]>([]);
+  const [previewSupervisor, setPreviewSupervisor] = useState("");
+  const [savedPreviewSupervisor, setSavedPreviewSupervisor] = useState("");
+  const [previewSupervisorLoading, setPreviewSupervisorLoading] = useState(true);
+  const [previewSupervisorSaving, setPreviewSupervisorSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -191,11 +199,62 @@ export default function AdminUsers() {
     return () => controller.abort();
   }, [loadUsers, refreshVersion]);
 
+  const loadPreviewSupervisor = useCallback(async (signal?: AbortSignal) => {
+    setPreviewSupervisorLoading(true);
+    try {
+      const response = await fetch("/api/admin/preview-supervisor", {
+        cache: "no-store",
+        signal,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.message || "Failed to load preview supervisor");
+      const setting = body as PreviewSupervisorSettingResponse;
+      const selectedId = assignmentId(setting.previewSupervisor);
+      setPreviewSupervisorOptions(Array.isArray(setting.options) ? setting.options : []);
+      setPreviewSupervisor(selectedId);
+      setSavedPreviewSupervisor(selectedId);
+    } catch (cause: unknown) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      notify(cause instanceof Error ? cause.message : "Failed to load preview supervisor", "error");
+    } finally {
+      if (!signal?.aborted) setPreviewSupervisorLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPreviewSupervisor(controller.signal);
+    return () => controller.abort();
+  }, [loadPreviewSupervisor, refreshVersion]);
+
   const totalPages = Math.max(1, Math.ceil((data?.total || 0) / limit));
   const rows = data?.items || [];
 
   function notify(message: string, severity: "success" | "error") {
     setFeedback({ message, severity });
+  }
+
+  async function savePreviewSupervisor() {
+    setPreviewSupervisorSaving(true);
+    try {
+      const response = await fetch("/api/admin/preview-supervisor", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ previewSupervisor: previewSupervisor || null }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.message || "Failed to save preview supervisor");
+      const setting = body as PreviewSupervisorSettingResponse;
+      const selectedId = assignmentId(setting.previewSupervisor);
+      setPreviewSupervisorOptions(Array.isArray(setting.options) ? setting.options : []);
+      setPreviewSupervisor(selectedId);
+      setSavedPreviewSupervisor(selectedId);
+      notify(selectedId ? "Preview supervisor saved" : "Preview supervisor cleared", "success");
+    } catch (cause: unknown) {
+      notify(cause instanceof Error ? cause.message : "Failed to save preview supervisor", "error");
+    } finally {
+      setPreviewSupervisorSaving(false);
+    }
   }
 
   async function patchProfile(userId: string, payload: Record<string, unknown>, successMessage: string) {
@@ -280,6 +339,71 @@ export default function AdminUsers() {
       </Stack>
 
       <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          alignItems={{ xs: "stretch", md: "center" }}
+          justifyContent="space-between"
+          spacing={2}
+        >
+          <Stack direction="row" spacing={1.25} alignItems="flex-start" sx={{ minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                flex: "0 0 auto",
+                display: "grid",
+                placeItems: "center",
+                color: "primary.main",
+                bgcolor: "action.hover",
+                borderRadius: 1,
+              }}
+            >
+              <SupervisorAccountRounded />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography fontWeight={750}>Preview Supervisor</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Select one person to receive 12-hour draft and preview reminders for all users. Report owners still receive their own reminder.
+              </Typography>
+            </Box>
+          </Stack>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            alignItems="stretch"
+            sx={{ width: { xs: "100%", md: 500 }, flex: "0 0 auto" }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {previewSupervisorLoading ? (
+                <Skeleton variant="rounded" height={40} />
+              ) : (
+                <AssignmentSelect
+                  label="Preview Supervisor"
+                  value={previewSupervisor}
+                  options={previewSupervisorOptions}
+                  disabled={previewSupervisorSaving}
+                  onChange={setPreviewSupervisor}
+                />
+              )}
+            </Box>
+            <Button
+              variant="contained"
+              startIcon={previewSupervisorSaving ? <CircularProgress size={16} color="inherit" /> : <SaveRounded />}
+              disabled={
+                previewSupervisorLoading ||
+                previewSupervisorSaving ||
+                previewSupervisor === savedPreviewSupervisor
+              }
+              onClick={() => void savePreviewSupervisor()}
+              sx={{ minWidth: 112 }}
+            >
+              Save
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "minmax(260px, 1fr) 170px", md: "minmax(300px, 1fr) 180px 180px auto" }, gap: 1.25, alignItems: "center" }}>
           <TextField
             size="small"
@@ -310,19 +434,18 @@ export default function AdminUsers() {
             <Table size="small" sx={{ tableLayout: "fixed" }}>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ width: "18%" }}>User</TableCell>
+                  <TableCell sx={{ width: "22%" }}>User</TableCell>
                   <TableCell sx={{ width: "12%" }}>Access</TableCell>
-                  <TableCell sx={{ width: "17%" }}>Report approver</TableCell>
-                  <TableCell sx={{ width: "17%" }}>Release manager</TableCell>
-                  <TableCell sx={{ width: "17%" }}>Preview Supervisor</TableCell>
-                  <TableCell sx={{ width: "10%" }}>Status</TableCell>
-                  <TableCell align="right" sx={{ width: "9%" }}>Actions</TableCell>
+                  <TableCell sx={{ width: "20%" }}>Report approver</TableCell>
+                  <TableCell sx={{ width: "20%" }}>Release manager</TableCell>
+                  <TableCell sx={{ width: "15%" }}>Status</TableCell>
+                  <TableCell align="right" sx={{ width: "11%" }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {loading && rows.length === 0
                   ? Array.from({ length: 6 }, (_, index) => (
-                      <TableRow key={index}>{Array.from({ length: 7 }, (__, cell) => <TableCell key={cell}><Skeleton height={34} /></TableCell>)}</TableRow>
+                      <TableRow key={index}>{Array.from({ length: 6 }, (__, cell) => <TableCell key={cell}><Skeleton height={34} /></TableCell>)}</TableRow>
                     ))
                   : rows.map((user) => (
                       <TableRow key={user._id} hover>
@@ -341,7 +464,6 @@ export default function AdminUsers() {
                         </TableCell>
                         <TableCell><AssignmentSelect label="Report approver" value={assignmentId(user.reportApprover)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { reportApprover: value || null }, "Report approver updated")} /></TableCell>
                         <TableCell><AssignmentSelect label="Release manager" value={assignmentId(user.releaseManager)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { releaseManager: value || null }, "Release manager updated")} /></TableCell>
-                        <TableCell><AssignmentSelect label="Preview Supervisor" value={assignmentId(user.previewSupervisor)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { previewSupervisor: value || null }, "Preview Supervisor updated")} /></TableCell>
                         <TableCell>
                           <Stack spacing={0.25} alignItems="flex-start">
                             <Chip size="small" label={user.isBlocked ? "Blocked" : "Active"} color={user.isBlocked ? "error" : "success"} variant="outlined" icon={user.isBlocked ? <BlockRounded /> : <CheckCircleOutlineRounded />} />
@@ -372,10 +494,6 @@ export default function AdminUsers() {
                       <Box>
                         <Typography variant="caption" color="text.secondary">Release manager</Typography>
                         <AssignmentSelect label="Release manager" value={assignmentId(user.releaseManager)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { releaseManager: value || null }, "Release manager updated")} />
-                      </Box>
-                      <Box sx={{ gridColumn: { sm: "1 / -1" } }}>
-                        <Typography variant="caption" color="text.secondary">Preview Supervisor</Typography>
-                        <AssignmentSelect label="Preview Supervisor" value={assignmentId(user.previewSupervisor)} options={assignmentOptions} disabled={busyUserId === user._id} onChange={(value) => void patchProfile(user._id, { previewSupervisor: value || null }, "Preview Supervisor updated")} />
                       </Box>
                     </Box>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" mt={1.25} gap={1}>
