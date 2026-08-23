@@ -123,11 +123,25 @@ const sortOptions = [
   ["lots_desc", "Most lots"], ["issues_desc", "Most QA issues"],
 ] as const;
 const compactButtonSx = {
-  minWidth: 0, height: 42, px: 1, borderRadius: 1, borderColor: "divider",
-  color: "text.primary", fontSize: 10.5, fontWeight: 750, lineHeight: 1.05,
-  textTransform: "none", whiteSpace: "nowrap",
+  minWidth: 0, width: "100%", minHeight: 38, height: "100%", px: 0.65, py: 0.55,
+  borderRadius: 1, borderColor: "divider", color: "text.primary", fontSize: 9.75,
+  fontWeight: 750, lineHeight: 1.05, textAlign: "center", textTransform: "none",
+  whiteSpace: "normal", overflowWrap: "anywhere",
+  "& .MuiButton-startIcon": { mx: 0, mr: 0.45, flex: "0 0 auto" },
   "&:hover": { borderColor: "text.secondary", bgcolor: "action.hover" },
 };
+
+const actionGridSx = (cardLayout: boolean, kind: "files" | "actions") => ({
+  display: "grid",
+  gridTemplateColumns: cardLayout
+    ? { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(3, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))" }
+    : kind === "files" ? "repeat(3, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
+  gap: 0.5,
+  width: "100%",
+  minWidth: 0,
+  alignItems: "stretch",
+  "& > *": { minWidth: 0, width: "100%" },
+});
 
 function money(value: number, currency: string) {
   return new Intl.NumberFormat("en-CA", {
@@ -223,7 +237,7 @@ function ArtifactButton({ artifact }: { artifact: Artifact }) {
   const reason = artifact.available ? `Download ${config.label}: ${artifact.filename}`
     : artifact.reason || `${config.label} is not available.`;
   return (
-    <Tooltip title={reason} arrow><span>
+    <Tooltip title={reason} arrow><span style={{ display: "block", width: "100%" }}>
       <Button component={artifact.available ? "a" : "button"} href={artifact.available ? artifact.downloadUrl || undefined : undefined}
         download={artifact.available ? artifact.filename : undefined} variant="outlined" disabled={!artifact.available}
         startIcon={<Icon sx={{ fontSize: "16px !important" }} />} sx={compactButtonSx}>{config.label}</Button>
@@ -234,7 +248,7 @@ function ArtifactButton({ artifact }: { artifact: Artifact }) {
 export default function ReleasedAppraisalsWorkspace() {
   const router = useRouter();
   const theme = useTheme();
-  const compactView = useMediaQuery(theme.breakpoints.down("lg"));
+  const compactView = useMediaQuery(theme.breakpoints.down("xl"));
   const [data, setData] = useState<ReleasedResponse | null>(null);
   const [creators, setCreators] = useState<Creator[]>([]);
   const [loading, setLoading] = useState(true);
@@ -392,18 +406,18 @@ export default function ReleasedAppraisalsWorkspace() {
     </Stack>
   );
 
-  const fileActions = (row: ReleasedRow, wrap = false) => (
-    <Stack direction="row" spacing={0.5} useFlexGap flexWrap={wrap ? "wrap" : "nowrap"}>
+  const fileActions = (row: ReleasedRow, cardLayout = false) => (
+    <Box sx={actionGridSx(cardLayout, "files")}>
       <Tooltip title="Open complete saved report data"><Button variant="outlined"
         startIcon={<DataObjectRoundedIcon sx={{ fontSize: "16px !important" }} />}
         onClick={() => router.push(`/reports/${row.id}/data?from=approvals`)} sx={compactButtonSx}>Data</Button></Tooltip>
       {artifactDisplay.map(({ kind }) => <ArtifactButton key={kind} artifact={row.artifacts[kind]} />)}
-    </Stack>
+    </Box>
   );
 
-  const rowActions = (row: ReleasedRow, wrap = false) => {
+  const rowActions = (row: ReleasedRow, cardLayout = false) => {
     const recoverable = Object.values(row.artifacts).some((artifact) => !artifact.available && artifact.recoverable);
-    return <Stack direction="row" spacing={0.5} useFlexGap flexWrap={wrap ? "wrap" : "nowrap"}>
+    return <Box sx={actionGridSx(cardLayout, "actions")}>
       <Tooltip title="Open Proposal Valuation"><Button variant="outlined" startIcon={<AssessmentRoundedIcon sx={{ fontSize: "16px !important" }} />}
         onClick={() => router.push(`/reports/${row.id}/data?from=approvals&tab=schedule-a`)} sx={compactButtonSx}>Valuation</Button></Tooltip>
       <Tooltip title="View reports with this exact contract number"><Button variant="outlined" startIcon={<LinkRoundedIcon sx={{ fontSize: "16px !important" }} />}
@@ -412,20 +426,18 @@ export default function ReleasedAppraisalsWorkspace() {
         onClick={() => setCrNotesRow(row)} sx={compactButtonSx}>CR Notes</Button></Tooltip>
       <Tooltip title="Quality review and advisory analysis"><Button variant="outlined" startIcon={<AutoAwesomeRoundedIcon sx={{ fontSize: "16px !important" }} />}
         onClick={() => setInsightsRow(row)} sx={{ ...compactButtonSx, color: "#b91c1c" }}>Insights</Button></Tooltip>
-      {recoverable ? <Tooltip title="Recover missing generated files"><IconButton disabled={actionLoading}
-        onClick={() => void regenerate(row)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1, width: 42, height: 42 }}>
-        <RestartAltRoundedIcon fontSize="small" /></IconButton></Tooltip> : null}
-      <Tooltip title={archived ? "Restore appraisal" : "Archive appraisal"}><IconButton
+      {recoverable ? <Tooltip title="Recover missing generated files"><Button variant="outlined" disabled={actionLoading}
+        startIcon={<RestartAltRoundedIcon sx={{ fontSize: "16px !important" }} />}
+        onClick={() => void regenerate(row)} sx={compactButtonSx}>Recover</Button></Tooltip> : null}
+      <Tooltip title={archived ? "Restore appraisal" : "Archive appraisal"}><Button variant="outlined"
+        startIcon={archived ? <RestoreRoundedIcon sx={{ fontSize: "16px !important" }} /> : <ArchiveRoundedIcon sx={{ fontSize: "16px !important" }} />}
         onClick={() => setConfirmAction({ kind: archived ? "restore" : "archive", row })}
-        sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1, width: 42, height: 42 }}>
-        {archived ? <RestoreRoundedIcon fontSize="small" /> : <ArchiveRoundedIcon fontSize="small" />}
-      </IconButton></Tooltip>
-      <Tooltip title="Delete report permanently"><IconButton color="error"
+        sx={compactButtonSx}>{archived ? "Restore" : "Archive"}</Button></Tooltip>
+      <Tooltip title="Delete report permanently"><Button color="error" variant="outlined"
+        startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: "16px !important" }} />}
         onClick={() => setConfirmAction({ kind: "delete", row })}
-        sx={{ border: "1px solid", borderColor: "error.light", borderRadius: 1, width: 42, height: 42 }}>
-        <DeleteOutlineRoundedIcon fontSize="small" />
-      </IconButton></Tooltip>
-    </Stack>;
+        sx={{ ...compactButtonSx, borderColor: "error.light", color: "error.main" }}>Delete</Button></Tooltip>
+    </Box>;
   };
 
   const confirmTitle = confirmAction?.kind === "delete" ? "Delete released appraisal?"
@@ -433,7 +445,7 @@ export default function ReleasedAppraisalsWorkspace() {
 
   return (
     <div className="admin-page-shell desktop-admin-page">
-      <Stack spacing={2.25}>
+      <Stack spacing={2.25} sx={{ minWidth: 0, maxWidth: "100%", overflowX: "clip" }}>
         <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }}
           justifyContent="space-between" spacing={1.5}>
           <Box>
@@ -540,31 +552,31 @@ export default function ReleasedAppraisalsWorkspace() {
         </Stack> : null}
 
         {!loading && items.length && !compactView ? <TableContainer component={Card} variant="outlined"
-          sx={{ borderRadius: 1, boxShadow: "none", overflowX: "auto", maxWidth: "100%" }}>
-          <Table size="small" className="desktop-reports-table" sx={{ minWidth: 1460, tableLayout: "fixed" }}>
+          sx={{ borderRadius: 1, boxShadow: "none", overflow: "hidden", width: "100%", maxWidth: "100%" }}>
+          <Table size="small" className="desktop-reports-table" sx={{ width: "100%", tableLayout: "fixed" }}>
             <TableHead><TableRow sx={{ bgcolor: "action.hover" }}>
-              <TableCell sx={{ width: 270, fontWeight: 850 }}>Report</TableCell>
-              <TableCell sx={{ width: 130, fontWeight: 850 }}>Lots / FMV</TableCell>
-              <TableCell sx={{ width: 185, fontWeight: 850 }}>Creator</TableCell>
-              <TableCell sx={{ width: 155, fontWeight: 850 }}>Released</TableCell>
-              <TableCell sx={{ width: 145, fontWeight: 850 }}>Quality</TableCell>
-              <TableCell sx={{ width: 400, fontWeight: 850 }}>Files</TableCell>
-              <TableCell sx={{ width: 470, fontWeight: 850 }}>Actions</TableCell>
+              <TableCell sx={{ width: "19%", px: 1, fontWeight: 850 }}>Report</TableCell>
+              <TableCell sx={{ width: "8%", px: 1, fontWeight: 850 }}>Lots / FMV</TableCell>
+              <TableCell sx={{ width: "11%", px: 1, fontWeight: 850 }}>Creator</TableCell>
+              <TableCell sx={{ width: "10%", px: 1, fontWeight: 850 }}>Released</TableCell>
+              <TableCell sx={{ width: "10%", px: 1, fontWeight: 850 }}>Quality</TableCell>
+              <TableCell sx={{ width: "19%", px: 1, fontWeight: 850 }}>Files</TableCell>
+              <TableCell sx={{ width: "23%", px: 1, fontWeight: 850 }}>Actions</TableCell>
             </TableRow></TableHead>
             <TableBody>{items.map((row) => <TableRow key={row.id} hover>
-              <TableCell>{reportIdentity(row)}</TableCell>
-              <TableCell><Typography sx={{ fontSize: 12.5, fontWeight: 800 }}>{row.lotCount} lots</Typography>
+              <TableCell sx={{ px: 1, minWidth: 0, overflow: "hidden" }}>{reportIdentity(row)}</TableCell>
+              <TableCell sx={{ px: 1, minWidth: 0, overflow: "hidden" }}><Typography sx={{ fontSize: 12.5, fontWeight: 800 }}>{row.lotCount} lots</Typography>
                 <Typography color="text.secondary" sx={{ fontSize: 11.5 }}>{money(row.fmv, row.currency)}</Typography></TableCell>
-              <TableCell><Stack direction="row" spacing={0.75} alignItems="center"><Avatar src={row.creator.avatarUrl || undefined}
+              <TableCell sx={{ px: 1, minWidth: 0, overflow: "hidden" }}><Stack direction="row" spacing={0.75} alignItems="center"><Avatar src={row.creator.avatarUrl || undefined}
                 sx={{ width: 28, height: 28, fontSize: 11 }}>{(row.creator.name || row.creator.email || "?").slice(0, 1).toUpperCase()}</Avatar>
                 <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontSize: 12.25, fontWeight: 750 }}>{row.creator.name || "Unnamed user"}</Typography>
                   <Typography noWrap color="text.secondary" sx={{ fontSize: 10.5 }}>{row.creator.email}</Typography></Box></Stack></TableCell>
-              <TableCell><Typography sx={{ fontSize: 12.25, fontWeight: 700 }}>{formatDateTime(row.releasedAt)}</Typography>
+              <TableCell sx={{ px: 1, minWidth: 0, overflow: "hidden" }}><Typography sx={{ fontSize: 12.25, fontWeight: 700 }}>{formatDateTime(row.releasedAt)}</Typography>
                 <Typography color="text.secondary" sx={{ fontSize: 10.5 }}>{formatDuration(row.releaseTurnaroundMs)}</Typography></TableCell>
-              <TableCell><Stack spacing={0.5} alignItems="flex-start"><QualityChip row={row} />
+              <TableCell sx={{ px: 1, minWidth: 0, overflow: "hidden" }}><Stack spacing={0.5} alignItems="flex-start"><QualityChip row={row} />
                 <Typography color="text.secondary" sx={{ fontSize: 10.5 }}>{row.qualitySummary.imageCoveragePercent}% image coverage</Typography></Stack></TableCell>
-              <TableCell>{fileActions(row)}</TableCell>
-              <TableCell>{rowActions(row)}</TableCell>
+              <TableCell sx={{ px: 1, py: 1, minWidth: 0, verticalAlign: "top" }}>{fileActions(row)}</TableCell>
+              <TableCell sx={{ px: 1, py: 1, minWidth: 0, verticalAlign: "top" }}>{rowActions(row)}</TableCell>
             </TableRow>)}</TableBody>
           </Table>
         </TableContainer> : null}
