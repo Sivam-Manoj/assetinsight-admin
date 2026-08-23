@@ -264,7 +264,22 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       <List
         component="nav"
         aria-label="Admin navigation"
-        sx={{ flex: 1, minHeight: 0, overflowX: "hidden", overflowY: "auto", overscrollBehavior: "contain", px: 1, py: 1 }}
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflowX: "hidden",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          "&::-webkit-scrollbar": {
+            display: "none",
+            width: 0,
+            height: 0,
+          },
+          px: 1,
+          py: 1,
+        }}
       >
         {items.map(({ href, label, icon: Icon, badge }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
