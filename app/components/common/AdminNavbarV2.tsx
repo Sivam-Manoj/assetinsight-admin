@@ -12,6 +12,8 @@ import {
   Menu,
   MonitorSmartphone,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Shield,
   Users,
@@ -36,13 +38,16 @@ import {
   ListItemText,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import ThemeModeToggle from "@/app/components/common/ThemeModeToggle";
 import { ADMIN_MOBILE_TITLEBAR_HEIGHT } from "@/app/components/common/adminLayout.constants";
 
-const SIDEBAR_WIDTH = 208;
+const SIDEBAR_EXPANDED_WIDTH = 208;
+const SIDEBAR_COLLAPSED_WIDTH = 64;
 const MOBILE_DRAWER_WIDTH = 280;
+const SIDEBAR_STORAGE_KEY = "asset-insight-admin-sidebar-collapsed";
 
 type NavItem = {
   href: string;
@@ -67,6 +72,21 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [deviceRequestCount, setDeviceRequestCount] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [sidebarStateReady, setSidebarStateReady] = useState(false);
+
+  const desktopSidebarExpanded = !sidebarCollapsed || sidebarHovered;
+
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true");
+    } catch {
+      // Storage can be unavailable in hardened browsers; expanded remains the safe default.
+    } finally {
+      setSidebarStateReady(true);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -184,11 +204,27 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
     }
   }
 
-  const sidebarContent = (mobile = false) => (
+  function toggleDesktopSidebar() {
+    const next = !sidebarCollapsed;
+    // A click always takes precedence over temporary hover expansion.
+    if (next) setSidebarHovered(false);
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+    } catch {
+      // The navigation still works when persistence is unavailable.
+    }
+  }
+
+  const sidebarContent = (mobile = false, expanded = true) => (
     <Box sx={{ display: "flex", height: "100%", flexDirection: "column", bgcolor: "#111211", color: "#fff" }}>
-      <Box sx={{ display: "flex", minHeight: 84, alignItems: "center", justifyContent: "space-between", px: 2.5 }}>
-        <Link href={homeHref} aria-label="Asset Insight home" style={{ display: "flex", alignItems: "center" }}>
-          <Box sx={{ position: "relative", width: 128, height: 58 }}>
+      <Box sx={{ display: "flex", minHeight: 84, alignItems: "center", justifyContent: expanded ? "space-between" : "center", px: expanded ? 2 : 0.75 }}>
+        <Link
+          href={homeHref}
+          aria-label="Asset Insight home"
+          style={{ display: expanded ? "flex" : "none", minWidth: 0, alignItems: "center", overflow: "hidden" }}
+        >
+          <Box sx={{ position: "relative", width: 128, height: 58, flexShrink: 0 }}>
             <Image
               src="/logo.png"
               alt="Asset Insight"
@@ -203,7 +239,26 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
           <IconButton aria-label="Close navigation" onClick={() => setMobileOpen(false)} sx={{ color: "#d7d7d7" }}>
             <X size={20} />
           </IconButton>
-        ) : null}
+        ) : (
+          <Tooltip title={sidebarCollapsed ? "Keep navigation expanded" : "Minimize navigation"} placement="right" arrow>
+            <IconButton
+              aria-label={sidebarCollapsed ? "Expand navigation" : "Minimize navigation"}
+              aria-pressed={!sidebarCollapsed}
+              onClick={toggleDesktopSidebar}
+              sx={{
+                width: 34,
+                height: 34,
+                flexShrink: 0,
+                border: "1px solid #343634",
+                borderRadius: 1,
+                color: "#d7d7d7",
+                "&:hover": { bgcolor: "rgba(255,255,255,0.08)", color: "#fff" },
+              }}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
 
       <List
@@ -222,9 +277,10 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
               sx={{
                 minHeight: 36,
                 mb: 0.25,
-                gap: 1.5,
+                justifyContent: expanded ? "flex-start" : "center",
+                gap: expanded ? 1.5 : 0,
                 borderRadius: "3px",
-                px: 1.5,
+                px: expanded ? 1.5 : 1,
                 py: 0.65,
                 color: active ? "#fff" : "#d0d0d0",
                 bgcolor: active ? "#df111b" : "transparent",
@@ -233,11 +289,23 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
                 "&:hover": { bgcolor: active ? "#c90e17" : "rgba(255,255,255,0.07)", color: "#fff" },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 22, color: "inherit" }}>
+              <ListItemIcon sx={{ minWidth: expanded ? 22 : 0, justifyContent: "center", color: "inherit" }}>
                 <Icon size={19} strokeWidth={2} />
               </ListItemIcon>
-              <ListItemText primary={label} primaryTypographyProps={{ fontSize: 13.5, fontWeight: active ? 650 : 500, noWrap: true }} />
-              {badge ? (
+              <ListItemText
+                primary={label}
+                primaryTypographyProps={{ fontSize: 13.5, fontWeight: active ? 650 : 500, noWrap: true }}
+                sx={{
+                  minWidth: 0,
+                  maxWidth: expanded ? 150 : 0,
+                  m: 0,
+                  overflow: "hidden",
+                  opacity: expanded ? 1 : 0,
+                  transform: expanded ? "translateX(0)" : "translateX(-4px)",
+                  transition: "opacity 120ms ease, transform 160ms ease, max-width 180ms ease",
+                }}
+              />
+              {badge && expanded ? (
                 <Box
                   component="span"
                   aria-label={`${badge} device requests`}
@@ -263,16 +331,16 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
       </List>
 
       <Box sx={{ borderTop: "1px solid #303230", p: 1 }}>
-        <Box sx={{ display: "flex", minHeight: 48, alignItems: "center", gap: 1.5, px: 1, color: "#e6e6e6" }}>
+        <Box sx={{ display: "flex", minHeight: 48, alignItems: "center", justifyContent: expanded ? "flex-start" : "center", gap: expanded ? 1.5 : 0, px: expanded ? 1 : 0, color: "#e6e6e6" }}>
           <Box sx={{ display: "grid", width: 32, height: 32, flexShrink: 0, placeItems: "center", bgcolor: "#272927", fontSize: 12, fontWeight: 700 }}>
             {displayName.slice(0, 2).toUpperCase()}
           </Box>
-          <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Box sx={{ minWidth: 0, maxWidth: expanded ? 150 : 0, flex: expanded ? 1 : 0, overflow: "hidden", opacity: expanded ? 1 : 0, transition: "opacity 120ms ease, max-width 180ms ease" }}>
             <Typography noWrap sx={{ fontSize: 13, fontWeight: 600, color: "#f3f3f3" }}>{displayName}</Typography>
             <Typography noWrap sx={{ fontSize: 11, color: "#777b77", textTransform: "lowercase" }}>{roleLabel}</Typography>
           </Box>
         </Box>
-        <Stack direction="row" alignItems="center" spacing={0.25} sx={{ mt: 0.25 }}>
+        <Stack direction={expanded ? "row" : "column"} alignItems="center" spacing={0.25} sx={{ mt: 0.25 }}>
           <IconButton aria-label="Search navigation" onClick={() => setSearchOpen(true)} sx={{ width: 40, height: 40, color: "#c7c9c7", borderRadius: 0, "&:hover": { bgcolor: "rgba(255,255,255,0.07)", color: "#fff" } }}>
             <Search size={19} />
           </IconButton>
@@ -311,8 +379,26 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         </Stack>
       </Box>
 
-      <Box component="aside" sx={{ display: { xs: "none", lg: "block" }, position: "fixed", top: 0, bottom: 0, left: 0, zIndex: (currentTheme) => currentTheme.zIndex.drawer, width: SIDEBAR_WIDTH, borderRight: "1px solid #303230", overflow: "hidden" }}>
-        {sidebarContent()}
+      <Box
+        component="aside"
+        onMouseEnter={() => { if (sidebarCollapsed) setSidebarHovered(true); }}
+        onMouseLeave={() => setSidebarHovered(false)}
+        sx={{
+          display: { xs: "none", lg: "block" },
+          position: "fixed",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: (currentTheme) => currentTheme.zIndex.drawer,
+          width: desktopSidebarExpanded ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_COLLAPSED_WIDTH,
+          borderRight: "1px solid #303230",
+          overflow: "hidden",
+          boxShadow: sidebarCollapsed && sidebarHovered ? "10px 0 28px rgba(0,0,0,0.22)" : "none",
+          transition: sidebarStateReady ? "width 180ms cubic-bezier(0.2, 0, 0, 1), box-shadow 160ms ease" : "none",
+          willChange: "width",
+        }}
+      >
+        {sidebarContent(false, desktopSidebarExpanded)}
       </Box>
       <Drawer
         anchor="left"
@@ -321,10 +407,21 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         ModalProps={{ keepMounted: true }}
         PaperProps={{ sx: { top: ADMIN_MOBILE_TITLEBAR_HEIGHT, width: MOBILE_DRAWER_WIDTH, height: `calc(100% - ${ADMIN_MOBILE_TITLEBAR_HEIGHT}px)`, border: 0 } }}
       >
-        {sidebarContent(true)}
+        {sidebarContent(true, true)}
       </Drawer>
 
-      <Box component="main" sx={{ ml: { xs: 0, lg: `${SIDEBAR_WIDTH}px` }, pt: { xs: `${ADMIN_MOBILE_TITLEBAR_HEIGHT}px`, lg: 0 }, minWidth: 0, maxWidth: "100%", minHeight: "100vh", overflowX: "hidden" }}>
+      <Box
+        component="main"
+        sx={{
+          ml: { xs: 0, lg: `${sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH}px` },
+          pt: { xs: `${ADMIN_MOBILE_TITLEBAR_HEIGHT}px`, lg: 0 },
+          minWidth: 0,
+          maxWidth: "100%",
+          minHeight: "100vh",
+          overflowX: "hidden",
+          transition: sidebarStateReady ? "margin-left 180ms cubic-bezier(0.2, 0, 0, 1)" : "none",
+        }}
+      >
         {children}
       </Box>
 
