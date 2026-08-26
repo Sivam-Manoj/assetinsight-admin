@@ -22,7 +22,12 @@ export default async function Page({ params, searchParams }: PageProps) {
 
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const source = Array.isArray(query.from) ? query.from[0] : query.from;
-  const returnTo = source === "approvals" ? "/approvals" : "/reports";
+  const returnTo =
+    source === "approvals"
+      ? "/approvals"
+      : source === "pending-approvals"
+        ? "/pending-approvals"
+        : "/reports";
 
   return (
     <AdminNavbarV2>

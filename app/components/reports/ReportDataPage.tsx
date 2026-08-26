@@ -23,7 +23,7 @@ import type {
 
 type ReportDataPageProps = {
   reportId: string;
-  returnTo: "/reports" | "/approvals";
+  returnTo: "/reports" | "/approvals" | "/pending-approvals";
 };
 
 type PreviewTab = "data" | "schedule" | "raw";
@@ -572,7 +572,12 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
     [reportData]
   );
   const hasSchedule = Boolean(preview?.assetScheduleSheet);
-  const backLabel = returnTo === "/approvals" ? "Back to released appraisals" : "Back to reports";
+  const backLabel =
+    returnTo === "/approvals"
+      ? "Back to released appraisals"
+      : returnTo === "/pending-approvals"
+        ? "Back to pending approvals"
+        : "Back to reports";
 
   return (
     <Box
