@@ -31,6 +31,9 @@ Never commit real credentials. The admin application does not need MongoDB or R2
 
 ## Commands
 
+Use Node.js 22 through 26 with npm 10 or 11. The local compatibility gate is
+verified with Node.js 26.7 and npm 11.
+
 ```bash
 npm ci
 npm run dev
