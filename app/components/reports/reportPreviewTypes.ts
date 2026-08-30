@@ -26,6 +26,17 @@ export type AssetAdminScheduleFileSummary = {
 export type AssetAdminScheduleEvaluatorColumn = {
   id: string;
   name: string;
+  user_id?: string;
+  email?: string;
+  avatar_url?: string;
+};
+
+export type AssetAdminScheduleEvaluatorOption = {
+  id: string;
+  username?: string;
+  companyName?: string;
+  email: string;
+  avatarUrl?: string;
 };
 
 export type AssetAdminScheduleRow = {
@@ -64,6 +75,14 @@ export type AssetAdminScheduleSheet = {
   file_summary: AssetAdminScheduleFileSummary;
 };
 
+export type AssetAdminScheduleCalculation = {
+  key: string;
+  label: string;
+  value: number | string | null;
+  formula: string;
+  inputs: Record<string, number | string | null>;
+};
+
 export type ReportPreviewPayload = {
   reportId?: string;
   title: string;
@@ -72,6 +91,11 @@ export type ReportPreviewPayload = {
   variant?: "assetScheduleSheet";
   currencyCode?: string;
   assetScheduleSheet?: AssetAdminScheduleSheet;
+  revision?: number;
+  summary?: Record<string, unknown>;
+  calculationVersion?: string;
+  calculations?: AssetAdminScheduleCalculation[];
   files_regeneration_queued?: boolean;
   files_regeneration_coalesced?: boolean;
+  files_regeneration_warning?: string;
 };

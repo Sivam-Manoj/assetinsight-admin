@@ -1,18 +1,20 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
+  type PaginationState,
   useReactTable,
 } from "@tanstack/react-table";
 import {
@@ -20,10 +22,15 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
+  Avatar,
   Box,
   Button,
+  CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
+  DialogTitle,
   FormControl,
   IconButton,
   MenuItem,
@@ -37,6 +44,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Tooltip,
@@ -46,7 +54,9 @@ import {
 } from "@mui/material";
 import type {
   AssetAdminScheduleBuyersPremiumBasis,
+  AssetAdminScheduleCalculation,
   AssetAdminScheduleEvaluatorColumn,
+  AssetAdminScheduleEvaluatorOption,
   AssetAdminScheduleFileSummary,
   AssetAdminScheduleRow,
   AssetAdminScheduleSheet,
@@ -67,7 +77,8 @@ type AssetScheduleSheetProps = {
   saving: boolean;
   saveError: string | null;
   saveSuccess: string | null;
-  onSave: (sheet: AssetAdminScheduleSheet) => Promise<void>;
+  saveWarning: string | null;
+  onSave: (sheet: AssetAdminScheduleSheet) => Promise<boolean>;
   onClose?: () => void;
   pageMode?: boolean;
 };
@@ -75,12 +86,60 @@ type AssetScheduleSheetProps = {
 type AssetSheetTab = "scheduleA" | "fileSummary";
 
 type SummaryRow = {
+  key: string;
   label: string;
   value: React.ReactNode;
+  calculation?: CalculationDetails;
+  note?: string;
 };
+
+type CalculationDetails = {
+  key: string;
+  label: string;
+  formula: string;
+  inputs: Record<string, number | string | null>;
+  result: number | string | null;
+};
+
+const EMPTY_CALCULATIONS = new Map<string, AssetAdminScheduleCalculation>();
+
+function calculationDetails(
+  calculations: Map<string, AssetAdminScheduleCalculation>,
+  fallback: CalculationDetails
+): CalculationDetails {
+  const server =
+    calculations.get(fallback.key) || calculations.get(fallback.key.replaceAll(".", "_"));
+  if (!server) return fallback;
+  return {
+    key: server.key,
+    label: server.label || fallback.label,
+    formula: server.formula || fallback.formula,
+    inputs: server.inputs || fallback.inputs,
+    result: server.value,
+  };
+}
 
 function readOnlyValue(value: string | number | null | undefined) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
+}
+
+function calculationValue(value: number | string | null) {
+  if (value === null || value === "") return "-";
+  if (typeof value === "number") {
+    return Number.isFinite(value)
+      ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)
+      : "-";
+  }
+  return value;
+}
+
+function formatLabelForCalculation(value: string) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function mobileLotNumber(row: AssetAdminScheduleRow, index: number) {
@@ -217,7 +276,7 @@ const NumericDraftField = memo(function NumericDraftField({
         width: "100%",
         minWidth,
         "& .MuiOutlinedInput-root": {
-          minHeight: 44,
+          minHeight: { xs: 44, md: 36 },
           borderRadius: 1,
           bgcolor: "background.paper",
         },
@@ -233,72 +292,146 @@ const NumericDraftField = memo(function NumericDraftField({
   );
 });
 
-const EvaluatorNameField = memo(function EvaluatorNameField({
-  value,
-  onCommit,
-  ariaLabel,
+function evaluatorOptionLabel(option: AssetAdminScheduleEvaluatorOption) {
+  return option.username || option.companyName || option.email;
+}
+
+const EvaluatorColumnPill = memo(function EvaluatorColumnPill({
+  column,
+  onRemove,
 }: {
-  value: string;
-  onCommit: (next: string) => void;
-  ariaLabel: string;
+  column: AssetAdminScheduleEvaluatorColumn;
+  onRemove: () => void;
 }) {
-  const [draft, setDraft] = useState(value);
-  const [focused, setFocused] = useState(false);
-  const revertOnBlurRef = useRef(false);
-
-  useEffect(() => {
-    if (!focused) setDraft(value);
-  }, [focused, value]);
-
-  const commitDraft = useCallback(() => {
-    setFocused(false);
-    if (revertOnBlurRef.current) {
-      revertOnBlurRef.current = false;
-      setDraft(value);
-      return;
-    }
-
-    const next = draft.trim();
-    setDraft(next);
-    if (next !== value) onCommit(next);
-  }, [draft, onCommit, value]);
-
   return (
-    <TextField
-      value={draft}
-      onFocus={() => {
-        revertOnBlurRef.current = false;
-        setFocused(true);
-      }}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commitDraft}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
-        if (event.key === "Escape") {
-          revertOnBlurRef.current = true;
-          setDraft(value);
-          event.currentTarget.blur();
-        }
-      }}
-      size="small"
-      fullWidth
-      autoComplete="off"
-      inputProps={{ "aria-label": ariaLabel }}
+    <Box
       sx={{
-        "& .MuiOutlinedInput-root": {
-          minHeight: 44,
-          borderRadius: 1,
-          bgcolor: "background.paper",
-        },
-        "& .MuiOutlinedInput-input": {
-          px: 1,
-          py: 0.75,
-          fontSize: { xs: 16, md: 13 },
-        },
+        display: "flex",
+        minWidth: 0,
+        height: { xs: 44, md: 38 },
+        alignItems: "center",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1,
+        bgcolor: "background.paper",
       }}
-    />
+    >
+      {column.user_id ? (
+        <Avatar
+          src={column.avatar_url || undefined}
+          alt=""
+          sx={{ width: 24, height: 24, ml: 1, mr: 0.75, fontSize: 11 }}
+        >
+          {column.name.slice(0, 1).toUpperCase()}
+        </Avatar>
+      ) : null}
+      <Box sx={{ minWidth: 0, flex: 1, pl: column.user_id ? 0 : 1.25 }}>
+        <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>
+          {column.name || "Legacy evaluator"}
+        </Typography>
+        {column.email ? (
+          <Typography noWrap sx={{ color: "text.secondary", fontSize: 10.5 }}>
+            {column.email}
+          </Typography>
+        ) : (
+          <Typography noWrap sx={{ color: "text.secondary", fontSize: 10.5 }}>
+            Legacy evaluator
+          </Typography>
+        )}
+      </Box>
+      {column.user_id ? (
+        <Tooltip title="Remove evaluator" arrow>
+          <IconButton
+            aria-label={`Remove ${column.name || "evaluator"}`}
+            onClick={onRemove}
+            sx={{ width: 36, height: 36, flex: "0 0 auto", borderRadius: 0 }}
+          >
+            <DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Typography sx={{ mr: 1, color: "text.secondary", fontSize: 10, fontWeight: 700 }}>
+          Read-only
+        </Typography>
+      )}
+    </Box>
   );
 });
+
+function EvaluatorPicker({
+  options,
+  loading,
+  disabled,
+  inputValue,
+  onInputChange,
+  onSelect,
+}: {
+  options: AssetAdminScheduleEvaluatorOption[];
+  loading: boolean;
+  disabled: boolean;
+  inputValue: string;
+  onInputChange: (value: string) => void;
+  onSelect: (option: AssetAdminScheduleEvaluatorOption) => void;
+}) {
+  return (
+    <Autocomplete
+      options={options}
+      value={null}
+      inputValue={inputValue}
+      loading={loading}
+      disabled={disabled}
+      getOptionLabel={evaluatorOptionLabel}
+      isOptionEqualToValue={(option, value) => option.id === value.id}
+      onChange={(_, option) => {
+        if (option) {
+          onSelect(option);
+          onInputChange("");
+        }
+      }}
+      onInputChange={(_, value, reason) =>
+        onInputChange(reason === "reset" ? "" : value)
+      }
+      noOptionsText="No eligible users"
+      renderOption={(props, option) => (
+        <Box component="li" {...props} key={option.id} sx={{ gap: 1 }}>
+          <Avatar src={option.avatarUrl} alt="" sx={{ width: 28, height: 28, fontSize: 12 }}>
+            {evaluatorOptionLabel(option).slice(0, 1).toUpperCase()}
+          </Avatar>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography noWrap sx={{ fontSize: 13, fontWeight: 650 }}>
+              {evaluatorOptionLabel(option)}
+            </Typography>
+            <Typography noWrap sx={{ color: "text.secondary", fontSize: 11 }}>
+              {option.email}
+            </Typography>
+          </Box>
+        </Box>
+      )}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label="Add evaluator"
+          placeholder="Search users"
+          size="small"
+          inputProps={{ ...params.inputProps, "aria-label": "Add evaluator from users" }}
+          InputProps={{
+            ...params.InputProps,
+            endAdornment: (
+              <>
+                {loading ? <CircularProgress color="inherit" size={16} /> : null}
+                {params.InputProps.endAdornment}
+              </>
+            ),
+          }}
+          sx={{
+            minWidth: { xs: 0, md: 240 },
+            "& .MuiOutlinedInput-root": { minHeight: { xs: 44, md: 38 }, bgcolor: "background.paper" },
+          }}
+        />
+      )}
+    />
+  );
+}
 
 const TextDraftField = memo(function TextDraftField({
   value,
@@ -364,7 +497,7 @@ const TextDraftField = memo(function TextDraftField({
       sx={{
         minWidth,
         "& .MuiOutlinedInput-root": {
-          minHeight: multiline ? undefined : 40,
+          minHeight: multiline ? undefined : { xs: 44, md: 36 },
           borderRadius: 1,
           bgcolor: "background.paper",
         },
@@ -385,7 +518,11 @@ function useStableEvaluatorColumns(columns: AssetAdminScheduleEvaluatorColumn[])
     current.length === columns.length &&
     current.every(
       (column, index) =>
-        column.id === columns[index]?.id && column.name === columns[index]?.name
+        column.id === columns[index]?.id &&
+        column.name === columns[index]?.name &&
+        column.user_id === columns[index]?.user_id &&
+        column.email === columns[index]?.email &&
+        column.avatar_url === columns[index]?.avatar_url
     );
 
   if (!unchanged) stableRef.current = columns.map((column) => ({ ...column }));
@@ -686,9 +823,11 @@ const MobileLotCard = memo(function MobileLotCard({
 function SummaryTable({
   title,
   rows,
+  onOpenCalculation,
 }: {
   title: string;
   rows: SummaryRow[];
+  onOpenCalculation: (details: CalculationDetails) => void;
 }) {
   return (
     <Paper
@@ -710,11 +849,49 @@ function SummaryTable({
         <Table size="small">
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.label}>
-                <TableCell sx={{ width: "52%", px: 2, py: 1.25, fontSize: 13, fontWeight: 600, borderColor: "divider" }}>
-                  {row.label}
+              <TableRow key={row.key}>
+                <TableCell sx={{ width: "52%", px: 1.25, py: 0.8, fontSize: 12.5, fontWeight: 600, borderColor: "divider" }}>
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Box component="span" sx={{ minWidth: 0 }}>{row.label}</Box>
+                    {row.note ? (
+                      <Tooltip title={row.note} arrow>
+                        <Box
+                          component="span"
+                          sx={{
+                            flex: "0 0 auto",
+                            border: "1px solid",
+                            borderColor: "divider",
+                            borderRadius: 0.75,
+                            bgcolor: "action.hover",
+                            px: 0.65,
+                            py: 0.2,
+                            color: "text.secondary",
+                            fontSize: 9,
+                            fontWeight: 750,
+                            lineHeight: 1.2,
+                            letterSpacing: "0.04em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Reference only
+                        </Box>
+                      </Tooltip>
+                    ) : null}
+                    {row.calculation ? (
+                      <Tooltip title={`Show calculation for ${row.label}`} arrow>
+                        <IconButton
+                          size="small"
+                          aria-label={`Show calculation for ${row.label}`}
+                          onClick={() => onOpenCalculation(row.calculation!)}
+                          sx={{ width: 28, height: 28, ml: "auto !important", flex: "0 0 auto" }}
+                        >
+                          <InfoOutlinedIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    ) : null}
+                  </Stack>
                 </TableCell>
-                <TableCell sx={{ px: 2, py: 1.25, fontSize: 13, borderColor: "divider", fontVariantNumeric: "tabular-nums" }}>
+                <TableCell sx={{ px: 1.25, py: 0.8, fontSize: 12.5, borderColor: "divider", fontVariantNumeric: "tabular-nums" }}>
                   {row.value}
                 </TableCell>
               </TableRow>
@@ -753,18 +930,28 @@ export default function AssetScheduleSheet({
   saving,
   saveError,
   saveSuccess,
+  saveWarning,
   onSave,
   onClose,
   pageMode = false,
 }: AssetScheduleSheetProps) {
   const theme = useTheme();
   const isCompactLayout = useMediaQuery(theme.breakpoints.down("lg"), { noSsr: true });
+  const isPhoneLayout = useMediaQuery(theme.breakpoints.down("sm"), { noSsr: true });
   const [sheet, setSheet] = useState<AssetAdminScheduleSheet | null>(
     preview.assetScheduleSheet ? cloneAssetScheduleSheet(preview.assetScheduleSheet) : null
   );
   const [gallery, setGallery] = useState<{ title: string; urls: string[]; index: number } | null>(null);
   const [activeTab, setActiveTab] = useState<AssetSheetTab>("scheduleA");
   const [selectedMobileLot, setSelectedMobileLot] = useState(0);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
+  const [evaluatorOptions, setEvaluatorOptions] = useState<AssetAdminScheduleEvaluatorOption[]>([]);
+  const [evaluatorOptionsLoading, setEvaluatorOptionsLoading] = useState(false);
+  const [evaluatorOptionsError, setEvaluatorOptionsError] = useState<string | null>(null);
+  const [evaluatorQuery, setEvaluatorQuery] = useState("");
+  const [debouncedEvaluatorQuery, setDebouncedEvaluatorQuery] = useState("");
+  const [calculationDialog, setCalculationDialog] = useState<CalculationDetails | null>(null);
+  const [sheetDirty, setSheetDirty] = useState(false);
   const sheetRef = useRef(sheet);
   const reportIdRef = useRef(preview.reportId);
   const dirtyRef = useRef(false);
@@ -781,12 +968,75 @@ export default function AssetScheduleSheet({
     if (reportChanged) {
       reportIdRef.current = preview.reportId;
       dirtyRef.current = false;
+      setSheetDirty(false);
       setActiveTab("scheduleA");
       setSelectedMobileLot(0);
+      setPagination((current) => ({ ...current, pageIndex: 0 }));
+      setEvaluatorQuery("");
+      setDebouncedEvaluatorQuery("");
     }
   }, [preview.assetScheduleSheet, preview.reportId]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setDebouncedEvaluatorQuery(evaluatorQuery.trim()),
+      300
+    );
+    return () => window.clearTimeout(timeout);
+  }, [evaluatorQuery]);
+
+  useEffect(() => {
+    if (!preview.reportId) return;
+    const controller = new AbortController();
+    setEvaluatorOptionsLoading(true);
+    setEvaluatorOptionsError(null);
+
+    const query = new URLSearchParams();
+    if (debouncedEvaluatorQuery) query.set("q", debouncedEvaluatorQuery);
+    const suffix = query.size ? `?${query.toString()}` : "";
+
+    void fetch(
+      `/api/admin/reports/${encodeURIComponent(preview.reportId)}/proposal-valuation/evaluator-options${suffix}`,
+      { cache: "no-store", signal: controller.signal }
+    )
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body?.message || "Unable to load evaluator users");
+        const items = Array.isArray(body?.items) ? body.items : [];
+        setEvaluatorOptions(
+          items
+            .map((item: Record<string, unknown>) => ({
+              id: String(item.id || ""),
+              username: item.username ? String(item.username) : undefined,
+              companyName: item.companyName ? String(item.companyName) : undefined,
+              email: String(item.email || ""),
+              avatarUrl: item.avatarUrl ? String(item.avatarUrl) : undefined,
+            }))
+            .filter((item: AssetAdminScheduleEvaluatorOption) => item.id && item.email)
+        );
+      })
+      .catch((cause) => {
+        if (controller.signal.aborted) return;
+        setEvaluatorOptionsError(
+          cause instanceof Error ? cause.message : "Unable to load evaluator users"
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEvaluatorOptionsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [debouncedEvaluatorQuery, preview.reportId]);
+
   const derivedSummary = useMemo(() => (sheet ? deriveAssetScheduleSummary(sheet) : null), [sheet]);
+  const previewCalculations = useMemo(
+    () => new Map((preview.calculations ?? []).map((calculation) => [calculation.key, calculation])),
+    [preview.calculations]
+  );
+  // Preview descriptors describe the last persisted revision. While the sheet is
+  // dirty, use the matching local descriptors so the dialog cannot show stale
+  // inputs, formulas, or results beside newly recalculated visible values.
+  const serverCalculations = sheetDirty ? EMPTY_CALCULATIONS : previewCalculations;
   const stableEvaluatorColumns = useStableEvaluatorColumns(sheet?.evaluator_columns ?? []);
 
   const updateSheet = useCallback((mutator: (draft: AssetAdminScheduleSheet) => AssetAdminScheduleSheet) => {
@@ -794,6 +1044,7 @@ export default function AssetScheduleSheet({
     if (!current) return;
 
     dirtyRef.current = true;
+    setSheetDirty(true);
     // Keep the ref current synchronously so a Save click immediately following
     // an input blur always includes that field's last edit.
     const nextSheet = recalculateAssetScheduleSheet(mutator(cloneAssetScheduleSheet(current)));
@@ -801,20 +1052,21 @@ export default function AssetScheduleSheet({
     setSheet(nextSheet);
   }, []);
 
-  const updateEvaluatorName = useCallback((columnId: string, name: string) => {
-    updateSheet((draft) => ({
-      ...draft,
-      evaluator_columns: draft.evaluator_columns.map((column) =>
-        column.id === columnId ? { ...column, name } : column
-      ),
-    }));
-  }, [updateSheet]);
-
-  const addEvaluator = useCallback(() => {
+  const addEvaluator = useCallback((option: AssetAdminScheduleEvaluatorOption) => {
     updateSheet((draft) => {
+      const linkedColumns = draft.evaluator_columns.filter((column) => Boolean(column.user_id));
+      if (
+        linkedColumns.length >= 4 ||
+        linkedColumns.some((column) => column.user_id === option.id)
+      ) {
+        return draft;
+      }
       const nextColumn: AssetAdminScheduleEvaluatorColumn = {
         id: makeEvaluatorColumnId(),
-        name: `Evaluator ${draft.evaluator_columns.length + 1}`,
+        name: evaluatorOptionLabel(option),
+        user_id: option.id,
+        email: option.email,
+        ...(option.avatarUrl ? { avatar_url: option.avatarUrl } : {}),
       };
       return {
         ...draft,
@@ -829,7 +1081,8 @@ export default function AssetScheduleSheet({
 
   const removeEvaluator = useCallback((columnId: string) => {
     updateSheet((draft) => {
-      if (draft.evaluator_columns.length <= 1) return draft;
+      const targetColumn = draft.evaluator_columns.find((column) => column.id === columnId);
+      if (!targetColumn?.user_id) return draft;
       return {
         ...draft,
         evaluator_columns: draft.evaluator_columns.filter((column) => column.id !== columnId),
@@ -866,12 +1119,24 @@ export default function AssetScheduleSheet({
     }));
   }, [updateSheet]);
 
+  const linkedEvaluatorIds = useMemo(
+    () => new Set((sheet?.evaluator_columns ?? []).map((column) => column.user_id).filter(Boolean)),
+    [sheet?.evaluator_columns]
+  );
+  const availableEvaluatorOptions = useMemo(
+    () => evaluatorOptions.filter((option) => !linkedEvaluatorIds.has(option.id)),
+    [evaluatorOptions, linkedEvaluatorIds]
+  );
+  const linkedEvaluatorLimitReached = linkedEvaluatorIds.size >= 4;
+
   async function handleSave() {
     const current = sheetRef.current;
     if (!current) return;
     const payload = recalculateAssetScheduleSheet(current);
-    await onSave(payload);
+    const saved = await onSave(payload);
+    if (!saved) return;
     dirtyRef.current = false;
+    setSheetDirty(false);
     sheetRef.current = payload;
     setSheet(payload);
   }
@@ -1208,17 +1473,60 @@ export default function AssetScheduleSheet({
   const scheduleTable = useReactTable({
     data: sheet?.rows ?? [],
     columns: scheduleColumns,
+    state: { pagination },
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    autoResetPageIndex: false,
   });
   const scheduleTableWidth = scheduleTable
     .getAllLeafColumns()
     .reduce((total, column) => total + column.getSize(), 0);
+  const paginationStart = pagination.pageIndex * pagination.pageSize;
+  const paginatedMobileRows = (sheet?.rows ?? [])
+    .slice(paginationStart, paginationStart + pagination.pageSize)
+    .map((row, pageIndex) => ({ row, index: paginationStart + pageIndex }));
+
+  useEffect(() => {
+    const rowCount = sheet?.rows.length ?? 0;
+    const lastPage = Math.max(0, Math.ceil(rowCount / pagination.pageSize) - 1);
+    if (pagination.pageIndex > lastPage) {
+      setPagination((current) => ({ ...current, pageIndex: lastPage }));
+      return;
+    }
+    const start = pagination.pageIndex * pagination.pageSize;
+    const end = Math.min(rowCount, start + pagination.pageSize);
+    if (rowCount > 0 && (selectedMobileLot < start || selectedMobileLot >= end)) {
+      setSelectedMobileLot(start);
+    }
+  }, [pagination.pageIndex, pagination.pageSize, selectedMobileLot, sheet?.rows.length]);
 
   const metricRows = useMemo<SummaryRow[]>(() => {
     if (!sheet || !derivedSummary) return [];
 
+    const calculated = (
+      key: string,
+      label: string,
+      result: number | string | null,
+      display: React.ReactNode,
+      formula: string,
+      inputs: Record<string, number | string | null>
+    ): SummaryRow => ({
+      key,
+      label,
+      value: display,
+      calculation: calculationDetails(serverCalculations, {
+        key,
+        label,
+        formula,
+        inputs,
+        result,
+      }),
+    });
+
     return [
       {
+        key: "buyers_premium_basis",
         label: "Buyers Premium Basis",
         value: (
           <FormControl size="small" fullWidth>
@@ -1238,9 +1546,29 @@ export default function AssetScheduleSheet({
           </FormControl>
         ),
       },
-      { label: "Total Asset Value ($)", value: formatCurrencyCell(derivedSummary.total_asset_value) || "-" },
+      calculated(
+        "total_asset_value",
+        "Total Asset Value ($)",
+        derivedSummary.total_asset_value,
+        formatCurrencyCell(derivedSummary.total_asset_value) || "-",
+        "Sum of each asset's evaluator average",
+        { asset_count: sheet.rows.length }
+      ),
+      calculated(
+        "estimated_range",
+        "Estimated Range",
+        `${formatCurrencyCell(derivedSummary.total_low_est_value) || "-"} – ${formatCurrencyCell(derivedSummary.total_high_est_value) || "-"}`,
+        `${formatCurrencyCell(derivedSummary.total_low_est_value) || "-"} – ${formatCurrencyCell(derivedSummary.total_high_est_value) || "-"}`,
+        "Sum of low estimates through sum of high estimates",
+        {
+          total_low_est_value: derivedSummary.total_low_est_value,
+          total_high_est_value: derivedSummary.total_high_est_value,
+        }
+      ),
       {
+        key: "total_risk_weighted_value",
         label: "Total Risk-Weighted Value ($)",
+        note: "Reference only; not used in calculated totals.",
         value: (
           <SummaryInput
             value={sheet.file_summary.total_risk_weighted_value}
@@ -1250,7 +1578,9 @@ export default function AssetScheduleSheet({
         ),
       },
       {
+        key: "file_risk_multiplier",
         label: "File Risk Multiplier",
+        note: "Reference only; not used in calculated totals.",
         value: (
           <SummaryInput
             value={sheet.file_summary.file_risk_multiplier}
@@ -1259,15 +1589,19 @@ export default function AssetScheduleSheet({
           />
         ),
       },
-      { label: "% Low Risk Value", value: formatPercentCell(derivedSummary.low_risk_percent) || "-" },
-      { label: "% Medium Risk Value", value: formatPercentCell(derivedSummary.medium_risk_percent) || "-" },
-      { label: "% High Risk Value", value: formatPercentCell(derivedSummary.high_risk_percent) || "-" },
-      { label: "Overall File Risk Rating", value: derivedSummary.overall_file_risk_rating },
-      { label: "NMG", value: formatCurrencyCell(derivedSummary.selected_nmg) || "-" },
-      { label: "Cash Purchase Price", value: formatCurrencyCell(derivedSummary.selected_cash_purchase_price) || "-" },
-      { label: "Total Projected Costs", value: formatCurrencyCell(derivedSummary.total_projected_costs) || "-" },
+      calculated("low_risk_percent", "% Low Risk Value", derivedSummary.low_risk_percent, formatPercentCell(derivedSummary.low_risk_percent) || "-", "Low-risk asset value / total asset value", { low_risk_value: derivedSummary.low_risk_value, total_asset_value: derivedSummary.total_asset_value }),
+      calculated("medium_risk_percent", "% Medium Risk Value", derivedSummary.medium_risk_percent, formatPercentCell(derivedSummary.medium_risk_percent) || "-", "Medium-risk asset value / total asset value", { medium_risk_value: derivedSummary.medium_risk_value, total_asset_value: derivedSummary.total_asset_value }),
+      calculated("high_risk_percent", "% High Risk Value", derivedSummary.high_risk_percent, formatPercentCell(derivedSummary.high_risk_percent) || "-", "High-risk asset value / total asset value", { high_risk_value: derivedSummary.high_risk_value, total_asset_value: derivedSummary.total_asset_value }),
+      calculated("weighted_average_risk_score", "Weighted Average Risk Score", derivedSummary.weighted_average_risk_score, new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(derivedSummary.weighted_average_risk_score), "Sum of each asset average multiplied by its market-check risk score, divided by total asset value", { total_asset_value: derivedSummary.total_asset_value }),
+      calculated("overall_file_risk_rating", "Overall File Risk Rating", derivedSummary.overall_file_risk_rating, derivedSummary.overall_file_risk_rating, "Risk bucket for the asset-value-weighted average market-check score", { weighted_average_risk_score: derivedSummary.weighted_average_risk_score }),
+      calculated("selected_nmg", "NMG", derivedSummary.selected_nmg, formatCurrencyCell(derivedSummary.selected_nmg) || "-", "Selected basis: capped NMG when capped; otherwise uncapped Offer #2 NMG", { buyers_premium_basis: sheet.file_summary.buyers_premium_basis, capped_nmg: derivedSummary.capped.nmg, uncapped_offer2_nmg: derivedSummary.uncapped.offer2_nmg }),
+      calculated("selected_cash_purchase_price", "Cash Purchase Price", derivedSummary.selected_cash_purchase_price, formatCurrencyCell(derivedSummary.selected_cash_purchase_price) || "-", "Selected basis: capped average when capped; otherwise uncapped Offer #1 cash offer", { buyers_premium_basis: sheet.file_summary.buyers_premium_basis, capped_average: derivedSummary.capped.avg, uncapped_offer1_cash_offer: derivedSummary.uncapped.offer1_cash_offer }),
+      calculated("selected_commission_basis_value", "Commission Basis Value", derivedSummary.selected_commission_basis_value, formatCurrencyCell(derivedSummary.selected_commission_basis_value) || "-", "Selected basis: capped buyer premium when capped; otherwise uncapped 15% buyer premium", { buyers_premium_basis: sheet.file_summary.buyers_premium_basis, capped_buyer_premium: derivedSummary.total_capped_bp, uncapped_bp_15: derivedSummary.uncapped.bp_15 }),
+      calculated("total_projected_costs", "Total Projected Costs", derivedSummary.total_projected_costs, formatCurrencyCell(derivedSummary.total_projected_costs) || "-", "Cleaning + lien search + video + lotting + advertising across all assets", { asset_count: sheet.rows.length }),
       {
+        key: "commission_percent_no_guarantee",
         label: "Commission % No Guarantee",
+        note: "Reference only; not used in calculated totals.",
         value: (
           <SummaryInput
             value={sheet.file_summary.commission_percent_no_guarantee}
@@ -1278,6 +1612,7 @@ export default function AssetScheduleSheet({
         ),
       },
       {
+        key: "offer2_nmg_percent",
         label: "Offer #2 NMG / Overage %",
         value: (
           <SummaryInput
@@ -1294,6 +1629,7 @@ export default function AssetScheduleSheet({
         ),
       },
       {
+        key: "capped_threshold_percent",
         label: "Capped Threshold %",
         value: (
           <SummaryInput
@@ -1310,65 +1646,101 @@ export default function AssetScheduleSheet({
         ),
       },
     ];
-  }, [derivedSummary, sheet, updateFileSummaryField]);
+  }, [derivedSummary, serverCalculations, sheet, updateFileSummaryField]);
 
   const uncappedRows = useMemo<SummaryRow[]>(() => {
     if (!sheet || !derivedSummary) return [];
     const offer2PercentLabel = new Intl.NumberFormat("en-CA", {
       maximumFractionDigits: 2,
     }).format(sheet.file_summary.offer2_nmg_percent * 100);
-    const commissionLabel =
-      sheet.file_summary.commission_percent_no_guarantee === null
-        ? "Offer #3 Commission"
-        : `Offer #3 Commission (${sheet.file_summary.commission_percent_no_guarantee}%)`;
+    const calculated = (
+      key: string,
+      label: string,
+      result: number | null,
+      formula: string,
+      inputs: Record<string, number | string | null>,
+      percent = false
+    ): SummaryRow => ({
+      key: `uncapped.${key}`,
+      label,
+      value: percent ? formatPercentCell(result) || "-" : formatCurrencyCell(result) || "-",
+      calculation: calculationDetails(serverCalculations, {
+        key: `uncapped.${key}`,
+        label,
+        formula,
+        inputs,
+        result,
+      }),
+    });
+    const u = derivedSummary.uncapped;
 
     return [
-      { label: "Get", value: formatCurrencyCell(derivedSummary.uncapped.get) || "-" },
-      { label: "Costs", value: formatCurrencyCell(derivedSummary.uncapped.costs) || "-" },
-      { label: "Get After Costs", value: formatCurrencyCell(derivedSummary.uncapped.get_after_costs) || "-" },
-      { label: "Adjusted Get", value: formatCurrencyCell(derivedSummary.uncapped.adjusted_get) || "-" },
-      { label: "15% B.P.", value: formatCurrencyCell(derivedSummary.uncapped.bp_15) || "-" },
-      { label: "Potential Get", value: formatCurrencyCell(derivedSummary.uncapped.potential_get) || "-" },
-      { label: "Adjusted Potential Get", value: formatCurrencyCell(derivedSummary.uncapped.adjusted_potential_get) || "-" },
-      { label: "Potential 15% B.P.", value: formatCurrencyCell(derivedSummary.uncapped.potential_bp_15) || "-" },
-      { label: "Offer #1 Cash Offer (90%)", value: formatCurrencyCell(derivedSummary.uncapped.offer1_cash_offer) || "-" },
-      { label: "Offer #1 Total Costs", value: formatCurrencyCell(derivedSummary.uncapped.offer1_total_costs) || "-" },
-      { label: "Offer #1 McD Take", value: formatCurrencyCell(derivedSummary.uncapped.offer1_mcd_take) || "-" },
-      { label: "Offer #1 ROI", value: formatPercentCell(derivedSummary.uncapped.offer1_roi) || "-" },
-      { label: "Offer #1 Risk", value: formatCurrencyCell(derivedSummary.uncapped.offer1_risk) || "-" },
-      { label: `Offer #2 NMG (${offer2PercentLabel}%)`, value: formatCurrencyCell(derivedSummary.uncapped.offer2_nmg) || "-" },
-      { label: "Offer #2 Threshold", value: formatCurrencyCell(derivedSummary.uncapped.offer2_threshold) || "-" },
-      { label: "Offer #2 Upper Value", value: formatCurrencyCell(derivedSummary.uncapped.offer2_upper_value) || "-" },
-      { label: "Offer #2 Total Costs", value: formatCurrencyCell(derivedSummary.uncapped.offer2_total_costs) || "-" },
-      { label: "Offer #2 Aquajet's Take", value: formatCurrencyCell(derivedSummary.uncapped.offer2_aquajets_take) || "-" },
-      { label: "Offer #2 Overage", value: formatCurrencyCell(derivedSummary.uncapped.offer2_overage) || "-" },
-      { label: "Offer #2 McD Take", value: formatCurrencyCell(derivedSummary.uncapped.offer2_mcd_take) || "-" },
-      { label: "Offer #2 ROI", value: formatPercentCell(derivedSummary.uncapped.offer2_roi) || "-" },
-      { label: "Offer #2 Risk", value: formatCurrencyCell(derivedSummary.uncapped.offer2_risk) || "-" },
-      { label: "Aquajet's Potential Take", value: formatCurrencyCell(derivedSummary.uncapped.aquajets_potential_take) || "-" },
-      { label: "McD Potential Take", value: formatCurrencyCell(derivedSummary.uncapped.mcd_potential_take) || "-" },
-      { label: "Potential ROI", value: formatPercentCell(derivedSummary.uncapped.potential_roi) || "-" },
-      { label: commissionLabel, value: formatCurrencyCell(derivedSummary.uncapped.offer3_mcd_take) || "-" },
+      calculated("get", "Get", u.get, "Total asset value + capped buyer premium", { total_asset_value: derivedSummary.total_asset_value, total_capped_bp: derivedSummary.total_capped_bp }),
+      calculated("costs", "Costs", u.costs, "Sum of all projected per-asset costs", { total_projected_costs: derivedSummary.total_projected_costs }),
+      calculated("get_after_costs", "Get After Costs", u.get_after_costs, "Get - costs", { get: u.get, costs: u.costs }),
+      calculated("adjusted_get", "Adjusted Get", u.adjusted_get, "Get after costs / 1.15", { get_after_costs: u.get_after_costs }),
+      calculated("bp_15", "15% B.P.", u.bp_15, "Get - adjusted get", { get: u.get, adjusted_get: u.adjusted_get }),
+      calculated("potential_get", "Potential Get", u.potential_get, "Total high estimate + capped buyer premium", { total_high_est_value: derivedSummary.total_high_est_value, total_capped_bp: derivedSummary.total_capped_bp }),
+      calculated("adjusted_potential_get", "Adjusted Potential Get", u.adjusted_potential_get, "Potential get / 1.15", { potential_get: u.potential_get }),
+      calculated("potential_bp_15", "Potential 15% B.P.", u.potential_bp_15, "Potential get - adjusted potential get", { potential_get: u.potential_get, adjusted_potential_get: u.adjusted_potential_get }),
+      calculated("offer1_cash_offer", "Offer #1 Cash Offer (90%)", u.offer1_cash_offer, "Get x 90%", { get: u.get }),
+      calculated("offer1_total_costs", "Offer #1 Total Costs", u.offer1_total_costs, "Offer #1 cash offer + costs", { offer1_cash_offer: u.offer1_cash_offer, costs: u.costs }),
+      calculated("offer1_mcd_take", "Offer #1 McD Take", u.offer1_mcd_take, "Get - Offer #1 total costs", { get: u.get, offer1_total_costs: u.offer1_total_costs }),
+      calculated("offer1_roi", "Offer #1 ROI", u.offer1_roi, "Offer #1 McD take / Offer #1 total costs", { offer1_mcd_take: u.offer1_mcd_take, offer1_total_costs: u.offer1_total_costs }, true),
+      calculated("offer1_risk", "Offer #1 Risk", u.offer1_risk, "Low estimate + capped buyer premium - Offer #1 total costs", { total_low_est_value: derivedSummary.total_low_est_value, total_capped_bp: derivedSummary.total_capped_bp, offer1_total_costs: u.offer1_total_costs }),
+      calculated("offer2_nmg", `Offer #2 NMG (${offer2PercentLabel}%)`, u.offer2_nmg, "Get x Offer #2 NMG percentage", { get: u.get, offer2_nmg_percent: sheet.file_summary.offer2_nmg_percent }),
+      calculated("offer2_threshold", "Offer #2 Threshold", u.offer2_threshold, "Offer #2 NMG x 15%", { offer2_nmg: u.offer2_nmg }),
+      calculated("offer2_upper_value", "Offer #2 Upper Value", u.offer2_upper_value, "Offer #2 NMG + threshold", { offer2_nmg: u.offer2_nmg, offer2_threshold: u.offer2_threshold }),
+      calculated("offer2_total_costs", "Offer #2 Total Costs", u.offer2_total_costs, "Offer #2 NMG + costs", { offer2_nmg: u.offer2_nmg, costs: u.costs }),
+      calculated("offer2_aquajets_take", "Offer #2 Aquajet's Take", u.offer2_aquajets_take, "Offer #2 NMG", { offer2_nmg: u.offer2_nmg }),
+      calculated("offer2_overage", "Offer #2 Overage", u.offer2_overage, "Adjusted get - Offer #2 NMG", { adjusted_get: u.adjusted_get, offer2_nmg: u.offer2_nmg }),
+      calculated("offer2_mcd_take", "Offer #2 McD Take", u.offer2_mcd_take, "15% buyer premium - costs", { bp_15: u.bp_15, costs: u.costs }),
+      calculated("offer2_roi", "Offer #2 ROI", u.offer2_roi, "Offer #2 McD take / Offer #2 total costs", { offer2_mcd_take: u.offer2_mcd_take, offer2_total_costs: u.offer2_total_costs }, true),
+      calculated("offer2_risk", "Offer #2 Risk", u.offer2_risk, "Low estimate + capped buyer premium - Offer #2 total costs", { total_low_est_value: derivedSummary.total_low_est_value, total_capped_bp: derivedSummary.total_capped_bp, offer2_total_costs: u.offer2_total_costs }),
+      calculated("aquajets_potential_take", "Aquajet's Potential Take", u.aquajets_potential_take, "NMG + 98% of adjusted potential value above the upper value", { offer2_nmg: u.offer2_nmg, adjusted_potential_get: u.adjusted_potential_get, offer2_upper_value: u.offer2_upper_value }),
+      calculated("mcd_potential_take", "McD Potential Take", u.mcd_potential_take, "Potential buyer premium - costs + threshold + 2% of potential overage", { potential_bp_15: u.potential_bp_15, costs: u.costs, offer2_threshold: u.offer2_threshold, adjusted_potential_get: u.adjusted_potential_get, offer2_upper_value: u.offer2_upper_value }),
+      calculated("potential_roi", "Potential ROI", u.potential_roi, "McD potential take / Offer #2 total costs", { mcd_potential_take: u.mcd_potential_take, offer2_total_costs: u.offer2_total_costs }, true),
+      calculated("offer3_mcd_take", "Offer #3 Commission", u.offer3_mcd_take, "Uncapped 15% buyer premium", { bp_15: u.bp_15 }),
     ];
-  }, [derivedSummary, sheet]);
+  }, [derivedSummary, serverCalculations, sheet]);
 
   const cappedRows = useMemo<SummaryRow[]>(() => {
-    if (!derivedSummary) return [];
+    if (!sheet || !derivedSummary) return [];
+    const calculated = (
+      key: string,
+      label: string,
+      result: number | null,
+      formula: string,
+      inputs: Record<string, number | string | null>,
+      percent = false
+    ): SummaryRow => ({
+      key: `capped.${key}`,
+      label,
+      value: percent ? formatPercentCell(result) || "-" : formatCurrencyCell(result) || "-",
+      calculation: calculationDetails(serverCalculations, {
+        key: `capped.${key}`,
+        label,
+        formula,
+        inputs,
+        result,
+      }),
+    });
+    const c = derivedSummary.capped;
     return [
-      { label: "AVG", value: formatCurrencyCell(derivedSummary.capped.avg) || "-" },
-      { label: "HIGH", value: formatCurrencyCell(derivedSummary.capped.high) || "-" },
-      { label: "LOW", value: formatCurrencyCell(derivedSummary.capped.low) || "-" },
-      { label: "BP", value: formatCurrencyCell(derivedSummary.capped.bp) || "-" },
-      { label: "Sale Total Inc BP", value: formatCurrencyCell(derivedSummary.capped.sale_total_inc_bp) || "-" },
-      { label: "Ads", value: formatCurrencyCell(derivedSummary.capped.ads) || "-" },
-      { label: "SVR", value: formatCurrencyCell(derivedSummary.capped.svr) || "-" },
-      { label: "Refurb", value: formatCurrencyCell(derivedSummary.capped.refurb) || "-" },
-      { label: "Total Cost", value: formatCurrencyCell(derivedSummary.capped.total_cost) || "-" },
-      { label: "NMG", value: formatCurrencyCell(derivedSummary.capped.nmg) || "-" },
-      { label: "Threshold", value: formatCurrencyCell(derivedSummary.capped.threshold) || "-" },
-      { label: "Risk", value: formatPercentCell(derivedSummary.capped.risk) || "-" },
+      calculated("avg", "AVG", c.avg, "Total asset value", { total_asset_value: derivedSummary.total_asset_value }),
+      calculated("high", "HIGH", c.high, "Sum of high estimated sale values", { total_high_est_value: derivedSummary.total_high_est_value }),
+      calculated("low", "LOW", c.low, "Sum of low estimated sale values", { total_low_est_value: derivedSummary.total_low_est_value }),
+      calculated("bp", "BP", c.bp, "Sum of capped per-asset buyer premiums", { total_capped_bp: derivedSummary.total_capped_bp }),
+      calculated("sale_total_inc_bp", "Sale Total Inc BP", c.sale_total_inc_bp, "AVG + BP", { avg: c.avg, bp: c.bp }),
+      calculated("ads", "Ads", c.ads, "AVG x 1%", { avg: c.avg }),
+      calculated("svr", "SVR", c.svr, "AVG x 1%", { avg: c.avg }),
+      calculated("refurb", "Refurb", c.refurb, "AVG x 1%", { avg: c.avg }),
+      calculated("total_cost", "Total Cost", c.total_cost, "Ads + SVR + refurb", { ads: c.ads, svr: c.svr, refurb: c.refurb }),
+      calculated("nmg", "NMG", c.nmg, "AVG - total cost - threshold", { avg: c.avg, total_cost: c.total_cost, threshold: c.threshold }),
+      calculated("threshold", "Threshold", c.threshold, "AVG x capped threshold percentage", { avg: c.avg, capped_threshold_percent: sheet.file_summary.capped_threshold_percent }),
+      calculated("risk", "Risk", c.risk, "1 - ((total cost + NMG - BP) / AVG)", { total_cost: c.total_cost, nmg: c.nmg, bp: c.bp, avg: c.avg }, true),
     ];
-  }, [derivedSummary]);
+  }, [derivedSummary, serverCalculations, sheet]);
 
   if (!sheet || !derivedSummary) {
     return <Box sx={{ py: 6, textAlign: "center", color: "text.secondary" }}>No asset schedule sheet available.</Box>;
@@ -1418,9 +1790,9 @@ export default function AssetScheduleSheet({
         <Box
           sx={{
             display: { xs: "none", lg: "flex" },
-            minHeight: 72,
-            px: 2.5,
-            py: 1.5,
+            minHeight: 58,
+            px: 1.5,
+            py: 1,
             borderTop: "1px solid",
             borderColor: "divider",
             alignItems: "center",
@@ -1449,44 +1821,22 @@ export default function AssetScheduleSheet({
                 sx={{
                   display: "flex",
                   minWidth: 0,
-                  maxWidth: "min(760px, 100%)",
-                  gap: 1,
+                  maxWidth: "min(680px, 100%)",
+                  gap: 0.75,
                   overflowX: "auto",
                   scrollbarWidth: "thin",
                 }}
               >
                 {sheet.evaluator_columns.map((column) => (
-                  <Stack
+                  <Box
                     key={column.id}
-                    direction="row"
-                    spacing={0.5}
-                    alignItems="center"
-                    sx={{ width: 220, flex: "0 0 220px" }}
+                    sx={{ width: 196, flex: "0 0 196px" }}
                   >
-                    <EvaluatorNameField
-                      value={column.name}
-                      onCommit={(next) => updateEvaluatorName(column.id, next)}
-                      ariaLabel={`Name for ${column.name || "evaluator"}`}
+                    <EvaluatorColumnPill
+                      column={column}
+                      onRemove={() => removeEvaluator(column.id)}
                     />
-                    <Tooltip title="Remove evaluator" arrow>
-                      <span>
-                        <IconButton
-                          aria-label={`Remove ${column.name || "evaluator"}`}
-                          disabled={sheet.evaluator_columns.length <= 1}
-                          onClick={() => removeEvaluator(column.id)}
-                          sx={{
-                            width: 40,
-                            height: 40,
-                            border: "1px solid",
-                            borderColor: "divider",
-                            borderRadius: 1,
-                          }}
-                        >
-                          <DeleteOutlineRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  </Stack>
+                  </Box>
                 ))}
               </Box>
             </Stack>
@@ -1496,15 +1846,14 @@ export default function AssetScheduleSheet({
 
           <Stack direction="row" spacing={1} sx={{ flex: "0 0 auto" }}>
             {activeTab === "scheduleA" ? (
-              <Button
-                variant="outlined"
-                color="inherit"
-                startIcon={<AddRoundedIcon />}
-                onClick={addEvaluator}
-                sx={{ minHeight: 44, borderRadius: 1, textTransform: "none", whiteSpace: "nowrap" }}
-              >
-                Add Evaluator
-              </Button>
+              <EvaluatorPicker
+                options={availableEvaluatorOptions}
+                loading={evaluatorOptionsLoading}
+                disabled={linkedEvaluatorLimitReached}
+                inputValue={evaluatorQuery}
+                onInputChange={setEvaluatorQuery}
+                onSelect={addEvaluator}
+              />
             ) : null}
             <Button
               variant="contained"
@@ -1515,7 +1864,7 @@ export default function AssetScheduleSheet({
                 if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
               }}
               onClick={() => void handleSave()}
-              sx={{ minHeight: 44, borderRadius: 1, textTransform: "none", whiteSpace: "nowrap" }}
+              sx={{ minHeight: 38, borderRadius: 1, textTransform: "none", whiteSpace: "nowrap" }}
             >
               {saving ? "Saving..." : pageMode ? "Save changes" : "Save"}
             </Button>
@@ -1543,181 +1892,245 @@ export default function AssetScheduleSheet({
             {saveSuccess}
           </Alert>
         ) : null}
+        {saveWarning ? (
+          <Alert severity="warning" sx={{ mx: 2, my: 1, borderRadius: 1 }}>
+            {saveWarning}
+          </Alert>
+        ) : null}
+        {activeTab === "scheduleA" && !isCompactLayout && evaluatorOptionsError ? (
+          <Alert severity="warning" sx={{ mx: 1.5, my: 0.75, py: 0, borderRadius: 1 }}>
+            {evaluatorOptionsError}
+          </Alert>
+        ) : null}
       </Box>
 
       <Box
         sx={{
           flex: 1,
           minHeight: 0,
-          overflow: "auto",
+          overflow: activeTab === "scheduleA" && !isCompactLayout ? "hidden" : "auto",
           bgcolor: pageMode ? "background.paper" : "background.default",
         }}
       >
         {activeTab === "scheduleA" ? (
           <>
             {!isCompactLayout ? (
-              <TableContainer
-                component={Paper}
-                variant="outlined"
-                elevation={0}
-                sx={{
-                  width: "calc(100% - 32px)",
-                  height: "calc(100% - 32px)",
-                  m: 2,
-                  overflow: "auto",
-                  overscrollBehavior: "contain",
-                  scrollbarGutter: "stable",
-                  borderColor: "#d9dde3",
-                  borderRadius: 1.5,
-                  bgcolor: "background.paper",
-                }}
-              >
-                <Table
-                  stickyHeader
-                  size="small"
-                  aria-label="Asset schedule lots"
+              <Box sx={{ display: "flex", height: "100%", minHeight: 0, flexDirection: "column", p: 1 }}>
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  elevation={0}
                   sx={{
-                    width: scheduleTableWidth,
-                    tableLayout: "fixed",
-                    borderCollapse: "separate",
-                    borderSpacing: 0,
+                    width: "100%",
+                    minHeight: 0,
+                    flex: 1,
+                    overflow: "auto",
+                    overscrollBehavior: "contain",
+                    scrollbarGutter: "stable",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    bgcolor: "background.paper",
                   }}
                 >
-                <colgroup>
-                  {scheduleTable.getAllLeafColumns().map((column) => (
-                    <col key={column.id} style={{ width: column.getSize() }} />
-                  ))}
-                </colgroup>
-                <TableHead>
-                  {scheduleTable.getHeaderGroups().map((headerGroup) => (
-                    <TableRow
-                      key={headerGroup.id}
-                      sx={{
-                        height: headerGroup.depth === 0 ? 36 : 54,
-                      }}
-                    >
-                      {headerGroup.headers.map((header) => {
-                        const stickyAssetId = header.column.id === "asset_id";
-                        const isGroupHeader = headerGroup.depth === 0;
-                        return (
-                          <TableCell
-                            key={header.id}
-                            colSpan={header.colSpan}
-                            sx={{
-                              position: "sticky",
-                              top: isGroupHeader ? 0 : 36,
-                              left: stickyAssetId ? 0 : "auto",
-                              zIndex: stickyAssetId ? 8 : isGroupHeader ? 6 : 7,
-                              ...(!isGroupHeader
-                                ? {
-                                    width: header.getSize(),
-                                    minWidth: header.getSize(),
-                                    maxWidth: header.getSize(),
-                                  }
-                                : null),
-                              height: isGroupHeader ? 36 : 54,
-                              minHeight: isGroupHeader ? 36 : 54,
-                              maxHeight: isGroupHeader ? 36 : 54,
-                              boxSizing: "border-box",
-                              overflow: "hidden",
-                              bgcolor: isGroupHeader ? "#f2f4f7" : "#f8f9fb",
-                              color: "text.primary",
-                              borderBottom: "1px solid",
-                              borderRight: "1px solid",
-                              borderColor: "#d9dde3",
-                              fontWeight: 700,
-                              fontSize: isGroupHeader ? 12 : 12.5,
-                              lineHeight: 1.25,
-                              letterSpacing: isGroupHeader ? "0.01em" : 0,
-                              textAlign: isGroupHeader ? "center" : "left",
-                              verticalAlign: "middle",
-                              p: 0,
-                              ...(stickyAssetId
-                                ? {
-                                    boxShadow: "5px 0 10px -8px rgba(15, 23, 42, 0.7)",
-                                  }
-                                : null),
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                display: isGroupHeader ? "block" : "-webkit-box",
-                                width: "100%",
-                                px: isGroupHeader ? 1 : 1.5,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: isGroupHeader ? "nowrap" : "normal",
-                                WebkitBoxOrient: "vertical",
-                                WebkitLineClamp: isGroupHeader ? 1 : 2,
-                              }}
-                            >
-                              {header.isPlaceholder
-                                ? null
-                                : flexRender(header.column.columnDef.header, header.getContext())}
-                            </Box>
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  ))}
-                </TableHead>
-                <TableBody>
-                  {scheduleTable.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      sx={{
-                        height: 96,
-                        "& > .MuiTableCell-root": {
-                          bgcolor: row.index % 2 === 0 ? "background.paper" : "#fbfcfd",
-                        },
-                        "&:hover > .MuiTableCell-root": {
-                          bgcolor: "#f5f7fa",
-                        },
-                      }}
-                    >
-                      {row.getVisibleCells().map((cell) => {
-                        const stickyAssetId = cell.column.id === "asset_id";
-                        return (
-                          <TableCell
-                            key={cell.id}
-                            sx={{
-                              position: stickyAssetId ? "sticky" : "static",
-                              left: stickyAssetId ? 0 : "auto",
-                              zIndex: stickyAssetId ? 2 : "auto",
-                              width: cell.column.getSize(),
-                              minWidth: cell.column.getSize(),
-                              maxWidth: cell.column.getSize(),
-                              height: 96,
-                              maxHeight: 96,
-                              boxSizing: "border-box",
-                              overflow: "hidden",
-                              borderBottom: "1px solid",
-                              borderRight: "1px solid",
-                              borderColor: "#e2e5e9",
-                              verticalAlign: "middle",
-                              py: 1,
-                              px: 1.5,
-                              ...(stickyAssetId
-                                ? {
-                                    fontWeight: 700,
-                                    boxShadow: "5px 0 10px -8px rgba(15, 23, 42, 0.7)",
-                                  }
-                                : null),
-                            }}
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  ))}
-                </TableBody>
-                </Table>
-              </TableContainer>
+                  <Table
+                    stickyHeader
+                    size="small"
+                    aria-label="Asset schedule lots"
+                    sx={{
+                      width: scheduleTableWidth,
+                      tableLayout: "fixed",
+                      borderCollapse: "separate",
+                      borderSpacing: 0,
+                    }}
+                  >
+                    <colgroup>
+                      {scheduleTable.getAllLeafColumns().map((column) => (
+                        <col key={column.id} style={{ width: column.getSize() }} />
+                      ))}
+                    </colgroup>
+                    <TableHead>
+                      {scheduleTable.getHeaderGroups().map((headerGroup) => (
+                        <TableRow
+                          key={headerGroup.id}
+                          sx={{ height: headerGroup.depth === 0 ? 34 : 46 }}
+                        >
+                          {headerGroup.headers.map((header) => {
+                            const stickyAssetId = header.column.id === "asset_id";
+                            const isGroupHeader = headerGroup.depth === 0;
+                            return (
+                              <TableCell
+                                key={header.id}
+                                colSpan={header.colSpan}
+                                sx={{
+                                  position: "sticky",
+                                  top: isGroupHeader ? 0 : 34,
+                                  left: stickyAssetId ? 0 : "auto",
+                                  zIndex: stickyAssetId ? 8 : isGroupHeader ? 6 : 7,
+                                  ...(!isGroupHeader
+                                    ? {
+                                        width: header.getSize(),
+                                        minWidth: header.getSize(),
+                                        maxWidth: header.getSize(),
+                                      }
+                                    : null),
+                                  height: isGroupHeader ? 34 : 46,
+                                  minHeight: isGroupHeader ? 34 : 46,
+                                  maxHeight: isGroupHeader ? 34 : 46,
+                                  boxSizing: "border-box",
+                                  overflow: "hidden",
+                                  bgcolor: isGroupHeader ? "background.default" : "background.paper",
+                                  color: "text.primary",
+                                  borderBottom: "1px solid",
+                                  borderRight: "1px solid",
+                                  borderColor: "divider",
+                                  fontWeight: 700,
+                                  fontSize: isGroupHeader ? 11.5 : 12,
+                                  lineHeight: 1.2,
+                                  letterSpacing: isGroupHeader ? "0.01em" : 0,
+                                  textAlign: isGroupHeader ? "center" : "left",
+                                  verticalAlign: "middle",
+                                  p: 0,
+                                  ...(stickyAssetId
+                                    ? { boxShadow: "5px 0 10px -8px rgba(15, 23, 42, 0.7)" }
+                                    : null),
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    display: isGroupHeader ? "block" : "-webkit-box",
+                                    width: "100%",
+                                    px: 1,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: isGroupHeader ? "nowrap" : "normal",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitLineClamp: isGroupHeader ? 1 : 2,
+                                  }}
+                                >
+                                  {header.isPlaceholder
+                                    ? null
+                                    : flexRender(header.column.columnDef.header, header.getContext())}
+                                </Box>
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableHead>
+                    <TableBody>
+                      {scheduleTable.getRowModel().rows.map((row) => (
+                        <TableRow
+                          key={row.id}
+                          sx={{
+                            height: 80,
+                            "& > .MuiTableCell-root": {
+                              bgcolor: row.index % 2 === 0 ? "background.paper" : "background.default",
+                            },
+                            "&:hover > .MuiTableCell-root": { bgcolor: "action.hover" },
+                          }}
+                        >
+                          {row.getVisibleCells().map((cell) => {
+                            const stickyAssetId = cell.column.id === "asset_id";
+                            return (
+                              <TableCell
+                                key={cell.id}
+                                sx={{
+                                  position: stickyAssetId ? "sticky" : "static",
+                                  left: stickyAssetId ? 0 : "auto",
+                                  zIndex: stickyAssetId ? 2 : "auto",
+                                  width: cell.column.getSize(),
+                                  minWidth: cell.column.getSize(),
+                                  maxWidth: cell.column.getSize(),
+                                  height: 80,
+                                  maxHeight: 80,
+                                  boxSizing: "border-box",
+                                  overflow: "hidden",
+                                  borderBottom: "1px solid",
+                                  borderRight: "1px solid",
+                                  borderColor: "divider",
+                                  verticalAlign: "middle",
+                                  py: 0.6,
+                                  px: 1,
+                                  ...(stickyAssetId
+                                    ? {
+                                        fontWeight: 700,
+                                        boxShadow: "5px 0 10px -8px rgba(15, 23, 42, 0.7)",
+                                      }
+                                    : null),
+                                }}
+                              >
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <TablePagination
+                  component="div"
+                  count={sheet.rows.length}
+                  page={pagination.pageIndex}
+                  onPageChange={(_, nextPage) => {
+                    scheduleTable.setPageIndex(nextPage);
+                    setSelectedMobileLot(nextPage * pagination.pageSize);
+                  }}
+                  rowsPerPage={pagination.pageSize}
+                  onRowsPerPageChange={(event) => {
+                    scheduleTable.setPageSize(Number(event.target.value));
+                    scheduleTable.setPageIndex(0);
+                    setSelectedMobileLot(0);
+                  }}
+                  rowsPerPageOptions={[25, 50, 100]}
+                  labelRowsPerPage="Rows"
+                  sx={{
+                    flex: "0 0 auto",
+                    border: "1px solid",
+                    borderTop: 0,
+                    borderColor: "divider",
+                    bgcolor: "background.paper",
+                    "& .MuiTablePagination-toolbar": { minHeight: 44 },
+                  }}
+                />
+              </Box>
             ) : null}
 
             {isCompactLayout ? (
               <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
+                <TablePagination
+                  component="div"
+                  count={sheet.rows.length}
+                  page={pagination.pageIndex}
+                  onPageChange={(_, nextPage) => {
+                    scheduleTable.setPageIndex(nextPage);
+                    setSelectedMobileLot(nextPage * pagination.pageSize);
+                  }}
+                  rowsPerPage={pagination.pageSize}
+                  onRowsPerPageChange={(event) => {
+                    scheduleTable.setPageSize(Number(event.target.value));
+                    scheduleTable.setPageIndex(0);
+                    setSelectedMobileLot(0);
+                  }}
+                  rowsPerPageOptions={[25, 50, 100]}
+                  labelRowsPerPage="Rows"
+                  SelectProps={{ inputProps: { "aria-label": "Rows per page" } }}
+                  sx={{
+                    mb: 1,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    bgcolor: "background.paper",
+                    "& .MuiTablePagination-toolbar": {
+                      minHeight: 44,
+                      px: { xs: 0.5, sm: 1.5 },
+                    },
+                    "& .MuiTablePagination-spacer": { display: { xs: "none", sm: "block" } },
+                    "& .MuiTablePagination-selectLabel": { display: { xs: "none", sm: "block" } },
+                    "& .MuiTablePagination-displayedRows": { ml: { xs: 0, sm: 2 } },
+                    "& .MuiTablePagination-actions": { ml: { xs: 0, sm: 2 } },
+                  }}
+                />
                 {sheet.rows.length ? (
                   <Box
                     component="nav"
@@ -1734,11 +2147,11 @@ export default function AssetScheduleSheet({
                       "&::-webkit-scrollbar": { display: "none" },
                     }}
                   >
-                    {sheet.rows.map((row, index) => {
+                    {paginatedMobileRows.map(({ row, index }) => {
                       const selected = selectedMobileLot === index;
                       return (
                         <Button
-                          key={row.lot_id}
+                          key={`${row.lot_id}-${index}`}
                           aria-pressed={selected}
                           variant={selected ? "outlined" : "text"}
                           color={selected ? "primary" : "inherit"}
@@ -1777,22 +2190,30 @@ export default function AssetScheduleSheet({
                   </Typography>
                   <Stack spacing={1}>
                     {sheet.evaluator_columns.map((column) => (
-                      <Stack key={column.id} direction="row" spacing={1} alignItems="center">
-                        <EvaluatorNameField
-                          value={column.name}
-                          onCommit={(next) => updateEvaluatorName(column.id, next)}
-                          ariaLabel={`Name for ${column.name || "evaluator"}`}
-                        />
-                        <IconButton
-                          aria-label={`Remove ${column.name || "evaluator"}`}
-                          disabled={sheet.evaluator_columns.length <= 1}
-                          onClick={() => removeEvaluator(column.id)}
-                          sx={{ width: 44, height: 44, border: "1px solid", borderColor: "divider", borderRadius: 1 }}
-                        >
-                          <DeleteOutlineRoundedIcon />
-                        </IconButton>
-                      </Stack>
+                      <EvaluatorColumnPill
+                        key={column.id}
+                        column={column}
+                        onRemove={() => removeEvaluator(column.id)}
+                      />
                     ))}
+                    <EvaluatorPicker
+                      options={availableEvaluatorOptions}
+                      loading={evaluatorOptionsLoading}
+                      disabled={linkedEvaluatorLimitReached}
+                      inputValue={evaluatorQuery}
+                      onInputChange={setEvaluatorQuery}
+                      onSelect={addEvaluator}
+                    />
+                    {linkedEvaluatorLimitReached ? (
+                      <Typography sx={{ color: "text.secondary", fontSize: 11.5 }}>
+                        Maximum of four linked evaluator users reached.
+                      </Typography>
+                    ) : null}
+                    {evaluatorOptionsError ? (
+                      <Typography role="alert" sx={{ color: "error.main", fontSize: 11.5 }}>
+                        {evaluatorOptionsError}
+                      </Typography>
+                    ) : null}
                   </Stack>
                 </Paper>
 
@@ -1825,9 +2246,9 @@ export default function AssetScheduleSheet({
                 alignItems: "start",
               }}
             >
-              <SummaryTable title="Metric" rows={metricRows} />
-              <SummaryTable title="Uncapped Buyers Premium Scenario" rows={uncappedRows} />
-              <SummaryTable title="Capped Buyers Premium Scenario" rows={cappedRows} />
+              <SummaryTable title="Metric" rows={metricRows} onOpenCalculation={setCalculationDialog} />
+              <SummaryTable title="Uncapped Buyers Premium Scenario" rows={uncappedRows} onOpenCalculation={setCalculationDialog} />
+              <SummaryTable title="Capped Buyers Premium Scenario" rows={cappedRows} onOpenCalculation={setCalculationDialog} />
             </Box>
           </Box>
         ) : null}
@@ -1846,28 +2267,6 @@ export default function AssetScheduleSheet({
           boxShadow: "0 -8px 24px rgba(15, 23, 42, 0.08)",
         }}
       >
-        {activeTab === "scheduleA" ? (
-          <Button
-            variant="outlined"
-            color="inherit"
-            startIcon={<AddRoundedIcon />}
-            onClick={addEvaluator}
-            sx={{
-              minWidth: 0,
-              minHeight: 46,
-              flex: 1,
-              borderRadius: 1,
-              px: 1,
-              fontSize: 12,
-              textTransform: "none",
-              whiteSpace: "nowrap",
-              "& .MuiButton-startIcon": { ml: 0, mr: 0.5 },
-              "& .MuiSvgIcon-root": { fontSize: 18 },
-            }}
-          >
-            Add Evaluator
-          </Button>
-        ) : null}
         <Button
           variant="contained"
           color="primary"
@@ -1915,6 +2314,72 @@ export default function AssetScheduleSheet({
           </Button>
         ) : null}
       </Stack>
+
+      <Dialog
+        open={Boolean(calculationDialog)}
+        onClose={() => setCalculationDialog(null)}
+        fullWidth
+        fullScreen={isPhoneLayout}
+        maxWidth="sm"
+        aria-labelledby="pv-calculation-title"
+        PaperProps={{ sx: { borderRadius: { xs: 0, sm: 1.5 }, bgcolor: "background.paper" } }}
+      >
+        <DialogTitle id="pv-calculation-title" sx={{ pr: 7, fontSize: { xs: 18, sm: 20 } }}>
+          {calculationDialog?.label || "Calculation details"}
+          <IconButton
+            aria-label="Close calculation details"
+            onClick={() => setCalculationDialog(null)}
+            sx={{ position: "absolute", top: 10, right: 10 }}
+          >
+            <CloseRoundedIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: { xs: 2, sm: 2.5 } }}>
+          {calculationDialog ? (
+            <Stack spacing={2.25}>
+              <Box>
+                <Typography sx={{ mb: 0.75, color: "text.secondary", fontSize: 11, fontWeight: 750, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Formula
+                </Typography>
+                <Box
+                  component="p"
+                  sx={{ m: 0, p: 1.5, border: "1px solid", borderColor: "divider", borderRadius: 1, bgcolor: "action.hover", fontFamily: "var(--font-geist-mono)", fontSize: 13, lineHeight: 1.6, overflowWrap: "anywhere" }}
+                >
+                  {calculationDialog.formula}
+                </Box>
+              </Box>
+              <Box>
+                <Typography sx={{ mb: 0.75, color: "text.secondary", fontSize: 11, fontWeight: 750, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Inputs
+                </Typography>
+                <Box component="dl" sx={{ m: 0, border: "1px solid", borderColor: "divider", borderRadius: 1, overflow: "hidden" }}>
+                  {Object.entries(calculationDialog.inputs).map(([name, value]) => (
+                    <Box key={name} sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 2, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider", "&:last-child": { borderBottom: 0 } }}>
+                      <Typography component="dt" sx={{ color: "text.secondary", fontSize: 12.5, overflowWrap: "anywhere" }}>
+                        {formatLabelForCalculation(name)}
+                      </Typography>
+                      <Typography component="dd" sx={{ m: 0, fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                        {calculationValue(value)}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 2, p: 1.5, border: "1px solid", borderColor: "primary.main", borderRadius: 1, bgcolor: "action.hover" }}>
+                <Typography sx={{ color: "text.secondary", fontSize: 13, fontWeight: 700 }}>Result</Typography>
+                <Typography sx={{ fontSize: 18, fontWeight: 800, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                  {calculationValue(calculationDialog.result)}
+                </Typography>
+              </Box>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, py: 1.25 }}>
+          <Button onClick={() => setCalculationDialog(null)} variant="contained" sx={{ minHeight: 40, textTransform: "none" }}>
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={Boolean(gallery)}

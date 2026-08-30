@@ -343,6 +343,9 @@ export function recalculateAssetScheduleSheet(sheet: AssetAdminScheduleSheet): A
     evaluator_columns: sheet.evaluator_columns.map((column) => ({
       id: column.id,
       name: String(column.name || "").trim() || "Evaluator",
+      ...(column.user_id ? { user_id: String(column.user_id) } : {}),
+      ...(column.email ? { email: String(column.email) } : {}),
+      ...(column.avatar_url ? { avatar_url: String(column.avatar_url) } : {}),
     })),
     rows: sheet.rows.map((row) => recalculateRow(row, sheet.evaluator_columns)),
     file_summary: normalizeFileSummary(sheet.file_summary),

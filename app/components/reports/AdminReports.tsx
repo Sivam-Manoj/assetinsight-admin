@@ -636,8 +636,8 @@ export default function AdminReports() {
     setConfirmOpen(true);
   }
 
-  function openReportData(id: string) {
-    router.push(`/reports/${encodeURIComponent(id)}/data?from=reports`);
+  function openProposalValuation(id: string) {
+    router.push(`/reports/${encodeURIComponent(id)}/pv?from=reports`);
   }
 
   async function confirmDelete() {
@@ -825,7 +825,7 @@ export default function AdminReports() {
                 "&:hover": { bgcolor: "#0369a1", boxShadow: "0 8px 18px rgba(2, 132, 199, 0.22)" },
               }}
               onClick={() => {
-                if (previewId) openReportData(previewId);
+                if (previewId) openProposalValuation(previewId);
               }}
             >
               <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>
@@ -1060,7 +1060,7 @@ export default function AdminReports() {
           aria-label="Proposal valuation"
           startIcon={<VisibilityRoundedIcon />}
           sx={{ ...desktopTileSx, width: 64 }}
-          onClick={() => previewId && openReportData(previewId)}
+          onClick={() => previewId && openProposalValuation(previewId)}
         >
           Proposal valuation
         </Button>

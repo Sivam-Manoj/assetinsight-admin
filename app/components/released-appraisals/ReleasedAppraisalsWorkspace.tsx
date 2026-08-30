@@ -384,7 +384,7 @@ export default function ReleasedAppraisalsWorkspace() {
   const insightAction = useCallback((target: NonNullable<Finding["actionTarget"]>) => {
     if (!insightsRow) return;
     if (target === "data") router.push(`/reports/${insightsRow.id}/data?from=approvals`);
-    if (target === "proposal-valuation") router.push(`/reports/${insightsRow.id}/data?from=approvals&tab=schedule-a`);
+    if (target === "proposal-valuation") router.push(`/reports/${insightsRow.id}/pv?from=approvals`);
     if (target === "cr-notes") setCrNotesRow(insightsRow);
     if (target === "regenerate") void regenerate(insightsRow);
   }, [insightsRow, regenerate, router]);
@@ -419,7 +419,7 @@ export default function ReleasedAppraisalsWorkspace() {
     const recoverable = Object.values(row.artifacts).some((artifact) => !artifact.available && artifact.recoverable);
     return <Box sx={actionGridSx(cardLayout, "actions")}>
       <Tooltip title="Open Proposal Valuation"><Button variant="outlined" startIcon={<AssessmentRoundedIcon sx={{ fontSize: "16px !important" }} />}
-        onClick={() => router.push(`/reports/${row.id}/data?from=approvals&tab=schedule-a`)} sx={compactButtonSx}>Valuation</Button></Tooltip>
+        onClick={() => router.push(`/reports/${row.id}/pv?from=approvals`)} sx={compactButtonSx}>Valuation</Button></Tooltip>
       <Tooltip title="View reports with this exact contract number"><Button variant="outlined" startIcon={<LinkRoundedIcon sx={{ fontSize: "16px !important" }} />}
         onClick={() => void openSameContract(row)} sx={compactButtonSx}>Same contract</Button></Tooltip>
       <Tooltip title="Edit per-lot CR notes"><Button variant="outlined" startIcon={<NoteAltRoundedIcon sx={{ fontSize: "16px !important" }} />}

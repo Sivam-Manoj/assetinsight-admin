@@ -24,6 +24,7 @@ import type {
 type ReportDataPageProps = {
   reportId: string;
   returnTo: "/reports" | "/approvals" | "/pending-approvals";
+  pvOnly?: boolean;
 };
 
 type PreviewTab = "data" | "schedule" | "raw";
@@ -463,7 +464,7 @@ function ReportDataPanel({
 
 export type { ReportPreviewPayload } from "@/app/components/reports/reportPreviewTypes";
 
-export default function ReportDataPage({ reportId, returnTo }: ReportDataPageProps) {
+export default function ReportDataPage({ reportId, returnTo, pvOnly = false }: ReportDataPageProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -471,6 +472,7 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
   const [savingAssetSheet, setSavingAssetSheet] = useState(false);
   const [assetSheetSaveError, setAssetSheetSaveError] = useState<string | null>(null);
   const [assetSheetSaveSuccess, setAssetSheetSaveSuccess] = useState<string | null>(null);
+  const [assetSheetSaveWarning, setAssetSheetSaveWarning] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PreviewTab>("data");
   const [selectedLot, setSelectedLot] = useState(0);
 
@@ -487,6 +489,7 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
       setPreview(null);
       setAssetSheetSaveError(null);
       setAssetSheetSaveSuccess(null);
+      setAssetSheetSaveWarning(null);
 
       try {
         const response = await fetch(`/api/admin/reports/${encodeURIComponent(reportId)}/preview`, {
@@ -503,7 +506,9 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
         const nextPreview = payload as ReportPreviewPayload;
         setPreview(nextPreview);
         setSelectedLot(0);
-        setActiveTab(nextPreview.variant === "assetScheduleSheet" ? "schedule" : "data");
+        setActiveTab(
+          pvOnly || nextPreview.variant === "assetScheduleSheet" ? "schedule" : "data"
+        );
       } catch (loadError) {
         if (controller.signal.aborted) return;
         setError(loadError instanceof Error ? loadError.message : "Failed to load report data");
@@ -514,13 +519,14 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
 
     void loadPreview();
     return () => controller.abort();
-  }, [reportId]);
+  }, [pvOnly, reportId]);
 
   const saveAssetScheduleSheet = useCallback(
-    async (assetScheduleSheet: AssetAdminScheduleSheet) => {
+    async (assetScheduleSheet: AssetAdminScheduleSheet): Promise<boolean> => {
       setSavingAssetSheet(true);
       setAssetSheetSaveError(null);
       setAssetSheetSaveSuccess(null);
+      setAssetSheetSaveWarning(null);
 
       try {
         const response = await fetch(
@@ -528,10 +534,23 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ assetScheduleSheet }),
+            body: JSON.stringify({
+              assetScheduleSheet,
+              ...(typeof preview?.revision === "number"
+                ? { baseRevision: preview.revision }
+                : {}),
+            }),
           }
         );
         const payload = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          const conflict = payload as { code?: string; message?: string; currentRevision?: number };
+          throw new Error(
+            conflict.code === "PV_REVISION_CONFLICT"
+              ? "Another user saved newer Proposal Valuation changes. Reload this page before continuing."
+              : conflict.message || "Proposal Valuation changed in another session. Reload and try again."
+          );
+        }
         if (!response.ok) {
           throw new Error(
             (payload as { message?: string })?.message ||
@@ -541,22 +560,28 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
 
         const nextPreview = payload as ReportPreviewPayload;
         setPreview(nextPreview);
-        setAssetSheetSaveSuccess(
-          nextPreview.files_regeneration_coalesced
-            ? "Changes saved. The latest edits will regenerate after the current file run."
-            : nextPreview.files_regeneration_queued
-              ? "Changes saved. Files are regenerating for My Reports."
-              : "Changes saved."
-        );
+        if (nextPreview.files_regeneration_warning) {
+          setAssetSheetSaveWarning(nextPreview.files_regeneration_warning);
+        } else {
+          setAssetSheetSaveSuccess(
+            nextPreview.files_regeneration_coalesced
+              ? "Changes saved. The latest edits will regenerate after the current file run."
+              : nextPreview.files_regeneration_queued
+                ? "Changes saved. Files are regenerating for My Reports."
+                : "Changes saved."
+          );
+        }
+        return true;
       } catch (saveError) {
         setAssetSheetSaveError(
           saveError instanceof Error ? saveError.message : "Failed to save asset schedule sheet"
         );
+        return false;
       } finally {
         setSavingAssetSheet(false);
       }
     },
-    [reportId]
+    [preview?.revision, reportId]
   );
 
   const reportData = useMemo(
@@ -586,7 +611,7 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
           xs: `calc(100dvh - ${ADMIN_MOBILE_TITLEBAR_HEIGHT}px)`,
           lg: "100dvh",
         },
-        minHeight: 620,
+        minHeight: pvOnly ? 0 : 620,
         overflow: "hidden",
         bgcolor: "background.default",
       }}
@@ -610,8 +635,8 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
           flex: "0 0 auto",
           borderBottom: "1px solid",
           borderColor: "divider",
-          px: { xs: 2, sm: 3, lg: 4 },
-          pt: { xs: 1.5, sm: 2.25, lg: 2.75 },
+          px: pvOnly ? { xs: 1.5, sm: 2, lg: 2.5 } : { xs: 2, sm: 3, lg: 4 },
+          pt: pvOnly ? { xs: 0.75, sm: 1 } : { xs: 1.5, sm: 2.25, lg: 2.75 },
         }}
       >
         <Button
@@ -620,7 +645,7 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
           onClick={() => router.push(returnTo)}
           sx={{
             minHeight: 40,
-            mb: { xs: 1, sm: 1.5 },
+            mb: pvOnly ? 0.25 : { xs: 1, sm: 1.5 },
             ml: -1,
             px: 1,
             borderRadius: 1,
@@ -634,33 +659,35 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
           {backLabel}
         </Button>
 
-        <Box sx={{ minWidth: 0, pb: { xs: 1.75, sm: 2.25 } }}>
+        <Box sx={{ minWidth: 0, pb: pvOnly ? 1 : { xs: 1.75, sm: 2.25 } }}>
           <Typography
             component="h1"
             sx={{
               color: "text.primary",
-              fontSize: { xs: 26, sm: 30, lg: 34 },
+              fontSize: pvOnly ? { xs: 20, sm: 22, lg: 24 } : { xs: 26, sm: 30, lg: 34 },
               fontWeight: 720,
               lineHeight: 1.15,
               letterSpacing: "-0.035em",
             }}
           >
-            {preview?.title || "Report Data"}
+            {pvOnly ? "Proposal Valuation" : preview?.title || "Report Data"}
           </Typography>
           <Typography
             sx={{
-              mt: 0.75,
+              mt: pvOnly ? 0.25 : 0.75,
               maxWidth: 680,
               color: "text.secondary",
               fontSize: { xs: 13.5, sm: 14.5 },
               lineHeight: 1.5,
             }}
           >
-            Complete saved report data, organized lot by lot.
+            {pvOnly
+              ? preview?.title || "Review and update the report valuation."
+              : "Complete saved report data, organized lot by lot."}
           </Typography>
         </Box>
 
-        {!loading && !error && preview ? (
+        {!pvOnly && !loading && !error && preview ? (
           <Tabs
             value={activeTab}
             onChange={(_, value: PreviewTab) => setActiveTab(value)}
@@ -715,13 +742,13 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
               minHeight: 0,
               flex: 1,
               overflowX: "hidden",
-              overflowY: activeTab === "schedule" ? "hidden" : "auto",
+              overflowY: pvOnly || activeTab === "schedule" ? "hidden" : "auto",
               overscrollBehavior: "contain",
               scrollbarGutter: "stable",
               bgcolor: "background.paper",
             }}
           >
-            <Box sx={{ display: activeTab === "data" ? "block" : "none", minHeight: "100%" }}>
+            <Box sx={{ display: !pvOnly && activeTab === "data" ? "block" : "none", minHeight: "100%" }}>
               <ReportDataPanel
                 preview={preview}
                 lots={lots}
@@ -734,7 +761,7 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
             {hasSchedule && preview.assetScheduleSheet ? (
               <Box
                 sx={{
-                  display: activeTab === "schedule" ? "block" : "none",
+                  display: pvOnly || activeTab === "schedule" ? "block" : "none",
                   height: "100%",
                   minHeight: 0,
                 }}
@@ -744,16 +771,25 @@ export default function ReportDataPage({ reportId, returnTo }: ReportDataPagePro
                   saving={savingAssetSheet}
                   saveError={assetSheetSaveError}
                   saveSuccess={assetSheetSaveSuccess}
+                  saveWarning={assetSheetSaveWarning}
                   onSave={saveAssetScheduleSheet}
                   pageMode
                 />
               </Box>
             ) : null}
 
+            {pvOnly && !hasSchedule ? (
+              <Box sx={{ p: { xs: 2, sm: 3 } }}>
+                <Alert severity="info" sx={{ maxWidth: 720, borderRadius: 1 }}>
+                  Proposal Valuation is not available for this report.
+                </Alert>
+              </Box>
+            ) : null}
+
             <Box
               component="pre"
               sx={{
-                display: activeTab === "raw" ? "block" : "none",
+                display: !pvOnly && activeTab === "raw" ? "block" : "none",
                 minHeight: "100%",
                 m: 0,
                 p: { xs: 2, sm: 3, lg: 4 },
