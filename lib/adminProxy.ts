@@ -116,26 +116,33 @@ export async function proxyStreamWithAdminAuth(
       return NextResponse.json(err, { status: 401 });
     }
     res = await doFetch(newToken);
-    const buffer = await res.arrayBuffer();
-    const headers = new Headers();
-    const ct = res.headers.get("content-type") || "application/octet-stream";
-    const cd = res.headers.get("content-disposition");
-    headers.set("content-type", ct);
-    if (cd) headers.set("content-disposition", cd);
-    const response = new NextResponse(buffer, { status: res.status, headers });
+    const response = streamedAdminResponse(res);
     setAccessCookie(response, newToken);
     return response;
   }
 
-  const buffer = await res.arrayBuffer();
-  const headers = new Headers();
-  const ct = res.headers.get("content-type") || "application/octet-stream";
-  const cd = res.headers.get("content-disposition");
-  headers.set("content-type", ct);
-  if (cd) headers.set("content-disposition", cd);
-  const response = new NextResponse(buffer, { status: res.status, headers });
+  const response = streamedAdminResponse(res);
   if (refreshedInitially) setAccessCookie(response, token);
   return response;
+}
+
+function streamedAdminResponse(upstream: Response) {
+  const headers = new Headers();
+  const contentType =
+    upstream.headers.get("content-type") || "application/octet-stream";
+  const contentDisposition = upstream.headers.get("content-disposition");
+
+  headers.set("content-type", contentType);
+  headers.set("cache-control", "no-store");
+  headers.set("x-content-type-options", "nosniff");
+  if (contentDisposition) {
+    headers.set("content-disposition", contentDisposition);
+  }
+
+  return new NextResponse(upstream.body, {
+    status: upstream.status,
+    headers,
+  });
 }
 
 /**

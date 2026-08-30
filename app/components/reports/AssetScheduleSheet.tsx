@@ -5,6 +5,7 @@ import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
@@ -145,6 +146,26 @@ function formatLabelForCalculation(value: string) {
 function mobileLotNumber(row: AssetAdminScheduleRow, index: number) {
   const match = String(row.lot_id || "").match(/(\d+)$/);
   return match?.[1] || String(index + 1).padStart(3, "0");
+}
+
+function proposalValuationExportFilename(
+  contentDisposition: string | null,
+  reportId: string
+) {
+  const fallback = `proposal-valuation-${reportId}.xlsx`;
+  if (!contentDisposition) return fallback;
+
+  const encoded = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const quoted = contentDisposition.match(/filename="([^"]+)"/i)?.[1];
+  const unquoted = contentDisposition.match(/filename=([^;]+)/i)?.[1];
+  const candidate = encoded || quoted || unquoted;
+  if (!candidate) return fallback;
+
+  try {
+    return decodeURIComponent(candidate.trim()).split(/[\\/]/).pop() || fallback;
+  } catch {
+    return candidate.trim().split(/[\\/]/).pop() || fallback;
+  }
 }
 
 function CompactReadOnlyCell({
@@ -952,6 +973,8 @@ export default function AssetScheduleSheet({
   const [debouncedEvaluatorQuery, setDebouncedEvaluatorQuery] = useState("");
   const [calculationDialog, setCalculationDialog] = useState<CalculationDetails | null>(null);
   const [sheetDirty, setSheetDirty] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const sheetRef = useRef(sheet);
   const reportIdRef = useRef(preview.reportId);
   const dirtyRef = useRef(false);
@@ -974,6 +997,7 @@ export default function AssetScheduleSheet({
       setPagination((current) => ({ ...current, pageIndex: 0 }));
       setEvaluatorQuery("");
       setDebouncedEvaluatorQuery("");
+      setExportError(null);
     }
   }, [preview.assetScheduleSheet, preview.reportId]);
 
@@ -1140,6 +1164,56 @@ export default function AssetScheduleSheet({
     sheetRef.current = payload;
     setSheet(payload);
   }
+
+  const exportProposalValuation = useCallback(async () => {
+    if (saving || exporting || dirtyRef.current) return;
+    const reportId = preview.reportId;
+    if (!reportId) {
+      setExportError("This Proposal Valuation does not have a report identifier.");
+      return;
+    }
+    setExporting(true);
+    setExportError(null);
+
+    try {
+      const response = await fetch(
+        `/api/admin/reports/${encodeURIComponent(reportId)}/proposal-valuation/export`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(
+          (payload as { message?: string }).message ||
+            "Unable to export the Proposal Valuation workbook."
+        );
+      }
+
+      const workbook = await response.blob();
+      if (!workbook.size) {
+        throw new Error("The Proposal Valuation workbook was empty.");
+      }
+      const objectUrl = URL.createObjectURL(workbook);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = proposalValuationExportFilename(
+        response.headers.get("content-disposition"),
+        reportId
+      );
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+    } catch (cause) {
+      setExportError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to export the Proposal Valuation workbook."
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, preview.reportId, saving]);
 
   const openGallery = useCallback((title: string, urls: string[]) => {
     if (!urls.length) return;
@@ -1855,6 +1929,45 @@ export default function AssetScheduleSheet({
                 onSelect={addEvaluator}
               />
             ) : null}
+            <Tooltip
+              title={
+                sheetDirty
+                  ? "Save your latest changes before exporting Excel."
+                  : "Export the current Proposal Valuation as Excel."
+              }
+              arrow
+            >
+              <span
+                tabIndex={sheetDirty ? 0 : undefined}
+                aria-label={
+                  sheetDirty
+                    ? "Save your latest changes before exporting Excel."
+                    : undefined
+                }
+              >
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  startIcon={
+                    exporting ? (
+                      <CircularProgress size={16} color="inherit" />
+                    ) : (
+                      <DownloadRoundedIcon />
+                    )
+                  }
+                  disabled={saving || exporting || sheetDirty || !preview.reportId}
+                  onClick={() => void exportProposalValuation()}
+                  sx={{
+                    minHeight: 38,
+                    borderRadius: 1,
+                    textTransform: "none",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {exporting ? "Exporting..." : "Export Excel"}
+                </Button>
+              </span>
+            </Tooltip>
             <Button
               variant="contained"
               color="primary"
@@ -1882,6 +1995,11 @@ export default function AssetScheduleSheet({
           </Stack>
         </Box>
 
+        {exportError ? (
+          <Alert severity="error" sx={{ mx: 2, my: 1, borderRadius: 1 }}>
+            {exportError}
+          </Alert>
+        ) : null}
         {saveError ? (
           <Alert severity="error" sx={{ mx: 2, my: 1, borderRadius: 1 }}>
             {saveError}
@@ -2267,6 +2385,38 @@ export default function AssetScheduleSheet({
           boxShadow: "0 -8px 24px rgba(15, 23, 42, 0.08)",
         }}
       >
+        <Button
+          variant="outlined"
+          color="inherit"
+          startIcon={
+            exporting ? (
+              <CircularProgress size={16} color="inherit" />
+            ) : (
+              <DownloadRoundedIcon />
+            )
+          }
+          disabled={saving || exporting || sheetDirty || !preview.reportId}
+          onClick={() => void exportProposalValuation()}
+          aria-label={
+            sheetDirty
+              ? "Save changes before exporting Excel"
+              : "Export Proposal Valuation as Excel"
+          }
+          sx={{
+            minWidth: 0,
+            minHeight: 46,
+            flex: 1,
+            borderRadius: 1,
+            px: 1,
+            fontSize: 13,
+            textTransform: "none",
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { ml: 0, mr: 0.5 },
+            "& .MuiSvgIcon-root": { fontSize: 18 },
+          }}
+        >
+          {exporting ? "Exporting..." : "Export Excel"}
+        </Button>
         <Button
           variant="contained"
           color="primary"
