@@ -41,7 +41,6 @@ import {
   Divider,
   Drawer,
   IconButton,
-  LinearProgress,
   Stack,
   Switch,
   TextField,
@@ -113,20 +112,15 @@ type DesktopDashboard = {
   };
   recentReports: DashboardRecentReport[];
 };
-type WeeklyCredits = {
-  weekStart?: string;
-  weekEnd?: string;
+type OpenAICredits = {
   remainingCredits?: number;
-  totalAvailableCredits?: number;
-  rechargeAmount?: number;
-  autoRechargeTotal?: number;
-  autoRenewEnabled?: boolean;
   requestCount?: number;
   webSearchCount?: number;
-  thresholdCredits?: number;
+  lowBalanceThreshold?: number;
+  usageSourceAvailable?: boolean;
   status?: string;
   syncedAt?: string;
-  recharges?: Array<{ id?: string; createdAt: string; amountCredits: number; balanceBefore: number; balanceAfter: number }>;
+  warnings?: string[];
 };
 type SettingState = { enabled: boolean } | null;
 type ThresholdState = { threshold: number; defaultThreshold: number } | null;
@@ -140,7 +134,19 @@ const TYPE_COLORS: Record<string, string> = {
 
 const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
 const number = (value: unknown) => Number(value || 0).toLocaleString();
-const money = (value: unknown) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const finiteNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (value !== null && value !== undefined && value !== "" && Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+const formatCreditValue = (value: number | null) =>
+  value === null ? "--" : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+const formatStatus = (value?: string) => {
+  if (!value) return "--";
+  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
 const formatDate = (value?: string) => {
   if (!value) return "--";
   const date = new Date(value);
@@ -179,10 +185,10 @@ export default function DashboardShellV2() {
   const [error, setError] = useState<string | null>(null);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rechargesOpen, setRechargesOpen] = useState(false);
   const [queueStage, setQueueStage] = useState<WorkflowStage | null>(null);
-  const [weeklyCredits, setWeeklyCredits] = useState<WeeklyCredits | null>(null);
-  const [weeklyCreditsLoading, setWeeklyCreditsLoading] = useState(true);
+  const [openAICredits, setOpenAICredits] = useState<OpenAICredits | null>(null);
+  const [openAICreditsLoading, setOpenAICreditsLoading] = useState(true);
+  const [openAICreditsError, setOpenAICreditsError] = useState<string | null>(null);
   const [specWebSearch, setSpecWebSearch] = useState<SettingState>(null);
   const [specSaving, setSpecSaving] = useState(false);
   const [threshold, setThreshold] = useState<ThresholdState>(null);
@@ -204,14 +210,18 @@ export default function DashboardShellV2() {
     }
   }, [from, to]);
 
-  const loadWeeklyCredits = useCallback(async (sync = false) => {
+  const loadOpenAICredits = useCallback(async (sync = false) => {
     try {
-      setWeeklyCreditsLoading(true);
-      const response = await fetch(sync ? "/api/admin/openai-weekly-credits/sync" : "/api/admin/openai-weekly-credits", { method: sync ? "POST" : "GET", cache: "no-store" });
+      setOpenAICreditsLoading(true);
+      setOpenAICreditsError(null);
+      const response = await fetch(sync ? "/api/admin/openai-credits/sync" : "/api/admin/openai-credits", { method: sync ? "POST" : "GET", cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.ok) setWeeklyCredits(payload?.data || payload || null);
+      if (!response.ok) throw new Error(payload?.message || "Failed to load OpenAI credits");
+      setOpenAICredits(payload?.data ?? payload ?? null);
+    } catch (currentError) {
+      setOpenAICreditsError(currentError instanceof Error ? currentError.message : "Failed to load OpenAI credits");
     } finally {
-      setWeeklyCreditsLoading(false);
+      setOpenAICreditsLoading(false);
     }
   }, []);
 
@@ -220,7 +230,7 @@ export default function DashboardShellV2() {
   }, [loadDashboard]);
 
   useEffect(() => {
-    void loadWeeklyCredits();
+    void loadOpenAICredits();
     void (async () => {
       const [searchResponse, thresholdResponse] = await Promise.all([
         fetch("/api/admin/spec-web-search", { cache: "no-store" }),
@@ -238,7 +248,7 @@ export default function DashboardShellV2() {
         setThresholdInput(String(nextThreshold));
       }
     })();
-  }, [loadWeeklyCredits]);
+  }, [loadOpenAICredits]);
 
   async function toggleSpecSearch() {
     const enabled = !(specWebSearch?.enabled === true);
@@ -271,8 +281,14 @@ export default function DashboardShellV2() {
     const map = new Map((data?.byType || []).map((item) => [item.type, item.value]));
     return ["Asset", "LotListing", "RealEstate", "Salvage"].map((type) => map.get(type) || 0);
   }, [data?.byType]);
-  const creditTotal = Math.max(weeklyCredits?.totalAvailableCredits || weeklyCredits?.rechargeAmount || 1, 1);
-  const creditPercent = Math.max(0, Math.min(100, ((weeklyCredits?.remainingCredits || 0) / creditTotal) * 100));
+  const creditBalance = finiteNumber(openAICredits?.remainingCredits);
+  const creditThreshold = finiteNumber(openAICredits?.lowBalanceThreshold) ?? 100;
+  const creditIsLow = creditBalance !== null && creditBalance < creditThreshold;
+  const creditRequestCount = finiteNumber(openAICredits?.requestCount);
+  const creditWebSearchCount = finiteNumber(openAICredits?.webSearchCount);
+  const creditWarning = openAICredits?.usageSourceAvailable === false
+    ? openAICredits.warnings?.[0] || "OpenAI usage is currently unavailable; this balance may not include the latest usage."
+    : null;
 
   const kpis = [
     { label: "Reports", value: number(data?.kpis.reports.value), delta: data?.kpis.reports.percent, note: "vs previous period", icon: FileCheck2 },
@@ -393,25 +409,36 @@ export default function DashboardShellV2() {
           <Box className="desktop-flat-panel" sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" spacing={1}>
               <Box>
-                <Typography sx={{ fontSize: 14, fontWeight: 600 }}>Weekly Credits</Typography>
-                <Typography sx={{ mt: 0.25, color: "text.secondary", fontSize: 11 }}>{formatDate(weeklyCredits?.weekStart)} - {formatDate(weeklyCredits?.weekEnd)}</Typography>
+                <Typography sx={{ fontSize: 14, fontWeight: 600 }}>OpenAI Credits</Typography>
+                <Typography sx={{ mt: 0.25, color: "text.secondary", fontSize: 11 }}>Persistent usage balance</Typography>
               </Box>
-              <IconButton aria-label="Refresh credits" size="small" disabled={weeklyCreditsLoading} onClick={() => void loadWeeklyCredits(true)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "3px" }}><RefreshCcw size={15} /></IconButton>
+              <IconButton aria-label="Sync OpenAI credits" size="small" disabled={openAICreditsLoading} onClick={() => void loadOpenAICredits(true)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "3px" }}><RefreshCcw size={15} /></IconButton>
             </Stack>
-            <Typography sx={{ mt: 2, color: "text.secondary", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Remaining</Typography>
-            <Typography sx={{ mt: 0.25, fontSize: 26, fontWeight: 650, lineHeight: 1 }}>{weeklyCreditsLoading && !weeklyCredits ? "..." : money(weeklyCredits?.remainingCredits)}</Typography>
-            <Typography sx={{ mt: 1.5, color: "text.secondary", fontSize: 11 }}>{number(weeklyCredits?.requestCount)} requests</Typography>
-            <Typography sx={{ color: "text.secondary", fontSize: 11 }}>{number(weeklyCredits?.webSearchCount)} web searches</Typography>
-            <Typography sx={{ color: "text.secondary", fontSize: 11 }}>
-              {weeklyCredits?.autoRenewEnabled === false
-                ? "Renewal off - 0 credits added"
-                : `${number(weeklyCredits?.autoRechargeTotal)} credits renewed this week`}
-            </Typography>
-            <LinearProgress variant="determinate" value={creditPercent} sx={{ mt: 1.5, height: 5, bgcolor: "#ececed", "& .MuiLinearProgress-bar": { bgcolor: "#df111b" } }} />
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5 }}>
-              <Chip size="small" label={weeklyCredits?.status === "synced" ? "Synced" : "Unavailable"} sx={{ height: 22, bgcolor: "#eef0f1", fontSize: 10 }} />
-              <Button size="small" onClick={() => setRechargesOpen(true)} sx={{ minHeight: 28, px: 0, color: "text.primary", fontSize: 10 }}>Recharge history</Button>
-            </Stack>
+            {openAICreditsLoading && !openAICredits ? (
+              <Typography role="status" sx={{ mt: 2, color: "text.secondary", fontSize: 12 }}>Loading credit balance...</Typography>
+            ) : openAICreditsError && !openAICredits ? (
+              <Alert severity="error" sx={{ mt: 1.5, py: 0.25, fontSize: 11 }}>{openAICreditsError}</Alert>
+            ) : (
+              <>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mt: 2 }}>
+                  <Box>
+                    <Typography sx={{ color: "text.secondary", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Remaining balance</Typography>
+                    <Typography sx={{ mt: 0.25, color: creditIsLow ? "error.main" : "text.primary", fontSize: 26, fontWeight: 650, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditBalance)}</Typography>
+                  </Box>
+                  {creditIsLow ? <Chip size="small" color="error" label={`Low · below ${formatCreditValue(creditThreshold)}`} sx={{ height: 22, fontSize: 10 }} /> : null}
+                </Stack>
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 12px", mt: 1.5 }}>
+                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Requests</Typography>
+                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditRequestCount)}</Typography>
+                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Web searches</Typography>
+                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditWebSearchCount)}</Typography>
+                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Status</Typography>
+                  <Typography sx={{ fontSize: 11, fontWeight: 650 }}>{formatStatus(openAICredits?.status)}</Typography>
+                </Box>
+                {creditWarning ? <Alert severity="warning" sx={{ mt: 1.5, py: 0.25, fontSize: 11 }}>{creditWarning}</Alert> : null}
+                {openAICreditsError ? <Alert severity="error" sx={{ mt: 1.5, py: 0.25, fontSize: 11 }}>{openAICreditsError}</Alert> : null}
+              </>
+            )}
           </Box>
         </Stack>
       </Box>
@@ -507,26 +534,6 @@ export default function DashboardShellV2() {
         <DialogActions><Button variant="contained" onClick={() => setSettingsOpen(false)}>Close</Button></DialogActions>
       </Dialog>
 
-      <Dialog open={rechargesOpen} onClose={() => setRechargesOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Weekly recharge history</DialogTitle>
-        <DialogContent dividers>
-          {weeklyCredits?.autoRenewEnabled === false ? (
-            <Typography sx={{ color: "text.secondary" }}>
-              Automatic renewal is off. No credits were added this week.
-            </Typography>
-          ) : weeklyCredits?.recharges?.length ? (
-            weeklyCredits.recharges.map((recharge, index) => (
-              <Stack key={recharge.id || `${recharge.createdAt}-${index}`} direction="row" justifyContent="space-between" sx={{ py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
-                <Box><Typography sx={{ fontSize: 13, fontWeight: 600 }}>Recharge {index + 1}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{new Date(recharge.createdAt).toLocaleString()}</Typography></Box>
-                <Box sx={{ textAlign: "right" }}><Typography sx={{ color: "success.main", fontSize: 13, fontWeight: 650 }}>+{money(recharge.amountCredits)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{money(recharge.balanceBefore)} to {money(recharge.balanceAfter)}</Typography></Box>
-              </Stack>
-            ))
-          ) : (
-            <Typography sx={{ color: "text.secondary" }}>No automatic recharges have been added this week.</Typography>
-          )}
-        </DialogContent>
-        <DialogActions><Button variant="contained" onClick={() => setRechargesOpen(false)}>Close</Button></DialogActions>
-      </Dialog>
     </Box>
   );
 }
