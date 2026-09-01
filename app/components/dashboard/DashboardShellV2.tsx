@@ -114,6 +114,10 @@ type DesktopDashboard = {
 };
 type OpenAICredits = {
   remainingCredits?: number;
+  totalGrantedCredits?: number;
+  deductedCredits?: number;
+  openAIUsageUsd?: number;
+  usageMultiplier?: number;
   requestCount?: number;
   webSearchCount?: number;
   lowBalanceThreshold?: number;
@@ -282,13 +286,17 @@ export default function DashboardShellV2() {
     return ["Asset", "LotListing", "RealEstate", "Salvage"].map((type) => map.get(type) || 0);
   }, [data?.byType]);
   const creditBalance = finiteNumber(openAICredits?.remainingCredits);
+  const creditBudget = finiteNumber(openAICredits?.totalGrantedCredits);
+  const creditDeducted = finiteNumber(openAICredits?.deductedCredits);
+  const creditUsage = finiteNumber(openAICredits?.openAIUsageUsd);
+  const creditMultiplier = finiteNumber(openAICredits?.usageMultiplier);
   const creditThreshold = finiteNumber(openAICredits?.lowBalanceThreshold) ?? 100;
   const creditIsLow = creditBalance !== null && creditBalance < creditThreshold;
   const creditRequestCount = finiteNumber(openAICredits?.requestCount);
   const creditWebSearchCount = finiteNumber(openAICredits?.webSearchCount);
-  const creditWarning = openAICredits?.usageSourceAvailable === false
-    ? openAICredits.warnings?.[0] || "OpenAI usage is currently unavailable; this balance may not include the latest usage."
-    : null;
+  const creditWarning = openAICredits?.warnings?.[0] || (openAICredits?.usageSourceAvailable === false
+    ? "OpenAI usage is currently unavailable; this balance may not include the latest usage."
+    : null);
 
   const kpis = [
     { label: "Reports", value: number(data?.kpis.reports.value), delta: data?.kpis.reports.percent, note: "vs previous period", icon: FileCheck2 },
@@ -410,7 +418,7 @@ export default function DashboardShellV2() {
             <Stack direction="row" justifyContent="space-between" spacing={1}>
               <Box>
                 <Typography sx={{ fontSize: 14, fontWeight: 600 }}>OpenAI Credits</Typography>
-                <Typography sx={{ mt: 0.25, color: "text.secondary", fontSize: 11 }}>Persistent usage balance</Typography>
+                <Typography sx={{ mt: 0.25, color: "text.secondary", fontSize: 11 }}>Environment budget minus multiplied usage</Typography>
               </Box>
               <IconButton aria-label="Sync OpenAI credits" size="small" disabled={openAICreditsLoading} onClick={() => void loadOpenAICredits(true)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "3px" }}><RefreshCcw size={15} /></IconButton>
             </Stack>
@@ -428,6 +436,10 @@ export default function DashboardShellV2() {
                   {creditIsLow ? <Chip size="small" color="error" label={`Low · below ${formatCreditValue(creditThreshold)}`} sx={{ height: 22, fontSize: 10 }} /> : null}
                 </Stack>
                 <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 12px", mt: 1.5 }}>
+                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Configured budget</Typography>
+                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditBudget)}</Typography>
+                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Usage × multiplier</Typography>
+                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditUsage)} × {formatCreditValue(creditMultiplier)} = {formatCreditValue(creditDeducted)}</Typography>
                   <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Requests</Typography>
                   <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditRequestCount)}</Typography>
                   <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Web searches</Typography>
