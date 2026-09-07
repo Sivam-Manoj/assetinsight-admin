@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   Check,
@@ -20,6 +20,7 @@ import {
   Snackbar,
 } from "@mui/material";
 import styles from "./PendingApprovalsWorkspace.module.css";
+import { groupPendingApprovalRows, pendingApprovalBlockReason, releasesWithApproval } from "@/lib/reportApprovalUiPolicy";
 
 type PendingReport = {
   _id: string;
@@ -35,6 +36,12 @@ type PendingReport = {
   report?: string;
   isRealEstateReport?: boolean;
   isAssetReport?: boolean;
+  files_generating?: boolean;
+  files_regenerating?: boolean;
+  files_ready?: boolean;
+  generation_state?: string;
+  workflow_stage?: string;
+  job_status?: string;
   user?: { email?: string; username?: string; companyName?: string } | null;
   approval_assigned_to?: {
     email?: string;
@@ -78,21 +85,6 @@ function approverLabel(report: PendingReport) {
   return approver?.username || approver?.companyName || approver?.email || "Unassigned legacy report";
 }
 
-function normalizeRows(items: PendingReport[]) {
-  const rows = new Map<string, QueueRow>();
-  for (const item of items) {
-    const key = String(item.report || item._id);
-    const current = rows.get(key);
-    const next: QueueRow = { ...item, actionId: key };
-    if (!current || new Date(item.updatedAt || item.createdAt).getTime() > new Date(current.updatedAt || current.createdAt).getTime()) {
-      rows.set(key, next);
-    }
-  }
-  return Array.from(rows.values()).sort(
-    (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
-  );
-}
-
 export default function PendingApprovalsWorkspace() {
   const [data, setData] = useState<PendingResponse>({ items: [], total: 0, page: 1, limit: PAGE_SIZE });
   const [page, setPage] = useState(1);
@@ -104,8 +96,11 @@ export default function PendingApprovalsWorkspace() {
   const [rejectTarget, setRejectTarget] = useState<QueueRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [notice, setNotice] = useState<{ severity: "success" | "error"; message: string } | null>(null);
+  const decisionBusy = useRef(false);
+  const loadVersion = useRef(0);
 
   const load = useCallback(async (targetPage = page) => {
+    const version = ++loadVersion.current;
     setLoading(true);
     setError("");
     try {
@@ -114,11 +109,11 @@ export default function PendingApprovalsWorkspace() {
       });
       const payload = (await response.json().catch(() => ({}))) as PendingResponse & { message?: string };
       if (!response.ok) throw new Error(payload.message || "Pending approvals could not be loaded.");
-      setData(payload);
+      if (version === loadVersion.current) setData({ ...payload, items: Array.isArray(payload.items) ? payload.items : [] });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Pending approvals could not be loaded.");
+      if (version === loadVersion.current) setError(loadError instanceof Error ? loadError.message : "Pending approvals could not be loaded.");
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, [page]);
 
@@ -126,7 +121,7 @@ export default function PendingApprovalsWorkspace() {
     void load(page);
   }, [load, page]);
 
-  const rows = useMemo(() => normalizeRows(data.items), [data.items]);
+  const rows = useMemo(() => groupPendingApprovalRows(data.items), [data.items]);
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
     return rows.filter((row) => {
@@ -141,22 +136,26 @@ export default function PendingApprovalsWorkspace() {
   const totalPages = Math.max(1, Math.ceil(data.total / Math.max(1, data.limit || PAGE_SIZE)));
 
   async function approve(row: QueueRow) {
+    if (decisionBusy.current || pendingApprovalBlockReason(row)) return;
+    decisionBusy.current = true;
     setProcessingId(row.actionId);
     try {
       const response = await fetch(`/api/admin/reports/${row.actionId}/approve`, { method: "PATCH" });
       const payload = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) throw new Error(payload.message || "The report could not be approved.");
-      setNotice({ severity: "success", message: `${reportTypeLabel(row)} appraisal approved.` });
+      setNotice({ severity: "success", message: releasesWithApproval(row) ? `${reportTypeLabel(row)} report approved and released. Downloads are now available.` : `${reportTypeLabel(row)} appraisal approved.` });
       await load(page);
     } catch (approveError) {
       setNotice({ severity: "error", message: approveError instanceof Error ? approveError.message : "Approval failed." });
     } finally {
       setProcessingId("");
+      decisionBusy.current = false;
     }
   }
 
   async function reject() {
-    if (!rejectTarget || !rejectReason.trim()) return;
+    if (!rejectTarget || !rejectReason.trim() || decisionBusy.current) return;
+    decisionBusy.current = true;
     setProcessingId(rejectTarget.actionId);
     try {
       const response = await fetch(`/api/admin/reports/${rejectTarget.actionId}/reject`, {
@@ -174,6 +173,7 @@ export default function PendingApprovalsWorkspace() {
       setNotice({ severity: "error", message: rejectError instanceof Error ? rejectError.message : "Rejection failed." });
     } finally {
       setProcessingId("");
+      decisionBusy.current = false;
     }
   }
 
@@ -184,7 +184,7 @@ export default function PendingApprovalsWorkspace() {
           <p className={styles.eyebrow}>Review queue</p>
           <h1 className={styles.title}>Pending Approvals</h1>
           <p className={styles.description}>
-            Real Estate appraisals and assigned report reviews appear here. Open the report data, verify the property and valuation, then approve or return it to the creator.
+            Review Real Estate, Salvage and other pending reports. Real Estate and Salvage approval immediately releases the completed files for download. Asset approval and release remain separate.
           </p>
         </div>
         <div className={styles.count} aria-label={`${data.total} reports awaiting review`}>
@@ -207,7 +207,7 @@ export default function PendingApprovalsWorkspace() {
           <option value="asset">Asset</option>
           <option value="salvage">Salvage</option>
         </select>
-        <button className={styles.button} onClick={() => void load(page)} disabled={loading}>
+        <button className={styles.button} onClick={() => void load(page)} disabled={loading || Boolean(processingId)}>
           <RefreshCw size={16} className={loading ? "animate-spin" : undefined} />
           Refresh
         </button>
@@ -221,7 +221,7 @@ export default function PendingApprovalsWorkspace() {
           <span>Review actions</span>
         </div>
 
-        {error ? <div className={styles.error}>{error}</div> : null}
+        {error ? <div role="alert" className={styles.error}>{error}</div> : null}
         {!error && loading && !rows.length ? <div className={styles.empty}>Loading pending approvals...</div> : null}
         {!error && !loading && !filteredRows.length ? (
           <div className={styles.empty}>
@@ -232,6 +232,7 @@ export default function PendingApprovalsWorkspace() {
 
         {!error && filteredRows.map((row) => {
           const isProcessing = processingId === row.actionId;
+          const blockReason = pendingApprovalBlockReason(row);
           const created = new Date(row.createdAt);
           return (
             <article className={styles.row} key={row.actionId}>
@@ -254,7 +255,8 @@ export default function PendingApprovalsWorkspace() {
               </div>
 
               <div>
-                <span className={styles.badge}>Awaiting approval</span>
+                <span className={styles.badge}>{blockReason ? "Files not ready" : "Awaiting approval"}</span>
+                {blockReason ? <div className={styles.muted}>{blockReason}</div> : releasesWithApproval(row) ? <div className={styles.muted}>Releases immediately on approval</div> : null}
                 <div className={styles.muted}>{row.fairMarketValue || "Value not provided"}</div>
                 <div className={styles.muted}>{Number.isNaN(created.getTime()) ? "Date unavailable" : created.toLocaleString()}</div>
               </div>
@@ -267,11 +269,11 @@ export default function PendingApprovalsWorkspace() {
                   <Eye size={16} aria-hidden />
                   Review
                 </Link>
-                <button className={`${styles.actionButton} ${styles.approve}`} onClick={() => void approve(row)} disabled={isProcessing}>
+                <button className={`${styles.actionButton} ${styles.approve}`} onClick={() => void approve(row)} disabled={Boolean(processingId) || Boolean(blockReason)} title={blockReason || (releasesWithApproval(row) ? "Approve and release this report" : "Approve this report")}>
                   <Check size={16} aria-hidden />
-                  Approve
+                  {isProcessing ? "Processing…" : releasesWithApproval(row) ? "Approve & release" : "Approve"}
                 </button>
-                <button className={`${styles.actionButton} ${styles.reject}`} onClick={() => setRejectTarget(row)} disabled={isProcessing}>
+                <button className={`${styles.actionButton} ${styles.reject}`} onClick={() => setRejectTarget(row)} disabled={Boolean(processingId)}>
                   <X size={16} aria-hidden />
                   Return
                 </button>
@@ -284,9 +286,9 @@ export default function PendingApprovalsWorkspace() {
       <div className={styles.pagination}>
         <span>Showing {filteredRows.length} of {data.total} pending reports</span>
         <div className={styles.paginationActions}>
-          <button className={styles.button} disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
+          <button className={styles.button} disabled={page <= 1 || loading || Boolean(processingId)} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
           <span>Page {page} of {totalPages}</span>
-          <button className={styles.button} disabled={page >= totalPages || loading} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>Next</button>
+          <button className={styles.button} disabled={page >= totalPages || loading || Boolean(processingId)} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>Next</button>
         </div>
       </div>
 
@@ -307,6 +309,8 @@ export default function PendingApprovalsWorkspace() {
               value={rejectReason}
               onChange={(event) => setRejectReason(event.target.value)}
               placeholder="Required corrections"
+              aria-label="Required corrections"
+              disabled={Boolean(processingId)}
               autoFocus
             />
           </div>

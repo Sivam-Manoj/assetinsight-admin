@@ -203,6 +203,7 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 7px;
 }
@@ -229,6 +230,20 @@
 
 .error {
   color: #b4232c;
+}
+
+:global([data-theme="dark"]) .approve {
+  color: #78d6a3;
+  border-color: #397d5a;
+}
+
+:global([data-theme="dark"]) .reject,
+:global([data-theme="dark"]) .error {
+  color: #ff9da6;
+}
+
+:global([data-theme="dark"]) .reject {
+  border-color: #825055;
 }
 
 .pagination {
@@ -263,7 +278,7 @@
   font: inherit;
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1280px) {
   .columnHeader {
     display: none;
   }
@@ -310,13 +325,22 @@
 
   .actionButton {
     min-width: 0;
-    padding: 0 8px;
+    padding: 8px;
+    line-height: 1.25;
   }
 
   .pagination {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+.button:focus-visible,
+.actionButton:focus-visible,
+.search:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--admin-primary);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

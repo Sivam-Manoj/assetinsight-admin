@@ -13,6 +13,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import ConfirmModal from "@/app/components/common/ConfirmModal";
+import { releasesWithApproval } from "@/lib/reportApprovalUiPolicy";
 import {
   Alert,
   Box,
@@ -242,7 +243,9 @@ function getFileBlockReason(group: ReportGroup, file: ReportFileLink): string | 
     group.workflow_stage === "awaiting_release" ||
     group.download_access?.code === "AWAITING_RELEASE"
   ) {
-    return "This report is approved but is waiting to be released. Downloads will be available after release.";
+    return releasesWithApproval(group)
+      ? "New approvals release automatically. This older report still has a pending release; refresh or contact an administrator to resolve its existing state."
+      : "This report is approved but is waiting to be released. Downloads will be available after release.";
   }
   if (
     group.download_access?.code === "FILES_GENERATING" ||
@@ -261,7 +264,7 @@ function getFileBlockReason(group: ReportGroup, file: ReportFileLink): string | 
     group.downloadable === false &&
     group.download_access?.code !== "FILES_UNAVAILABLE"
   ) {
-    return "Downloads will be available after this report has been approved and released.";
+    return releasesWithApproval(group) ? "Downloads will be available after approval and completion of all report files." : "Downloads will be available after this report has been approved and released.";
   }
   if (file.href) return null;
   if (
@@ -297,7 +300,7 @@ function getReportStatusPresentation(group: ReportGroup) {
     group.workflow_stage === "awaiting_release" ||
     group.download_access?.code === "AWAITING_RELEASE"
   ) {
-    return { label: "Awaiting Release", background: "#fff4df", color: "#a45a00", border: "#f2d6a5" };
+    return { label: releasesWithApproval(group) ? "Legacy Release Pending" : "Awaiting Release", background: "#fff4df", color: "#a45a00", border: "#f2d6a5" };
   }
   if (
     group.download_access?.code === "FILES_GENERATING" ||
@@ -682,9 +685,10 @@ export default function AdminReports() {
     }
   }
 
-  async function releaseReport(id: string) {
+  async function releaseReport(group: ReportGroup) {
+    const id = releasesWithApproval(group) ? getPreviewTargetId(group) : group.key;
     try {
-      setActionBusyId(id);
+      setActionBusyId(group.key);
       const res = await fetch(`/api/admin/reports/${id}/release`, {
         method: "POST",
       });
@@ -934,7 +938,9 @@ export default function AdminReports() {
         <Tooltip
           title={
             canRelease
-              ? "Release this approved report so the user can download files"
+              ? releasesWithApproval(group) ? "Complete this older report's pending release. New approvals release automatically." : "Release this approved report so the user can download files"
+              : releasesWithApproval(group) && group.release_status === "pending_release"
+                ? "New approvals release automatically. This older report's pending state must be resolved by an administrator."
               : group.release_status === "pending_release"
                 ? group.workflow_message || "Approval and all required files must be complete before release"
               : group.workflow_message
@@ -956,9 +962,9 @@ export default function AdminReports() {
                   color: "#fff",
                   "&:hover": { bgcolor: "#6d28d9", boxShadow: "0 8px 18px rgba(124, 58, 237, 0.22)" },
                 }}
-                onClick={() => void releaseReport(group.key)}
+                onClick={() => void releaseReport(group)}
               >
-                Release
+                {releasesWithApproval(group) ? "Legacy release" : "Release"}
               </Button>
             ) : (
               <Chip
@@ -1144,8 +1150,8 @@ export default function AdminReports() {
           </Button>
         ) : null}
         {canRelease ? (
-          <Button variant="outlined" sx={{ ...desktopActionSx, color: "#087f5b" }} disabled={actionBusyId === group.key} onClick={() => void releaseReport(group.key)}>
-            Release
+          <Button variant="outlined" sx={{ ...desktopActionSx, color: "#087f5b" }} disabled={actionBusyId === group.key} onClick={() => void releaseReport(group)}>
+            {releasesWithApproval(group) ? "Legacy release" : "Release"}
           </Button>
         ) : null}
         <Button

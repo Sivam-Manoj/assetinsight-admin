@@ -1,19 +1,10 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { SERVER_URL } from "@/lib/api";
+import { type NextRequest } from "next/server";
+import { proxyJsonWithAdminAuth } from "@/lib/adminProxy";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const token = request.cookies.get("cv_admin")?.value;
-  if (!token) return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
-
-  const res = await fetch(`${SERVER_URL}/api/admin/reports/${id}/approve`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  const data = await res.json().catch(() => ({ message: "Failed to approve" }));
-  return NextResponse.json(data, { status: res.status });
+  return proxyJsonWithAdminAuth(request, `/api/admin/reports/${encodeURIComponent(id)}/approve`, { method: "PATCH" });
 }
