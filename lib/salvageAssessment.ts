@@ -1,6 +1,20 @@
 // Transport-only copy of backend src/service/salvageAssessment.ts, schema v2.
 // Keep the exported type block synchronized across independently deployed repositories.
 // Do not reproduce valuation arithmetic or provider verification in clients.
+export type SalvageVehicleOverrides = Record<string, string | null>;
+export interface SalvageVehicleDetails {
+  schemaVersion: 1;
+  category: string | null;
+  fields: Array<{
+    key: string; label: string; value: string | null;
+    type: "text" | "number" | "select" | "checkbox";
+    options: string[]; required: boolean; source: "standard" | "workbook";
+    status: "observed" | "unknown" | "conflict" | "manual";
+    evidence: Array<{ photoId: string; value: string | null; evidence: string; accepted: boolean; rejectionReason: string | null }>;
+    manualOverride: { value: string | null; source: "manual" | "supplied" } | null;
+  }>;
+  warnings: string[];
+}
 /** Server-owned, auditable assessment. Legacy snapshots without this object stay legacy. */
 export const SALVAGE_ASSESSMENT_VERSION = 2 as const;
 export type SalvageBasket = "pre_loss" | "as_is";
@@ -88,6 +102,8 @@ export interface SalvageLabourItem {
   appraiserReason: string | null;
 }
 export interface SalvageAssessmentInputs {
+  /** Explicit appraiser corrections, kept separate from immutable photo evidence. */
+  vehicleOverrides?: SalvageVehicleOverrides;
   year: number | null;
   make: string | null;
   model: string | null;
@@ -141,6 +157,8 @@ export interface SalvageAssessmentV2 {
   researchedInputs: SalvageAssessmentInputs;
   stale: boolean;
   photoFindings: SalvagePhotoFinding[];
+  /** Absent for legacy reports until explicitly researched again. */
+  vehicleDetails?: SalvageVehicleDetails;
   candidates: SalvageComparableEvidence[];
   comparables: SalvageComparableEvidence[];
   references: SalvageReference[];
