@@ -115,9 +115,6 @@ type DesktopDashboard = {
 type OpenAICredits = {
   remainingCredits?: number;
   totalGrantedCredits?: number;
-  deductedCredits?: number;
-  openAIUsageUsd?: number;
-  usageMultiplier?: number;
   requestCount?: number;
   webSearchCount?: number;
   lowBalanceThreshold?: number;
@@ -287,9 +284,6 @@ export default function DashboardShellV2() {
   }, [data?.byType]);
   const creditBalance = finiteNumber(openAICredits?.remainingCredits);
   const creditBudget = finiteNumber(openAICredits?.totalGrantedCredits);
-  const creditDeducted = finiteNumber(openAICredits?.deductedCredits);
-  const creditUsage = finiteNumber(openAICredits?.openAIUsageUsd);
-  const creditMultiplier = finiteNumber(openAICredits?.usageMultiplier);
   const creditThreshold = finiteNumber(openAICredits?.lowBalanceThreshold) ?? 100;
   const creditIsLow = creditBalance !== null && creditBalance < creditThreshold;
   const creditRequestCount = finiteNumber(openAICredits?.requestCount);
@@ -438,8 +432,6 @@ export default function DashboardShellV2() {
                 <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 12px", mt: 1.5 }}>
                   <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Configured budget</Typography>
                   <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditBudget)}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Usage × multiplier</Typography>
-                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditUsage)} × {formatCreditValue(creditMultiplier)} = {formatCreditValue(creditDeducted)}</Typography>
                   <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Requests</Typography>
                   <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditRequestCount)}</Typography>
                   <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Web searches</Typography>
