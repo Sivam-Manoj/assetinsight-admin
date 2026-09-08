@@ -1,3 +1,6 @@
+import type { SalvageAssessmentInputs, SalvageAssessmentV2 } from "@/lib/salvageAssessment";
+export type { SalvageAssessmentInputs, SalvageAssessmentV2 } from "@/lib/salvageAssessment";
+
 export type ReportPreviewField = {
   label: string;
   value: string;
@@ -87,7 +90,10 @@ export type ReportPreviewPayload = {
   reportId?: string;
   title: string;
   meta: ReportPreviewField[];
-  data: Record<string, unknown>;
+  data: Record<string, unknown> & {
+    readonly assessment?: SalvageAssessmentV2;
+    assessment_inputs?: Partial<SalvageAssessmentInputs>;
+  };
   variant?: "assetScheduleSheet";
   currencyCode?: string;
   assetScheduleSheet?: AssetAdminScheduleSheet;

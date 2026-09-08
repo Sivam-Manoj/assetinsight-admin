@@ -20,7 +20,10 @@ import {
   Snackbar,
 } from "@mui/material";
 import styles from "./PendingApprovalsWorkspace.module.css";
-import { groupPendingApprovalRows, pendingApprovalBlockReason, releasesWithApproval } from "@/lib/reportApprovalUiPolicy";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import { buildSalvageReviewAcknowledgement, groupPendingApprovalRows, pendingApprovalBlockReason, releasesWithApproval,
+  salvageApprovalReviewFromPreview, type SalvageApprovalReview, type SalvageReviewAcknowledgement } from "@/lib/reportApprovalUiPolicy";
 
 type PendingReport = {
   _id: string;
@@ -95,9 +98,17 @@ export default function PendingApprovalsWorkspace() {
   const [processingId, setProcessingId] = useState("");
   const [rejectTarget, setRejectTarget] = useState<QueueRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [approvalTarget, setApprovalTarget] = useState<QueueRow | null>(null);
+  const [approvalReview, setApprovalReview] = useState<SalvageApprovalReview | null>(null);
+  const [approvalLegacy, setApprovalLegacy] = useState(false);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalError, setApprovalError] = useState("");
+  const [approvalAccepted, setApprovalAccepted] = useState<string[]>([]);
+  const [approvalNote, setApprovalNote] = useState("");
   const [notice, setNotice] = useState<{ severity: "success" | "error"; message: string } | null>(null);
   const decisionBusy = useRef(false);
   const loadVersion = useRef(0);
+  const reviewLoadVersion = useRef(0);
 
   const load = useCallback(async (targetPage = page) => {
     const version = ++loadVersion.current;
@@ -134,15 +145,77 @@ export default function PendingApprovalsWorkspace() {
   }, [rows, search, type]);
 
   const totalPages = Math.max(1, Math.ceil(data.total / Math.max(1, data.limit || PAGE_SIZE)));
+  const acknowledgement = buildSalvageReviewAcknowledgement(approvalReview, approvalAccepted, approvalNote);
 
-  async function approve(row: QueueRow) {
+  function closeApproval() {
+    if (decisionBusy.current) return;
+    ++reviewLoadVersion.current;
+    setApprovalTarget(null);
+    setApprovalReview(null);
+    setApprovalLegacy(false);
+    setApprovalAccepted([]);
+    setApprovalNote("");
+    setApprovalError("");
+  }
+
+  async function loadApprovalReview(row: QueueRow, approveLegacy = false) {
+    const version = ++reviewLoadVersion.current;
+    setApprovalTarget(row);
+    setApprovalReview(null);
+    setApprovalLegacy(false);
+    setApprovalLoading(true);
+    setApprovalAccepted([]);
+    setApprovalNote("");
+    setApprovalError("");
+    try {
+      const response = await fetch(`/api/admin/reports/${encodeURIComponent(row.actionId)}/preview`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || "The current Salvage review could not be loaded.");
+      const review = salvageApprovalReviewFromPreview(payload);
+      if (version !== reviewLoadVersion.current) return;
+      setApprovalReview(review);
+      setApprovalLegacy(review === null);
+      if (!review && approveLegacy) {
+        setApprovalTarget(null);
+        await approve(row);
+      }
+    } catch (reviewError) {
+      if (version === reviewLoadVersion.current) setApprovalError(reviewError instanceof Error ? reviewError.message : "Review could not be loaded.");
+    } finally {
+      if (version === reviewLoadVersion.current) setApprovalLoading(false);
+    }
+  }
+
+  async function beginApproval(row: QueueRow) {
+    if (decisionBusy.current || pendingApprovalBlockReason(row)) return;
+    if (reportTypeLabel(row) === "Salvage") await loadApprovalReview(row, true);
+    else await approve(row);
+  }
+
+  async function approve(row: QueueRow, salvageReviewAcknowledgement?: SalvageReviewAcknowledgement) {
     if (decisionBusy.current || pendingApprovalBlockReason(row)) return;
     decisionBusy.current = true;
     setProcessingId(row.actionId);
     try {
-      const response = await fetch(`/api/admin/reports/${row.actionId}/approve`, { method: "PATCH" });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      const response = await fetch(`/api/admin/reports/${row.actionId}/approve`, { method: "PATCH",
+        ...(salvageReviewAcknowledgement ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ salvageReviewAcknowledgement }) } : {}) });
+      const payload = (await response.json().catch(() => ({}))) as { message?: string; code?: string; requiredLimitationCodes?: string[] };
+      if (response.status === 409 && reportTypeLabel(row) === "Salvage") {
+        ++reviewLoadVersion.current;
+        setApprovalTarget(row);
+        setApprovalReview(null);
+        setApprovalLegacy(false);
+        setApprovalAccepted([]);
+        setApprovalNote("");
+        setApprovalLoading(false);
+        setApprovalError(`${payload.message || "The report or its approval requirements changed."} Reload the latest revision and review it again; approval was not retried.`);
+        return;
+      }
       if (!response.ok) throw new Error(payload.message || "The report could not be approved.");
+      setApprovalTarget(null);
+      setApprovalReview(null);
+      setApprovalAccepted([]);
+      setApprovalNote("");
       setNotice({ severity: "success", message: releasesWithApproval(row) ? `${reportTypeLabel(row)} report approved and released. Downloads are now available.` : `${reportTypeLabel(row)} appraisal approved.` });
       await load(page);
     } catch (approveError) {
@@ -269,7 +342,7 @@ export default function PendingApprovalsWorkspace() {
                   <Eye size={16} aria-hidden />
                   Review
                 </Link>
-                <button className={`${styles.actionButton} ${styles.approve}`} onClick={() => void approve(row)} disabled={Boolean(processingId) || Boolean(blockReason)} title={blockReason || (releasesWithApproval(row) ? "Approve and release this report" : "Approve this report")}>
+                <button className={`${styles.actionButton} ${styles.approve}`} onClick={() => void beginApproval(row)} disabled={Boolean(processingId) || Boolean(blockReason)} title={blockReason || (releasesWithApproval(row) ? "Approve and release this report" : "Approve this report")}>
                   <Check size={16} aria-hidden />
                   {isProcessing ? "Processing…" : releasesWithApproval(row) ? "Approve & release" : "Approve"}
                 </button>
@@ -291,6 +364,43 @@ export default function PendingApprovalsWorkspace() {
           <button className={styles.button} disabled={page >= totalPages || loading || Boolean(processingId)} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>Next</button>
         </div>
       </div>
+
+      <Dialog open={Boolean(approvalTarget)} onClose={closeApproval} fullWidth maxWidth="sm" aria-labelledby="salvage-approval-title">
+        <DialogTitle id="salvage-approval-title">Review Salvage approval</DialogTitle>
+        <DialogContent>
+          <div className={styles.dialogBody} aria-busy={approvalLoading}>
+            <p>{approvalTarget ? reportTitle(approvalTarget) : "Salvage report"}</p>
+            {approvalLoading ? <p role="status">Loading the current report revision and evidence limitations…</p> : null}
+            {approvalError ? <Alert severity="error">{approvalError}</Alert> : null}
+            {approvalReview ? <>
+              <p>Reviewing revision {approvalReview.baseRevision}. Approval immediately releases the current files. Your acknowledgement is recorded in the approval audit, not added as a signature to the report.</p>
+              {approvalTarget ? <Link href={`/reports/${approvalTarget.actionId}/data?from=pending-approvals`} target="_blank" rel="noopener noreferrer">Open full report evidence in a new tab</Link> : null}
+              {approvalReview.limitations.length > 0 ? <>
+                <Alert severity="warning">Acknowledge each limitation and explain why you accept the remaining uncertainty before approval.</Alert>
+                {approvalReview.limitations.map(limitation => <FormControlLabel key={limitation.code}
+                  sx={{ alignItems: "flex-start", margin: 0, "& .MuiFormControlLabel-label": { paddingTop: "8px", overflowWrap: "anywhere" } }}
+                  control={<Checkbox checked={approvalAccepted.includes(limitation.code)} disabled={Boolean(processingId)}
+                    onChange={(_, checked) => setApprovalAccepted(current => checked ? [...current, limitation.code] : current.filter(code => code !== limitation.code))} />}
+                  label={limitation.message} />)}
+                <label htmlFor="salvage-approval-note">Required review note</label>
+                <textarea id="salvage-approval-note" className={styles.textarea} value={approvalNote} maxLength={2000}
+                  onChange={event => setApprovalNote(event.target.value)} disabled={Boolean(processingId)}
+                  placeholder="Explain acceptance of the remaining evidence limitations" aria-describedby="salvage-approval-note-limit" />
+                <small id="salvage-approval-note-limit">{approvalNote.length}/2000 characters</small>
+              </> : <Alert severity="info">No mandatory evidence acknowledgements are required for this revision. Verify the report before approving.</Alert>}
+            </> : null}
+            {approvalLegacy && !approvalError ? <p>This legacy report does not use the Canadian assessment acknowledgement format. Review its files before confirming approval.</p> : null}
+          </div>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 0.5 }}>
+          <Button onClick={closeApproval} disabled={Boolean(processingId)}>Cancel</Button>
+          {approvalError && approvalTarget ? <Button onClick={() => void loadApprovalReview(approvalTarget)} disabled={Boolean(processingId) || approvalLoading}>Reload latest review</Button> : null}
+          <Button color="success" variant="contained" disabled={Boolean(processingId) || approvalLoading || Boolean(approvalError) || (!approvalLegacy && !acknowledgement)}
+            onClick={() => { if (approvalTarget && (approvalLegacy || acknowledgement)) void approve(approvalTarget, acknowledgement || undefined); }}>
+            {processingId ? "Approving…" : "Approve & release"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={Boolean(rejectTarget)}

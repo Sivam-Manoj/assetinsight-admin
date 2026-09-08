@@ -53,6 +53,15 @@ Real Estate and Salvage use **Approve & release**: successful approval publishes
 
 Processing/incomplete file sets cannot be approved. Approval errors remain visible and retain the row for review/retry. Pending/approve/return requests use the shared HttpOnly-cookie BFF, refreshing only on `401` and preserving genuine `403`/`409` responses. Focused policy tests: `node --test tests/report-approval-ui-policy.test.mjs`.
 
+Canadian Salvage assessment v2 approval loads the current report revision before
+showing mandatory evidence-limit acknowledgements and a review note. The BFF
+forwards only `{salvageReviewAcknowledgement: {baseRevision, limitationCodes,
+note}}`; the backend supplies reviewer identity/time and records the audit against
+the approved artifact generation, not as a signature in existing files. A `409`
+clears the checked limitations and note and requires a manual reload/re-review;
+it never retries approval automatically. Legacy Salvage and other report families
+retain their existing decisions. No new role or separate release step is added.
+
 ## Production deployment
 
 Production runs as the `assetinsight-admin` PM2 application from `ecosystem.config.cjs`, normally as two cluster workers on port `3001` behind Nginx.
