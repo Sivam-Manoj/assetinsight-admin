@@ -15,6 +15,8 @@ import {
   Typography,
 } from "@mui/material";
 import AssetScheduleSheet from "@/app/components/reports/AssetScheduleSheet";
+import SalvageReportEnrichment from "@/app/components/reports/SalvageReportEnrichment";
+import { isSalvageReportEnrichment } from "@/lib/salvageReportEnrichment";
 import { ADMIN_MOBILE_TITLEBAR_HEIGHT } from "@/app/components/common/adminLayout.constants";
 import type {
   AssetAdminScheduleSheet,
@@ -592,9 +594,11 @@ export default function ReportDataPage({ reportId, returnTo, pvOnly = false }: R
     () => (Array.isArray(reportData.lots) ? reportData.lots.filter((lot): lot is Record<string, unknown> => Boolean(lot) && typeof lot === "object") : []),
     [reportData]
   );
+  const enrichment = useMemo(() => isSalvageReportEnrichment(reportData.report_enrichment) ? reportData.report_enrichment : null, [reportData.report_enrichment]);
   const summary = useMemo(
-    () => Object.fromEntries(Object.entries(reportData).filter(([key]) => key !== "lots" && !shouldHideReportDataKey(key))),
-    [reportData]
+    () => Object.fromEntries(Object.entries(reportData).filter(([key]) => key !== "lots" && !shouldHideReportDataKey(key)
+      && !(enrichment && ["report_enrichment", "report_context", "assessment", "assessment_inputs"].includes(key)))),
+    [reportData, enrichment]
   );
   const hasSchedule = Boolean(preview?.assetScheduleSheet);
   const backLabel =
@@ -683,6 +687,7 @@ export default function ReportDataPage({ reportId, returnTo, pvOnly = false }: R
           >
             {pvOnly
               ? preview?.title || "Review and update the report valuation."
+              : enrichment ? "Saved report evidence, calculations and appraiser context."
               : "Complete saved report data, organized lot by lot."}
           </Typography>
         </Box>
@@ -749,6 +754,7 @@ export default function ReportDataPage({ reportId, returnTo, pvOnly = false }: R
             }}
           >
             <Box sx={{ display: !pvOnly && activeTab === "data" ? "block" : "none", minHeight: "100%" }}>
+              <SalvageReportEnrichment value={enrichment} language={typeof reportData.language === "string" ? reportData.language : "en"} />
               <ReportDataPanel
                 preview={preview}
                 lots={lots}

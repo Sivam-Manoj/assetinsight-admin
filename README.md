@@ -62,6 +62,8 @@ clears the checked limitations and note and requires a manual reload/re-review;
 it never retries approval automatically. Legacy Salvage and other report families
 retain their existing decisions. No new role or separate release step is added.
 
+Salvage report data uses optional backend-built `report_enrichment` v1 for a read-only, localized executive summary, assignment/condition context, repair provenance, comparable verification, calculations, evidence/photo index, review checklist, revision history and references. Responsive tables display saved strings only. Generic nested assessment/context duplicates are omitted when this projection is present; the complete snapshot remains available in Raw JSON. The existing HttpOnly BFF, current-revision acknowledgement and approval controls remain unchanged.
+
 ## Production deployment
 
 Production runs as the `assetinsight-admin` PM2 application from `ecosystem.config.cjs`, normally as two cluster workers on port `3001` behind Nginx.

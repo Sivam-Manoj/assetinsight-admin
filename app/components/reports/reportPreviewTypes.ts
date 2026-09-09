@@ -1,4 +1,5 @@
 import type { SalvageAssessmentInputs, SalvageAssessmentV2 } from "@/lib/salvageAssessment";
+import type { SalvageReportContext, SalvageReportEnrichment } from "@/lib/salvageReportEnrichment";
 export type { SalvageAssessmentInputs, SalvageAssessmentV2 } from "@/lib/salvageAssessment";
 
 export type ReportPreviewField = {
@@ -93,6 +94,8 @@ export type ReportPreviewPayload = {
   data: Record<string, unknown> & {
     readonly assessment?: SalvageAssessmentV2;
     assessment_inputs?: Partial<SalvageAssessmentInputs>;
+    readonly report_enrichment?: SalvageReportEnrichment;
+    report_context?: SalvageReportContext;
   };
   variant?: "assetScheduleSheet";
   currencyCode?: string;
