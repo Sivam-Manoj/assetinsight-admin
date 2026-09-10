@@ -9,6 +9,7 @@ import type {
 export type AssetScheduleRiskBucket = "Low" | "Medium" | "High";
 
 export type AssetScheduleDerivedSummary = {
+  evaluator_totals: Record<string, number>;
   row_appraiser_averages: Record<string, number>;
   total_asset_value: number;
   total_low_est_value: number;
@@ -202,6 +203,7 @@ function getRiskBucket(score: number): AssetScheduleRiskBucket {
 }
 
 export function deriveAssetScheduleSummary(sheet: AssetAdminScheduleSheet): AssetScheduleDerivedSummary {
+  const evaluatorTotals = Object.fromEntries(sheet.evaluator_columns.map((column) => [column.id, 0]));
   const rowAverages: Record<string, number> = {};
   let totalAssetValue = 0;
   let totalLowEstValue = 0;
@@ -214,6 +216,11 @@ export function deriveAssetScheduleSummary(sheet: AssetAdminScheduleSheet): Asse
   let weightedRiskScoreTotal = 0;
 
   for (const row of sheet.rows) {
+    // Aggregate the complete sheet, independently of the table's current page.
+    // Empty evaluator columns match Excel SUM (zero); individual row blanks stay blank.
+    for (const column of sheet.evaluator_columns) {
+      evaluatorTotals[column.id] += toNumberOrNull(row.evaluator_values?.[column.id]) ?? 0;
+    }
     const rowAverage = getRowAppraiserAverage(row, sheet.evaluator_columns);
     rowAverages[row.lot_id] = rowAverage;
     totalAssetValue += rowAverage;
@@ -272,6 +279,7 @@ export function deriveAssetScheduleSummary(sheet: AssetAdminScheduleSheet): Asse
   const cappedNmg = cappedAvg - cappedTotalCost - cappedThreshold;
 
   return {
+    evaluator_totals: evaluatorTotals,
     row_appraiser_averages: rowAverages,
     total_asset_value: totalAssetValue,
     total_low_est_value: totalLowEstValue,

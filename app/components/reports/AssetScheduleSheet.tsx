@@ -44,6 +44,7 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TableFooter,
   TableHead,
   TablePagination,
   TableRow,
@@ -1062,6 +1063,19 @@ export default function AssetScheduleSheet({
   // inputs, formulas, or results beside newly recalculated visible values.
   const serverCalculations = sheetDirty ? EMPTY_CALCULATIONS : previewCalculations;
   const stableEvaluatorColumns = useStableEvaluatorColumns(sheet?.evaluator_columns ?? []);
+  const allLotTotals = useMemo<Record<string, { label: string; value: number }>>(() => {
+    if (!derivedSummary) return {};
+    return {
+      ...Object.fromEntries(stableEvaluatorColumns.map((column) => [
+        `eval_${column.id}`,
+        { label: column.name || "Evaluator", value: derivedSummary.evaluator_totals[column.id] ?? 0 },
+      ])),
+      evaluator_average: { label: "Average", value: derivedSummary.total_asset_value },
+      low_est_sale_value: { label: "Low", value: derivedSummary.total_low_est_value },
+      high_est_sale_value: { label: "High", value: derivedSummary.total_high_est_value },
+      buyer_premium_amount: { label: "B.P. amount ($)", value: derivedSummary.total_capped_bp },
+    };
+  }, [derivedSummary, stableEvaluatorColumns]);
 
   const updateSheet = useCallback((mutator: (draft: AssetAdminScheduleSheet) => AssetAdminScheduleSheet) => {
     const current = sheetRef.current;
@@ -2038,6 +2052,9 @@ export default function AssetScheduleSheet({
                   component={Paper}
                   variant="outlined"
                   elevation={0}
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Scrollable asset schedule and all-lot totals"
                   sx={{
                     width: "100%",
                     minHeight: 0,
@@ -2184,6 +2201,53 @@ export default function AssetScheduleSheet({
                         </TableRow>
                       ))}
                     </TableBody>
+                    <TableFooter aria-label={`Totals across all ${sheet.rows.length} lots`}>
+                      <TableRow>
+                        {scheduleTable.getAllLeafColumns().map((column) => {
+                          const isLabel = column.id === "asset_id";
+                          const total = allLotTotals[column.id];
+                          return (
+                            <TableCell
+                              key={column.id}
+                              component={isLabel ? "th" : "td"}
+                              scope={isLabel ? "row" : undefined}
+                              data-pv-total-column={total ? column.id : undefined}
+                              aria-label={total ? `${total.label} total across all ${sheet.rows.length} lots` : undefined}
+                              align={isLabel ? "left" : "right"}
+                              sx={{
+                                position: "sticky",
+                                bottom: 0,
+                                left: isLabel ? 0 : "auto",
+                                zIndex: isLabel ? 4 : 3,
+                                width: column.getSize(),
+                                minWidth: column.getSize(),
+                                maxWidth: column.getSize(),
+                                px: 1,
+                                py: 1,
+                                bgcolor: "background.paper",
+                                color: "text.primary",
+                                borderTop: "2px solid",
+                                borderRight: "1px solid",
+                                borderColor: "divider",
+                                fontSize: 12.5,
+                                fontWeight: 700,
+                                fontVariantNumeric: "tabular-nums",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {isLabel ? (
+                                <>
+                                  Totals
+                                  <Typography component="span" sx={{ display: "block", fontSize: 11, color: "text.secondary" }}>
+                                    All {sheet.rows.length} lots
+                                  </Typography>
+                                </>
+                              ) : total ? formatCurrencyCell(total.value) : null}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    </TableFooter>
                   </Table>
                 </TableContainer>
                 <TablePagination
@@ -2345,6 +2409,29 @@ export default function AssetScheduleSheet({
                     onOpenGallery={openGallery}
                   />
                 ) : null}
+                <Paper
+                  component="section"
+                  aria-label={`Totals across all ${sheet.rows.length} lots`}
+                  variant="outlined"
+                  sx={{ mt: 1.5, p: 1.5, bgcolor: "background.paper", borderRadius: 1 }}
+                >
+                  <Typography component="h3" sx={{ fontSize: 14, fontWeight: 700 }}>
+                    Totals · all {sheet.rows.length} lots
+                  </Typography>
+                  <Typography sx={{ mt: 0.5, mb: 1.25, fontSize: 12, color: "text.secondary" }}>
+                    Sums of entered values across every lot, not just the selected lot or page.
+                  </Typography>
+                  <Box
+                    component="dl"
+                    sx={{ m: 0, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1.25 }}
+                  >
+                    {Object.entries(allLotTotals).map(([columnId, total]) => (
+                      <Box key={columnId} data-pv-total-column={columnId} sx={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                        <LabeledValue label={total.label} value={formatCurrencyCell(total.value)} />
+                      </Box>
+                    ))}
+                  </Box>
+                </Paper>
               </Box>
             ) : null}
           </>
