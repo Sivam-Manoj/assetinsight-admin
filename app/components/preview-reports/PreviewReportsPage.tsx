@@ -238,6 +238,7 @@ export default function PreviewReportsPage() {
   const [sendingReminder, setSendingReminder] = useState(false);
   const [reminderError, setReminderError] = useState("");
   const [reminderSuccess, setReminderSuccess] = useState("");
+  const [actionFeedback, setActionFeedback] = useState<{ message: string; severity: "success" | "warning" } | null>(null);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -476,6 +477,7 @@ export default function PreviewReportsPage() {
 
       {error ? <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert> : null}
       {reminderSuccess ? <Alert severity="success" onClose={() => setReminderSuccess("")} sx={{ mt: 2 }}>{reminderSuccess}</Alert> : null}
+      {actionFeedback ? <Alert severity={actionFeedback.severity} onClose={() => setActionFeedback(null)} sx={{ mt: 2 }}>{actionFeedback.message}</Alert> : null}
       {data?.truncated ? <Alert severity="warning" sx={{ mt: 2 }}>The active queue is unusually large. Narrow the date or report-type filters for a complete result set.</Alert> : null}
 
       <Box sx={{ mt: 2 }}>
@@ -549,7 +551,14 @@ export default function PreviewReportsPage() {
           setSelectedReportId(null);
           setSelectedReportReadOnly(false);
         }}
-        onTransferred={() => setReloadToken((value) => value + 1)}
+        onTransferred={(message, hasWarnings) => {
+          setActionFeedback({ message, severity: hasWarnings ? "warning" : "success" });
+          setReloadToken((value) => value + 1);
+        }}
+        onResubmitted={(message) => {
+          setActionFeedback({ message, severity: "success" });
+          setReloadToken((value) => value + 1);
+        }}
         onDeleted={() => {
           setSelectedReportId(null);
           setReloadToken((value) => value + 1);

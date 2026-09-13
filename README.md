@@ -64,6 +64,35 @@ retain their existing decisions. No new role or separate release step is added.
 
 Salvage report data uses optional backend-built `report_enrichment` v1 for a read-only, localized executive summary, assignment/condition context, repair provenance, comparable verification, calculations, evidence/photo index, review checklist, revision history and references. Responsive tables display saved strings only. Generic nested assessment/context duplicates are omitted when this projection is present; the complete snapshot remains available in Raw JSON. The existing HttpOnly BFF, current-revision acknowledgement and approval controls remain unchanged.
 
+## Saved Asset/Lot preview recovery
+
+Preview Reports provides **Resubmit preview** for eligible saved Asset and Lot
+Listing previews. The backend supplies eligibility, an explanation when blocked,
+and an opaque revision bound to the loaded data. Confirming rebuilds files from
+that saved preview on the same report, without new analysis. Asset approval and
+release rules remain unchanged; Lot Listings approve/release only after successful
+file publication. Draft Preview drawers remain read-only.
+
+The browser sends only `{baseRevision}` through the dedicated same-origin,
+HttpOnly-cookie BFF. The request is limited to 2 KiB even for chunked bodies;
+caller-supplied report data and actor fields are never forwarded. Backend role,
+revision, workflow and media checks remain authoritative. Duplicate clicks are
+blocked, acceptance closes the drawer and refreshes the queue, and a `409` or
+uncertain response requires **Reload and review**, never automatic resubmission.
+Older backend responses without eligibility/revision disable this action; deploy
+backend support first. This feature does not repair missing uploads or duplicate
+stored files. Focused checks: `node --test tests/preview-resubmit-request.test.mjs`.
+
+Reassignment also supports submitted Asset/Lot previews whose file generation
+failed, when the backend reports `transferEligible`. `transferRequiresReview`
+adds an explicit warning: ownership moves on the same report with saved data and
+the failure diagnostic retained; no files are queued. The receiving user reviews
+and explicitly resubmits from Previews. Ready/unsubmitted previews are never
+automatically submitted. Active generation and successful reports remain blocked.
+Transfer confirmation closes stale owner/revision details and refreshes the list;
+conflicts, timeouts and uncertain responses require manual reload/review without
+automatic replay. The existing superadmin Preview Reports boundary is unchanged.
+
 ## Production deployment
 
 Production runs as the `assetinsight-admin` PM2 application from `ecosystem.config.cjs`, normally as two cluster workers on port `3001` behind Nginx.

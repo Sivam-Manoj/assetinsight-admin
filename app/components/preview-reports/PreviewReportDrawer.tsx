@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Autocomplete,
@@ -31,6 +31,7 @@ import {
   ExternalLink,
   FileJson,
   Image as ImageIcon,
+  RefreshCw,
   Trash2,
   UserRound,
   UserRoundCog,
@@ -45,8 +46,9 @@ type Props = {
   open: boolean;
   reportId: string | null;
   onClose: () => void;
-  onTransferred?: () => void;
+  onTransferred?: (message: string, hasWarnings: boolean) => void;
   onDeleted?: () => void;
+  onResubmitted?: (message: string) => void;
   readOnly?: boolean;
 };
 
@@ -176,6 +178,7 @@ export default function PreviewReportDrawer({
   onClose,
   onTransferred,
   onDeleted,
+  onResubmitted,
   readOnly = false,
 }: Props) {
   const [payload, setPayload] = useState<PreviewReportDetailResponse | null>(null);
@@ -188,11 +191,18 @@ export default function PreviewReportDrawer({
   const [transferUsersLoading, setTransferUsersLoading] = useState(false);
   const [transferTarget, setTransferTarget] = useState<PreviewTransferUser | null>(null);
   const [transferError, setTransferError] = useState("");
-  const [transferSuccess, setTransferSuccess] = useState("");
+  const [transferNeedsReview, setTransferNeedsReview] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [resubmitOpen, setResubmitOpen] = useState(false);
+  const [resubmitting, setResubmitting] = useState(false);
+  const [resubmitError, setResubmitError] = useState("");
+  const [resubmitNeedsReview, setResubmitNeedsReview] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
+  const resubmitInFlight = useRef(false);
+  const transferInFlight = useRef(false);
 
   useEffect(() => {
     if (!open || !reportId) return;
@@ -205,9 +215,12 @@ export default function PreviewReportDrawer({
     setTransferOpen(false);
     setTransferTarget(null);
     setTransferError("");
-    setTransferSuccess("");
+    setTransferNeedsReview(false);
     setDeleteOpen(false);
     setDeleteError("");
+    setResubmitOpen(false);
+    setResubmitError("");
+    setResubmitNeedsReview(false);
 
     fetch(`/api/admin/preview-reports/${encodeURIComponent(reportId)}`, {
       cache: "no-store",
@@ -227,7 +240,7 @@ export default function PreviewReportDrawer({
       });
 
     return () => controller.abort();
-  }, [open, reportId]);
+  }, [open, reportId, reloadToken]);
 
   const lots = useMemo(() => {
     const candidate = payload?.preview?.data?.lots;
@@ -235,12 +248,49 @@ export default function PreviewReportDrawer({
   }, [payload]);
   const activeLot = lots[selectedLot] || null;
   const activeImages = useMemo(() => collectImages(activeLot), [activeLot]);
+  const resubmitEligible = payload?.report.resubmitEligible === true
+    && payload.report.id === reportId && Boolean(payload.report.resubmitRevision)
+    && !loading && !resubmitNeedsReview && !transferNeedsReview && !readOnly;
+
+  const submitPreview = async () => {
+    if (!reportId || !resubmitEligible || !payload?.report.resubmitRevision || resubmitInFlight.current) return;
+    resubmitInFlight.current = true;
+    setResubmitting(true);
+    setResubmitError("");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await fetch(`/api/admin/preview-reports/${encodeURIComponent(reportId)}/resubmit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseRevision: payload.report.resubmitRevision }),
+        signal: controller.signal,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.status !== 202) {
+        setResubmitNeedsReview(true);
+        throw new Error(response.status === 409
+          ? `${body?.message || "This preview changed or processing has already started."} Reload and review the current preview before trying again.`
+          : body?.message || "Submission could not be confirmed. Reload the preview to check its current status before trying again.");
+      }
+      setResubmitOpen(false);
+      onResubmitted?.("Saved preview accepted. Report files are being rebuilt on the same report; follow its processing status here.");
+      onClose();
+    } catch (reason) {
+      setResubmitNeedsReview(true);
+      setResubmitError(`${controller.signal.aborted ? "Submission confirmation timed out. Processing may already have started." : reason instanceof Error ? reason.message : "Submission could not be confirmed."} Reload and review before submitting again.`);
+    } finally {
+      window.clearTimeout(timeout);
+      resubmitInFlight.current = false;
+      setResubmitting(false);
+    }
+  };
 
   const openTransfer = async () => {
-    if (!payload?.report.transferEligible || transferUsersLoading) return;
+    if (!payload?.report.transferEligible || payload.report.id !== reportId || loading || readOnly || transferUsersLoading || transferInFlight.current) return;
     setTransferOpen(true);
     setTransferTarget(null);
-    setTransferError("");
+    if (!transferNeedsReview) setTransferError("");
     if (transferUsers.length > 0) return;
 
     setTransferUsersLoading(true);
@@ -263,9 +313,12 @@ export default function PreviewReportDrawer({
   };
 
   const submitTransfer = async () => {
-    if (!reportId || !transferTarget || transferring) return;
+    if (!reportId || !transferTarget || !payload?.report.transferEligible || payload.report.id !== reportId || readOnly || loading || transferNeedsReview || transferInFlight.current) return;
+    transferInFlight.current = true;
     setTransferring(true);
     setTransferError("");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
     try {
       const response = await fetch(
         `/api/admin/preview-reports/${encodeURIComponent(reportId)}/transfer`,
@@ -273,6 +326,7 @@ export default function PreviewReportDrawer({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ targetUserId: transferTarget.id }),
+          signal: controller.signal,
         }
       );
       const body = await response.json().catch(() => ({}));
@@ -280,31 +334,23 @@ export default function PreviewReportDrawer({
         throw new Error(body?.message || "Unable to reassign this preview.");
       }
       const warningCount = Array.isArray(body?.warnings) ? body.warnings.length : 0;
-      setPayload((current) =>
-        current
-          ? {
-              ...current,
-              report: {
-                ...current.report,
-                creator: body.creator || current.report.creator,
-                previewTransferredAt: body.transferredAt || new Date().toISOString(),
-              },
-            }
-          : current
-      );
-      setTransferSuccess(
-        warningCount
-          ? `Preview reassigned. ${warningCount} notification could not be delivered.`
-          : "Preview reassigned and both users were notified."
-      );
       setTransferOpen(false);
       setTransferTarget(null);
-      onTransferred?.();
+      onTransferred?.(
+        `Preview reassigned. No files were generated; the new owner can review and resubmit it from Previews.${warningCount ? ` ${warningCount} notification could not be delivered.` : " Both users were notified."}`,
+        warningCount > 0
+      );
+      // Ownership and the saved-preview revision changed. Close stale details and
+      // load a fresh server snapshot next time, rather than patching just the name.
+      onClose();
     } catch (reason) {
+      setTransferNeedsReview(true);
       setTransferError(
-        reason instanceof Error ? reason.message : "Unable to reassign this preview."
+        `${controller.signal.aborted ? "Reassignment confirmation timed out. Ownership may already have changed." : reason instanceof Error ? reason.message : "Unable to confirm reassignment."} Reload and review the current owner and processing status before trying again.`
       );
     } finally {
+      window.clearTimeout(timeout);
+      transferInFlight.current = false;
       setTransferring(false);
     }
   };
@@ -338,7 +384,8 @@ export default function PreviewReportDrawer({
     <Drawer
       anchor="right"
       open={open}
-      onClose={onClose}
+      onClose={() => { if (!resubmitInFlight.current && !transferInFlight.current) onClose(); }}
+      sx={{ zIndex: (theme) => theme.zIndex.drawer + 3 }}
       PaperProps={{
         sx: {
           width: { xs: "100vw", sm: "min(96vw, 1180px)" },
@@ -360,12 +407,28 @@ export default function PreviewReportDrawer({
                 Complete sanitized report data, workflow state, lots, and images.
               </Typography>
             </Box>
-            <Stack direction="row" alignItems="center" spacing={1}>
+            <IconButton aria-label="Close preview report details" disabled={resubmitting || transferring} onClick={onClose} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}>
+              <X size={19} />
+            </IconButton>
+          </Stack>
+          <Stack direction="row" alignItems="center" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: payload && !readOnly ? 1.5 : 0 }}>
+              {payload && !readOnly ? (
+                <Tooltip title={resubmitNeedsReview ? "Reload and review the latest saved preview first." : payload.report.resubmitIneligibleReason || "Rebuild report files from the saved preview, without new analysis."}>
+                  <span>
+                    <Button variant="contained" startIcon={<RefreshCw size={17} />} disabled={!resubmitEligible || resubmitting || transferring || deleting} onClick={() => {
+                      setResubmitError("");
+                      setResubmitOpen(true);
+                    }} sx={{ borderRadius: "4px" }}>
+                      Resubmit preview
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : null}
               {payload && !readOnly ? (
                 <Tooltip
                   title={
                     payload.report.transferEligible
-                      ? "Move this unsubmitted preview to another user"
+                      ? "Move this preview to another user without generating files"
                       : payload.report.transferIneligibleReason ||
                         "This preview cannot be reassigned."
                   }
@@ -374,7 +437,7 @@ export default function PreviewReportDrawer({
                     <Button
                       variant="outlined"
                       startIcon={<UserRoundCog size={17} />}
-                      disabled={!payload.report.transferEligible}
+                      disabled={!payload.report.transferEligible || resubmitting || transferring || deleting}
                       onClick={openTransfer}
                       sx={{ borderRadius: "4px", whiteSpace: "nowrap" }}
                     >
@@ -397,7 +460,7 @@ export default function PreviewReportDrawer({
                       variant="outlined"
                       color="error"
                       startIcon={<Trash2 size={17} />}
-                      disabled={!payload.report.deleteEligible}
+                      disabled={!payload.report.deleteEligible || resubmitting || transferring || transferNeedsReview}
                       onClick={() => {
                         setDeleteError("");
                         setDeleteOpen(true);
@@ -409,26 +472,23 @@ export default function PreviewReportDrawer({
                   </span>
                 </Tooltip>
               ) : null}
-              <IconButton aria-label="Close preview report details" onClick={onClose} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px" }}>
-                <X size={19} />
-              </IconButton>
-            </Stack>
           </Stack>
         </Box>
 
         {loading ? (
           <Box sx={{ display: "grid", flex: 1, placeItems: "center" }}><CircularProgress size={30} /></Box>
         ) : error ? (
-          <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert></Box>
+          <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert><Button onClick={() => setReloadToken((value) => value + 1)} sx={{ mt: 1 }}>Reload preview</Button></Box>
         ) : payload ? (
           <>
-            {transferSuccess ? (
-              <Alert
-                severity={transferSuccess.includes("could not") ? "warning" : "success"}
-                onClose={() => setTransferSuccess("")}
-                sx={{ flexShrink: 0, borderRadius: 0 }}
-              >
-                {transferSuccess}
+            {resubmitNeedsReview && !resubmitOpen ? (
+              <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => setReloadToken((value) => value + 1)}>Reload and review</Button>} sx={{ flexShrink: 0, borderRadius: 0 }}>
+                Reload the current saved preview and review its status before another submission.
+              </Alert>
+            ) : null}
+            {transferNeedsReview && !transferOpen ? (
+              <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => setReloadToken((value) => value + 1)}>Reload and review</Button>} sx={{ flexShrink: 0, borderRadius: 0 }}>
+                Reload the current owner and processing status before another reassignment.
               </Alert>
             ) : null}
             <Box sx={{ flexShrink: 0, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.paper", px: { xs: 2, md: 3 }, py: 1.5 }}>
@@ -467,6 +527,7 @@ export default function PreviewReportDrawer({
                   </Box>
 
                   {payload.report.job_error ? <Alert severity="error" sx={{ mt: 2 }}>{payload.report.job_error}</Alert> : null}
+                  {!readOnly && !payload.report.resubmitEligible && payload.report.resubmitIneligibleReason ? <Alert severity="info" sx={{ mt: 1 }}>{payload.report.resubmitIneligibleReason}</Alert> : null}
 
                   {lots.length ? (
                     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "240px minmax(0, 1fr)" }, gap: 2, mt: 2 }}>
@@ -538,15 +599,51 @@ export default function PreviewReportDrawer({
         ) : null}
 
         <Dialog
+          open={resubmitOpen}
+          onClose={() => { if (!resubmitInFlight.current) setResubmitOpen(false); }}
+          fullWidth
+          maxWidth="sm"
+          aria-labelledby="preview-resubmit-title"
+          aria-describedby="preview-resubmit-description"
+          PaperProps={{ sx: { borderRadius: "6px", m: { xs: 2, sm: 4 }, width: { xs: "calc(100% - 32px)", sm: "100%" } } }}
+        >
+          <DialogTitle id="preview-resubmit-title" sx={{ fontWeight: 750 }}>Resubmit saved preview?</DialogTitle>
+          <DialogContent dividers>
+            {resubmitError ? <Alert severity="error" sx={{ mb: 2 }}>{resubmitError}</Alert> : null}
+            <Typography id="preview-resubmit-description" sx={{ fontSize: 14, lineHeight: 1.65 }}>
+              Rebuild files for <strong>{payload?.preview.title || "this report"}</strong>
+              {payload?.report.contractNo ? ` (contract ${payload.report.contractNo})` : ""} from the saved preview you have reviewed. This uses the existing saved photos and values, without running new analysis or creating a second report.
+            </Typography>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              {payload?.report.reportType === "LotListing"
+                ? "The Lot Listing will be approved and released automatically only after its files are generated successfully."
+                : "Asset approval and release rules remain unchanged. Resubmitting does not approve or release an Asset report."}
+            </Alert>
+            {resubmitting ? <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }} role="status"><CircularProgress size={18} /><Typography sx={{ fontSize: 13 }}>Submitting the saved preview. Please wait for confirmation.</Typography></Stack> : null}
+          </DialogContent>
+          <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 1.5, flexWrap: "wrap", gap: 1 }}>
+            <Button color="inherit" disabled={resubmitting} onClick={() => setResubmitOpen(false)}>Cancel</Button>
+            {resubmitNeedsReview ? (
+              <Button variant="contained" startIcon={<RefreshCw size={17} />} onClick={() => setReloadToken((value) => value + 1)}>Reload and review</Button>
+            ) : (
+              <Button variant="contained" disabled={!resubmitEligible || resubmitting} onClick={submitPreview} startIcon={resubmitting ? <CircularProgress color="inherit" size={16} /> : <RefreshCw size={17} />}>
+                {resubmitting ? "Submitting" : "Confirm resubmission"}
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
           open={transferOpen}
           onClose={() => {
             if (!transferring) setTransferOpen(false);
           }}
           fullWidth
           maxWidth="sm"
+          aria-labelledby="preview-transfer-title"
           PaperProps={{ sx: { borderRadius: "6px" } }}
         >
-          <DialogTitle sx={{ pb: 1 }}>
+          <DialogTitle id="preview-transfer-title" sx={{ pb: 1 }}>
             <Stack direction="row" alignItems="center" spacing={1}>
               <UserRoundCog size={21} />
               <Typography component="span" sx={{ fontSize: 20, fontWeight: 750 }}>
@@ -560,6 +657,14 @@ export default function PreviewReportDrawer({
               receive the complete preview, images, and editable lot data and can
               continue from their Previews screen.
             </Typography>
+            {payload?.report.transferRequiresReview ? (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                This preview was submitted, but file generation failed. The error
+                remains visible after reassignment. The new owner must review and
+                explicitly resubmit it; reassignment does not restart processing.
+              </Alert>
+            ) : null}
+            {transferError ? <Alert severity="error" sx={{ mt: 1.5 }}>{transferError}</Alert> : null}
 
             <Box
               sx={{
@@ -602,7 +707,7 @@ export default function PreviewReportDrawer({
               options={transferUsers}
               value={transferTarget}
               loading={transferUsersLoading}
-              disabled={transferring}
+              disabled={transferring || transferNeedsReview}
               getOptionLabel={(option) =>
                 `${option.displayName}${option.email ? ` - ${option.email}` : ""}`
               }
@@ -619,11 +724,7 @@ export default function PreviewReportDrawer({
                   {...params}
                   label="Transfer to"
                   placeholder="Search by name, company, or email"
-                  error={Boolean(transferError)}
-                  helperText={
-                    transferError ||
-                    "Both the previous and new owner receive an email and in-app notification."
-                  }
+                  helperText="Both the previous and new owner receive an email and in-app notification."
                 />
               )}
             />
@@ -633,7 +734,7 @@ export default function PreviewReportDrawer({
               submit or regenerate the preview.
             </Alert>
           </DialogContent>
-          <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 1.5, flexWrap: "wrap", gap: 1 }}>
             <Button
               color="inherit"
               disabled={transferring}
@@ -641,7 +742,11 @@ export default function PreviewReportDrawer({
             >
               Cancel
             </Button>
-            <Button
+            {transferNeedsReview ? (
+              <Button variant="contained" onClick={() => setReloadToken((value) => value + 1)}>
+                Reload and review
+              </Button>
+            ) : <Button
               variant="contained"
               disabled={!transferTarget || transferring}
               onClick={submitTransfer}
@@ -650,7 +755,7 @@ export default function PreviewReportDrawer({
               }
             >
               {transferring ? "Reassigning" : "Confirm reassignment"}
-            </Button>
+            </Button>}
           </DialogActions>
         </Dialog>
 

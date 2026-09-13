@@ -44,6 +44,7 @@ export type PreviewReportSummary = {
   jobError: string;
   transferEligible: boolean;
   transferIneligibleReason: string | null;
+  transferRequiresReview?: boolean;
   deleteEligible: boolean;
   deleteIneligibleReason: string | null;
   reminderEligible: boolean;
@@ -87,8 +88,13 @@ export type PreviewReportDetailResponse = {
     files_ready: boolean;
     job_status: string;
     job_error: string;
+    // Optional until backend-first rollout; absent means resubmission is unavailable.
+    resubmitEligible?: boolean;
+    resubmitIneligibleReason?: string | null;
+    resubmitRevision?: string | null;
     transferEligible: boolean;
     transferIneligibleReason: string | null;
+    transferRequiresReview?: boolean;
     deleteEligible: boolean;
     deleteIneligibleReason: string | null;
     reminderEligible: boolean;
