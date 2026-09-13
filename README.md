@@ -93,6 +93,28 @@ Transfer confirmation closes stale owner/revision details and refreshes the list
 conflicts, timeouts and uncertain responses require manual reload/review without
 automatic replay. The existing superadmin Preview Reports boundary is unchanged.
 
+## Reviewed preview-owner notifications
+
+Preview Reports provides **Notify** from each list row/card and the detail drawer.
+Both open one email-style composer. A side-effect-free reminder GET loads the
+current owner, report correction details, affected lots, suggested steps and
+subject/body from the backend. The recipient is read-only; administrators review
+and edit the plain-text subject/message before explicitly sending email plus an
+in-app notification. Opening the composer does not send anything or alter reports.
+Notify remains available when a new send is blocked: the current draft explains
+the reason and disables Send, while an existing delivery can still be checked.
+
+POST forwards only `subject`, `message`, `baseRevision` and a stable UUID
+`requestId` through the HttpOnly BFF. Same-origin, JSON and streamed 64 KiB limits
+protect this mutation. The backend validates current ownership/state; a 409
+requires reload/review. Pending or uncertain delivery freezes its original
+recipient/text/revision/request ID, including after reopening. **Check delivery**
+reuses that request without asking the email provider to send again. No automatic
+email retries or fresh IDs are created after an uncertain response. Confirmed
+delivery and accepted processing refresh the list with accurate status feedback.
+The existing superadmin boundary is unchanged; deploy backend support first.
+Policy checks: `node --test tests/preview-reminder-request.test.mjs`.
+
 ## Production deployment
 
 Production runs as the `assetinsight-admin` PM2 application from `ecosystem.config.cjs`, normally as two cluster workers on port `3001` behind Nginx.

@@ -31,6 +31,7 @@ import {
   ExternalLink,
   FileJson,
   Image as ImageIcon,
+  Mail,
   RefreshCw,
   Trash2,
   UserRound,
@@ -49,6 +50,7 @@ type Props = {
   onTransferred?: (message: string, hasWarnings: boolean) => void;
   onDeleted?: () => void;
   onResubmitted?: (message: string) => void;
+  onNotify?: (reportId: string) => void;
   readOnly?: boolean;
 };
 
@@ -179,6 +181,7 @@ export default function PreviewReportDrawer({
   onTransferred,
   onDeleted,
   onResubmitted,
+  onNotify,
   readOnly = false,
 }: Props) {
   const [payload, setPayload] = useState<PreviewReportDetailResponse | null>(null);
@@ -470,6 +473,11 @@ export default function PreviewReportDrawer({
                       Delete
                     </Button>
                   </span>
+                </Tooltip>
+              ) : null}
+              {payload && reportId && !readOnly && onNotify ? (
+                <Tooltip title="Review an email to the report owner or check a previous delivery">
+                  <span><Button variant="outlined" startIcon={<Mail size={17} />} disabled={resubmitting || transferring || deleting || transferNeedsReview} onClick={() => onNotify(reportId)}>Notify</Button></span>
                 </Tooltip>
               ) : null}
           </Stack>

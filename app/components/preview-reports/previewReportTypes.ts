@@ -59,6 +59,23 @@ export type PreviewTransferUser = PreviewReportCreator & {
   displayName: string;
 };
 
+export type PreviewNotificationDraft = {
+  reportId: string;
+  reportType: "Asset" | "LotListing";
+  contractNo: string;
+  recipient: { id: string; displayName: string; email: string };
+  subject: string;
+  message: string;
+  baseRevision: string;
+  eligible: boolean;
+  ineligibleReason: string | null;
+  reportError: string | null;
+  affectedLots: string[];
+  correctionSteps: string[];
+  lastSentAt?: string | null;
+  pendingDelivery?: { requestId: string; status: "processing" | "uncertain"; deliveryStatus?: "processing" | "sent" | "uncertain"; inAppStatus?: "pending" | "sent" | "uncertain" } | null;
+};
+
 export type PreviewReportsResponse = {
   items: PreviewReportSummary[];
   total: number;
