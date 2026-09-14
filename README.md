@@ -45,6 +45,65 @@ npm start
 
 The support feature should be checked at desktop, tablet, portrait mobile, and landscape mobile widths. Only the request list and message timeline are intended to scroll; the document and reply composer remain fixed to the viewport.
 
+## Dashboard overview
+
+The superadmin-only `/dashboard` uses the existing same-origin desktop-dashboard
+snapshot. Its compact metric band leads into one lazy-loaded Chart.js activity
+plot, directly labelled report-type bars, independent current-workflow bars,
+recent reports and the existing credit/settings controls. The `/stats` workspace,
+navigation, authorization and HttpOnly BFF are unchanged.
+
+Reports/lots/activity/types follow the applied inclusive UTC date range. Registered
+users and Pending / Approved counts are all-time; the historical `kpis.released`
+wire key counts approved reports, not actual releases. Queue and recent reports
+also use all dates. Salvage activity uses grouped generated-file creation dates,
+not canonical parent creation or completed throughput. The visible source note
+retains this limitation. See backend `docs/architecture/runtime-flows.md` for exact
+eligibility, archive and timezone scopes. Deploy its matching Salvage activity
+predicate fix with this interface so daily and type/KPI sources agree.
+
+Date edits are staged: Cancel discards them and Apply issues one request. A
+superseded request cannot replace a newer snapshot. Refresh, timeout, malformed
+payload and network errors retain the last successful data with its time and
+range; unavailable fields are not converted to zero. Manual refresh is the update
+model, not a live stream. The selected range is page-local and resets on a new
+visit. The chart has a keyboard/touch Data view; long ranges use at most 180
+contiguous date bins with unchanged totals and explicit missing intervals.
+This bounds browser rendering only; the backend still returns daily data across
+the requested range. Chart animation is disabled and the two small bar lists
+are DOM elements, not additional chart instances.
+
+Workflow counts are not a funnel. Drill-down explains that the sample contains
+up to 60 recently updated queue items; filtered Stats remains the full-detail
+path. Ready today uses Regina time and the release or last-update date. Recent
+reports preserve up to eight records, with a scrollable desktop table and wrapping
+mobile rows. An inherited legacy release flag never turns a draft, preview,
+processing or pending report into a Released badge.
+
+Settings load on first open, handle independent failures, and cannot save unloaded
+defaults. Credit loading/retry is GET; only explicit Sync uses the existing POST.
+Low-balance warnings, source warnings and server balances are retained without
+multiplier formulas. No additional dependencies or API/schema changes are needed.
+
+Verification: `npm run verify` and `node --test tests/*.test.mjs`. Dashboard-focused
+data/status/date/payload cases live in `tests/dashboard-data.test.mjs` and
+`tests/dashboard-payload.test.mjs`. Use isolated upstream fixtures to check date
+Apply/Cancel, stale-response ordering, failures, Chart/Data parity, settings,
+credits and queue focus restoration at desktop/tablet/mobile sizes; do not use
+production settings mutations as a visual test.
+
+2026-09-14 acceptance: admin verify and 47 policy/data tests passed; the paired
+backend verify passed 1,764 tests plus the report-workflow check. Isolated
+production-build Chromium checks covered date Apply/Cancel, Chart/Data totals,
+queue focus, lazy settings, explicit credit Sync, failed/forbidden/malformed
+responses, delayed-request ordering and 175-bin long-range totals. Responsive
+checks covered 320, 390, 480, 768, 844, 1200 and 1536 px widths. Tested light/dark
+dashboard and focused dialogs had zero axe violations. The approved desktop and
+mobile concepts were compared with final screenshots; real navigation, full
+eight-record metadata and accessible touch targets intentionally remain intact.
+No production data/settings, new packages, push or deployment were involved;
+Safari/Firefox and production-scale response latency remain unverified.
+
 ## Report approvals
 
 Both `admin` and `superadmin` can open Pending Approvals. Ordinary `user` accounts remain limited to their permitted reports; the backend authorizes every decision. Pending rows group sibling files by parent report, but review/approve/return actions use the actual row/artifact ID.

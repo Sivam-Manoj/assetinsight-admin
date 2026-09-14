@@ -1,543 +1,147 @@
 "use client";
 
-import {
-  Activity,
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
-  FileCheck2,
-  Gavel,
-  RefreshCcw,
-  Settings2,
-  Users,
-  X,
-  type LucideIcon,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ArcElement,
-  CategoryScale,
-  Chart as ChartJS,
-  Legend,
-  LinearScale,
-  LineElement,
-  PointElement,
-  Tooltip as ChartTooltip,
-} from "chart.js";
-import { Doughnut, Line } from "react-chartjs-2";
-import DashboardTabs from "@/app/components/dashboard/DashboardTabs";
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  Drawer,
-  IconButton,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from "@mui/material";
+import { CalendarDays, CheckCircle2, ChevronRight, FileCheck2, Layers3, RefreshCcw, Settings2, Users } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, TextField, Typography, useTheme } from '@mui/material';
+import DashboardTabs from './DashboardTabs';
+import DashboardActivity from './DashboardActivity';
+import DashboardCredits from './DashboardCredits';
+import DashboardSettings from './DashboardSettings';
+import DashboardRecentReports from './DashboardRecentReports';
+import DashboardQueueDrawer from './DashboardQueueDrawer';
+import { formatCount, formatDay, isDesktopDashboard, reportTypeLabel, validateDashboardRange, workflowLabels, type DesktopDashboard, type WorkflowStage } from '@/lib/dashboardData';
+import styles from './DashboardOverview.module.css';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, ChartTooltip, Legend);
-
-type PersonRef = { username?: string; companyName?: string; email?: string };
-type DashboardMetric = { value: number; percent?: number };
-type DashboardRecentReport = {
-  _id: string;
-  title: string;
-  contractNo?: string;
-  type: string;
-  lotCount: number;
-  lotNumberSummary?: string;
-  thumbnailUrl?: string | null;
-  owner?: PersonRef | string;
-  createdAt: string;
-  status?: string;
-  releaseStatus?: string;
+const TYPES = ['Asset', 'LotListing', 'RealEstate', 'Salvage'];
+const STAGES = [
+  { stage: 'preparing_preview', key: 'preparingPreview' },
+  { stage: 'preview_ready', key: 'previewReady' },
+  { stage: 'generating_files', key: 'generatingFiles' },
+  { stage: 'awaiting_approval', key: 'awaitingApproval' },
+  { stage: 'awaiting_release', key: 'awaitingRelease' },
+] as const;
+const EMPTY_QUEUE: DesktopDashboard['queue']['items'] = [];
+const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+const defaultRange = () => {
+  const end = new Date(), start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 29);
+  return { from: isoDay(start), to: isoDay(end) };
 };
-type WorkflowStage =
-  | "preparing_preview"
-  | "preview_ready"
-  | "generating_files"
-  | "awaiting_approval"
-  | "awaiting_release"
-  | "ready"
-  | "error";
-type DashboardQueueItem = {
-  id: string;
-  reportType: string;
-  title: string;
-  contractNo?: string;
-  creator: string;
-  creatorEmail?: string;
-  lotCount: number;
-  thumbnailUrl?: string | null;
-  workflowStage: WorkflowStage;
-  workflowMessage: string;
-  elapsedMinutes: number;
-  error?: string | null;
-};
-type DesktopDashboard = {
-  range: { from: string; to: string };
-  kpis: {
-    reports: DashboardMetric;
-    lots: DashboardMetric;
-    lotListings: DashboardMetric;
-    users: DashboardMetric;
-    pending: number;
-    released: number;
-  };
-  activity: Array<{ date: string; value: number }>;
-  byType: Array<{ type: string; value: number }>;
-  queue: {
-    preparingPreview: number;
-    previewReady: number;
-    generatingFiles: number;
-    awaitingApproval: number;
-    awaitingRelease: number;
-    releasedToday: number;
-    items: DashboardQueueItem[];
-    pendingReview?: number;
-    inReview?: number;
-    readyForRelease?: number;
-  };
-  recentReports: DashboardRecentReport[];
-};
-type OpenAICredits = {
-  remainingCredits?: number;
-  totalGrantedCredits?: number;
-  requestCount?: number;
-  webSearchCount?: number;
-  lowBalanceThreshold?: number;
-  usageSourceAvailable?: boolean;
-  status?: string;
-  syncedAt?: string;
-  warnings?: string[];
-};
-type SettingState = { enabled: boolean } | null;
-type ThresholdState = { threshold: number; defaultThreshold: number } | null;
-
-const TYPE_COLORS: Record<string, string> = {
-  Asset: "#df111b",
-  LotListing: "#171817",
-  RealEstate: "#777a7d",
-  Salvage: "#c8c9ca",
-};
-
-const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
-const number = (value: unknown) => Number(value || 0).toLocaleString();
-const finiteNumber = (...values: unknown[]) => {
-  for (const value of values) {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (value !== null && value !== undefined && value !== "" && Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-};
-const formatCreditValue = (value: number | null) =>
-  value === null ? "--" : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-const formatStatus = (value?: string) => {
-  if (!value) return "--";
-  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-};
-const formatDate = (value?: string) => {
-  if (!value) return "--";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "--" : date.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
-};
-const ownerLabel = (owner: DashboardRecentReport["owner"]) => {
-  if (!owner || typeof owner === "string") return owner || "-";
-  return owner.username || owner.companyName || owner.email || "-";
-};
-const workflowLabels: Record<WorkflowStage, string> = {
-  preparing_preview: "Preparing previews",
-  preview_ready: "Preview ready",
-  generating_files: "Generating files",
-  awaiting_approval: "Awaiting approval",
-  awaiting_release: "Awaiting release",
-  ready: "Released today",
-  error: "Error",
-};
-const elapsed = (value: number) => value < 60 ? `${Math.max(0, Math.round(value))}m` : `${(value / 60).toFixed(1)}h`;
-
-function Delta({ value }: { value?: number }) {
-  if (typeof value !== "number") return null;
-  return <span style={{ color: value >= 0 ? "#087f5b" : "#b35b00" }}>{value >= 0 ? "+" : ""}{value.toFixed(1)}%</span>;
-}
 
 export default function DashboardShellV2() {
-  const router = useRouter();
-  const [from, setFrom] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 29);
-    return toIsoDate(date);
-  });
-  const [to, setTo] = useState(() => toIsoDate(new Date()));
+  const theme = useTheme();
+  const [range, setRange] = useState(defaultRange);
+  const [draftRange, setDraftRange] = useState(range);
   const [data, setData] = useState<DesktopDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [queueStage, setQueueStage] = useState<WorkflowStage | null>(null);
-  const [openAICredits, setOpenAICredits] = useState<OpenAICredits | null>(null);
-  const [openAICreditsLoading, setOpenAICreditsLoading] = useState(true);
-  const [openAICreditsError, setOpenAICreditsError] = useState<string | null>(null);
-  const [specWebSearch, setSpecWebSearch] = useState<SettingState>(null);
-  const [specSaving, setSpecSaving] = useState(false);
-  const [threshold, setThreshold] = useState<ThresholdState>(null);
-  const [thresholdInput, setThresholdInput] = useState("");
-  const [thresholdSaving, setThresholdSaving] = useState(false);
+  const request = useRef<AbortController | null>(null);
 
   const loadDashboard = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    const timeout = window.setTimeout(() => controller.abort('timeout'), 60_000);
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`/api/admin/stats/desktop-dashboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { cache: "no-store" });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.message || "Failed to load dashboard");
+      const response = await fetch(`/api/admin/stats/desktop-dashboard?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`, { cache: 'no-store', signal: controller.signal });
+      const payload: unknown = await response.json();
+      if (!response.ok) throw new Error(response.status === 403 ? 'You do not have access to dashboard statistics.' : 'Dashboard could not be refreshed. Please try again.');
+      if (!isDesktopDashboard(payload)) throw new Error('Dashboard returned incomplete data. Please try again.');
+      if (controller.signal.aborted || request.current !== controller) return;
       setData(payload);
-    } catch (currentError) {
-      setError(currentError instanceof Error ? currentError.message : "Failed to load dashboard");
+      setUpdatedAt(new Date());
+    } catch (cause) {
+      if (request.current !== controller || (controller.signal.aborted && controller.signal.reason !== 'timeout')) return;
+      setError(controller.signal.reason === 'timeout' ? 'Dashboard request timed out. Please try again.' : cause instanceof Error ? cause.message : 'Dashboard could not be loaded.');
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeout);
+      if (request.current === controller) setLoading(false);
     }
-  }, [from, to]);
+  }, [range]);
+  useEffect(() => { void loadDashboard(); return () => request.current?.abort(); }, [loadDashboard]);
 
-  const loadOpenAICredits = useCallback(async (sync = false) => {
-    try {
-      setOpenAICreditsLoading(true);
-      setOpenAICreditsError(null);
-      const response = await fetch(sync ? "/api/admin/openai-credits/sync" : "/api/admin/openai-credits", { method: sync ? "POST" : "GET", cache: "no-store" });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.message || "Failed to load OpenAI credits");
-      setOpenAICredits(payload?.data ?? payload ?? null);
-    } catch (currentError) {
-      setOpenAICreditsError(currentError instanceof Error ? currentError.message : "Failed to load OpenAI credits");
-    } finally {
-      setOpenAICreditsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
-
-  useEffect(() => {
-    void loadOpenAICredits();
-    void (async () => {
-      const [searchResponse, thresholdResponse] = await Promise.all([
-        fetch("/api/admin/spec-web-search", { cache: "no-store" }),
-        fetch("/api/admin/asset-approval-threshold", { cache: "no-store" }),
-      ]);
-      const [searchPayload, thresholdPayload] = await Promise.all([
-        searchResponse.json().catch(() => ({})),
-        thresholdResponse.json().catch(() => ({})),
-      ]);
-      if (searchResponse.ok) setSpecWebSearch({ enabled: searchPayload?.enabled === true });
-      if (thresholdResponse.ok) {
-        const nextThreshold = Number(thresholdPayload?.threshold ?? thresholdPayload?.defaultThreshold ?? 500000);
-        const nextDefault = Number(thresholdPayload?.defaultThreshold ?? 500000);
-        setThreshold({ threshold: nextThreshold, defaultThreshold: nextDefault });
-        setThresholdInput(String(nextThreshold));
-      }
-    })();
-  }, [loadOpenAICredits]);
-
-  async function toggleSpecSearch() {
-    const enabled = !(specWebSearch?.enabled === true);
-    try {
-      setSpecSaving(true);
-      const response = await fetch("/api/admin/spec-web-search", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) });
-      const payload = await response.json().catch(() => ({}));
-      if (response.ok) setSpecWebSearch({ enabled: payload?.enabled === true });
-    } finally {
-      setSpecSaving(false);
-    }
-  }
-
-  async function saveThreshold() {
-    const value = Number.parseFloat(thresholdInput.replace(/,/g, ""));
-    if (!Number.isFinite(value) || value < 0) return;
-    try {
-      setThresholdSaving(true);
-      const response = await fetch("/api/admin/asset-approval-threshold", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threshold: value }) });
-      const payload = await response.json().catch(() => ({}));
-      if (response.ok) setThreshold({ threshold: Number(payload?.threshold ?? value), defaultThreshold: Number(payload?.defaultThreshold ?? threshold?.defaultThreshold ?? 500000) });
-    } finally {
-      setThresholdSaving(false);
-    }
-  }
-
-  const activityLabels = data?.activity.map((point) => formatDate(point.date).replace(/, \d{4}$/, "")) || [];
-  const activityValues = data?.activity.map((point) => point.value) || [];
-  const typeValues = useMemo(() => {
-    const map = new Map((data?.byType || []).map((item) => [item.type, item.value]));
-    return ["Asset", "LotListing", "RealEstate", "Salvage"].map((type) => map.get(type) || 0);
-  }, [data?.byType]);
-  const creditBalance = finiteNumber(openAICredits?.remainingCredits);
-  const creditBudget = finiteNumber(openAICredits?.totalGrantedCredits);
-  const creditThreshold = finiteNumber(openAICredits?.lowBalanceThreshold) ?? 100;
-  const creditIsLow = creditBalance !== null && creditBalance < creditThreshold;
-  const creditRequestCount = finiteNumber(openAICredits?.requestCount);
-  const creditWebSearchCount = finiteNumber(openAICredits?.webSearchCount);
-  const creditWarning = openAICredits?.warnings?.[0] || (openAICredits?.usageSourceAvailable === false
-    ? "OpenAI usage is currently unavailable; this balance may not include the latest usage."
-    : null);
-
+  const typeData = useMemo(() => {
+    const values = new Map(data?.byType.map(item => [item.type, item.value]));
+    return TYPES.map(type => ({ type, value: values.get(type) }));
+  }, [data]);
+  const typeMax = Math.max(1, ...typeData.map(item => typeof item.value === 'number' && Number.isFinite(item.value) ? item.value : 0));
+  const typeTotal = typeData.reduce((total, item) => total + (item.value ?? 0), 0);
+  const completeTypes = typeData.every(item => typeof item.value === 'number' && Number.isFinite(item.value) && item.value >= 0);
+  const typeColors = [theme.palette.primary.main, theme.palette.mode === 'dark' ? '#a5afbd' : '#505a68', theme.palette.mode === 'dark' ? '#55bac5' : '#247d8b', theme.palette.mode === 'dark' ? '#e9b55c' : '#ba780d'];
+  const queueMax = Math.max(1, ...STAGES.map(({ key }) => data?.queue[key] ?? 0));
+  const visibleRange = data?.range ?? range;
+  const rangeError = validateDashboardRange(draftRange);
+  const pendingRange = data && (data.range.from.slice(0, 10) !== range.from || data.range.to.slice(0, 10) !== range.to);
   const kpis = [
-    { label: "Reports", value: number(data?.kpis.reports.value), delta: data?.kpis.reports.percent, note: "vs previous period", icon: FileCheck2 },
-    { label: "Lots", value: number(data?.kpis.lots?.value ?? data?.kpis.lotListings.value), delta: data?.kpis.lots?.percent ?? data?.kpis.lotListings.percent, note: "Asset and Lot Listing", icon: Gavel },
-    { label: "Users", value: number(data?.kpis.users.value), note: "active directory", icon: Users },
-    { label: "Pending / Released", value: `${number(data?.kpis.pending)} / ${number(data?.kpis.released)}`, note: "current workflow", icon: Clock3 },
+    { label: 'Reports', value: formatCount(data?.kpis.reports.value), percent: data?.kpis.reports.percent, note: 'vs previous period', Icon: FileCheck2 },
+    { label: 'Lots', value: formatCount(data?.kpis.lots?.value), percent: data?.kpis.lots?.percent, note: 'vs previous period', Icon: Layers3 },
+    { label: 'Registered users', value: formatCount(data?.kpis.users.value), note: 'All time', Icon: Users },
+    { label: 'Pending / Approved', value: `${formatCount(data?.kpis.pending)} / ${formatCount(data?.kpis.released)}`, note: 'All-time status totals', Icon: CheckCircle2 },
   ];
-  const queueItems: Array<{ stage: WorkflowStage; label: string; value: number; icon: LucideIcon }> = [
-    { stage: "preparing_preview", label: "Preparing previews", value: data?.queue.preparingPreview || 0, icon: Clock3 },
-    { stage: "preview_ready", label: "Preview ready", value: data?.queue.previewReady || 0, icon: FileCheck2 },
-    { stage: "generating_files", label: "Generating files", value: data?.queue.generatingFiles || 0, icon: Activity },
-    { stage: "awaiting_approval", label: "Awaiting approval", value: data?.queue.awaitingApproval || 0, icon: CheckCircle2 },
-    { stage: "awaiting_release", label: "Awaiting release", value: data?.queue.awaitingRelease || 0, icon: Clock3 },
-    { stage: "ready", label: "Released today", value: data?.queue.releasedToday || 0, icon: CheckCircle2 },
-  ];
-  const visibleQueueItems = (data?.queue.items || []).filter((item) => item.workflowStage === queueStage);
 
-  return (
-    <Box className="desktop-admin-page" sx={{ p: { xs: 2, lg: 3.5 } }}>
-      <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "flex-start" }} spacing={2} sx={{ mb: 3 }}>
-        <Box>
-          <h1 className="desktop-page-title">Dashboard</h1>
-          <p className="desktop-page-subtitle">Overview of report operations and system activity.</p>
-        </Box>
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button variant="outlined" startIcon={<CalendarDays size={17} />} onClick={() => setDateDialogOpen(true)}>
-            {formatDate(from)} - {formatDate(to)}
-          </Button>
-          <Button variant="outlined" startIcon={<RefreshCcw size={17} />} disabled={loading} onClick={() => void loadDashboard()}>
-            Refresh
-          </Button>
-          <IconButton aria-label="Operations settings" onClick={() => setSettingsOpen(true)} sx={{ width: 36, height: 36, border: "1px solid", borderColor: "divider", borderRadius: "4px" }}>
-            <Settings2 size={17} />
-          </IconButton>
-        </Stack>
-      </Stack>
+  return <div className={styles.page}>
+    <header className={styles.header}>
+      <h1>Dashboard</h1>
+      <div className={styles.headerRight}>
+        <div className={styles.tools}>
+          <Button className={styles.dateButton} variant="outlined" sx={{ color: 'text.primary', borderColor: 'divider' }} startIcon={<CalendarDays size={16} />} aria-label={`Choose dashboard date range: ${formatDay(range.from, true)} to ${formatDay(range.to, true)}`} onClick={() => { setDraftRange(range); setDateDialogOpen(true); }}>{formatDay(range.from)} – {formatDay(range.to, true)}</Button>
+          <Button className={styles.refreshButton} aria-label="Refresh" variant="contained" sx={{ '&:not(.Mui-disabled)': { bgcolor: theme.palette.mode === 'dark' ? 'primary.dark' : 'primary.main', color: '#fff', '&:hover': { bgcolor: 'primary.dark' } } }} startIcon={<RefreshCcw size={16} />} disabled={loading} onClick={() => void loadDashboard()}><span className={styles.refreshLabel}>Refresh</span></Button>
+          <IconButton aria-label="Operations settings" onClick={() => setSettingsOpen(true)} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '4px', width: { xs: 44, sm: 38 }, height: { xs: 44, sm: 38 } }}><Settings2 size={18} /></IconButton>
+        </div>
+        <p className={styles.updated} role="status">{loading ? data ? 'Refreshing · previous snapshot shown' : 'Loading dashboard…' : error ? 'Update failed' : updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not yet updated'}</p>
+      </div>
+      <div className={styles.tabs}><DashboardTabs active="overview" /></div>
+    </header>
+    {error ? <Alert severity="error" sx={{ mb: 1.5 }} action={<Button color="inherit" disabled={loading} onClick={() => void loadDashboard()}>Retry</Button>}>{error}{data && updatedAt ? ` Showing the last successful snapshot from ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''}</Alert> : null}
+    {pendingRange ? <Alert severity="info" sx={{ mb: 1.5 }}>Showing {formatDay(visibleRange.from, true)} – {formatDay(visibleRange.to, true)} until the new range loads.</Alert> : null}
 
-      <Box sx={{ mb: 2, borderBottom: "1px solid", borderColor: "divider" }}>
-        <DashboardTabs active="overview" />
-      </Box>
-
-      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
-
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0,1fr))", xl: "repeat(4, minmax(0,1fr))" }, gap: 1.5, mb: 1.5 }}>
-        {kpis.map(({ label, value, delta, note, icon: Icon }) => (
-          <Box key={label} className="desktop-flat-panel" sx={{ display: "flex", minHeight: 148, alignItems: "center", gap: 2, p: 2.5 }}>
-            <Box sx={{ display: "grid", width: 48, height: 48, flexShrink: 0, placeItems: "center", border: "1px solid", borderColor: "divider", bgcolor: "action.hover" }}>
-              <Icon size={25} strokeWidth={2} />
-            </Box>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ color: "text.secondary", fontSize: 14, fontWeight: 500 }}>{label}</Typography>
-              <Typography sx={{ mt: 0.25, fontSize: 28, fontWeight: 650, lineHeight: 1.05, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-                {loading && !data ? "..." : value}
-              </Typography>
-              <Typography component="div" sx={{ mt: 1, color: "text.secondary", fontSize: 12 }}>
-                <Delta value={delta} />{typeof delta === "number" ? "  " : ""}{note}
-              </Typography>
-            </Box>
-          </Box>
-        ))}
-      </Box>
-
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", xl: "minmax(0,7fr) minmax(280px,4fr) minmax(220px,2fr)" }, gap: 1.5, alignItems: "stretch" }}>
-        <Box className="desktop-flat-panel" sx={{ minHeight: 430, p: 2.5 }}>
-          <Typography sx={{ fontSize: 17, fontWeight: 600 }}>Report Activity</Typography>
-          <Typography sx={{ mt: 0.5, mb: 2, color: "text.secondary", fontSize: 14 }}>Reports created per day</Typography>
-          <Box sx={{ height: 330 }}>
-            <Line
-              data={{ labels: activityLabels, datasets: [{ data: activityValues, borderColor: "#c8232c", backgroundColor: "#c8232c", pointBackgroundColor: "#fff", pointBorderColor: "#c8232c", pointBorderWidth: 2, pointRadius: 3, tension: 0.2, borderWidth: 2 }] }}
-              options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: "#62666c" } }, y: { beginAtZero: true, grid: { color: "#dedfe1" }, ticks: { color: "#62666c", precision: 0 } } } }}
-            />
-          </Box>
-        </Box>
-
-        <Box className="desktop-flat-panel" sx={{ minHeight: 430, p: 2.5 }}>
-          <Typography sx={{ fontSize: 17, fontWeight: 600 }}>Reports by Type</Typography>
-          <Typography sx={{ mt: 0.5, color: "text.secondary", fontSize: 14 }}>Share of reports in the selected period</Typography>
-          <Box sx={{ display: "grid", minHeight: 335, gridTemplateColumns: { xs: "1fr", sm: "minmax(150px,1fr) 145px", xl: "1fr" }, alignItems: "center", gap: 2 }}>
-            <Box sx={{ mx: "auto", width: "min(220px, 100%)", height: 220 }}>
-              <Doughnut
-                data={{ labels: ["Asset", "Lot Listing", "Real Estate", "Salvage"], datasets: [{ data: typeValues, backgroundColor: [TYPE_COLORS.Asset, TYPE_COLORS.LotListing, TYPE_COLORS.RealEstate, TYPE_COLORS.Salvage], borderWidth: 0 }] }}
-                options={{ responsive: true, maintainAspectRatio: false, cutout: "64%", plugins: { legend: { display: false } } }}
-              />
-            </Box>
-            <Stack spacing={1.2} sx={{ minWidth: 140 }}>
-              {["Asset", "LotListing", "RealEstate", "Salvage"].map((type, index) => (
-                <Stack key={type} direction="row" alignItems="center" spacing={1}>
-                  <Box sx={{ width: 10, height: 10, bgcolor: TYPE_COLORS[type] }} />
-                  <Typography sx={{ flex: 1, fontSize: 12 }}>{type === "LotListing" ? "Lot Listing" : type === "RealEstate" ? "RealEstate" : type}</Typography>
-                  <Typography sx={{ fontSize: 12, fontWeight: 650 }}>{number(typeValues[index])}</Typography>
-                </Stack>
-              ))}
-            </Stack>
-          </Box>
-        </Box>
-
-        <Stack spacing={1.5}>
-          <Box className="desktop-flat-panel" sx={{ overflow: "hidden" }}>
-            <Box sx={{ p: 2 }}><Typography sx={{ fontSize: 16, fontWeight: 600 }}>Processing / Release Queue</Typography></Box>
-            {queueItems.map(({ stage, label, value, icon: Icon }) => (
-              <Box key={stage} sx={{ display: "flex", minHeight: 44, borderTop: "1px solid", borderColor: "divider" }}>
-                <Button fullWidth onClick={() => setQueueStage(stage)} sx={{ justifyContent: "flex-start", borderRadius: 0, color: "text.primary", px: 2, fontSize: 12 }}>
-                  <Icon size={15} style={{ marginRight: 10 }} /><span style={{ flex: 1, textAlign: "left" }}>{label}</span>
-                </Button>
-                <Button
-                  aria-label={`Open ${label} in Stats`}
-                  onClick={() => router.push(`/stats?workflowStage=${stage}`)}
-                  endIcon={<ChevronRight size={14} />}
-                  sx={{ minWidth: 70, borderRadius: 0, color: "text.primary", fontSize: 12, fontWeight: 700 }}
-                >
-                  {number(value)}
-                </Button>
-              </Box>
-            ))}
-            <Button fullWidth onClick={() => router.push("/stats")} sx={{ minHeight: 38, justifyContent: "flex-start", borderTop: "1px solid", borderColor: "divider", borderRadius: 0, color: "primary.main", fontSize: 12, px: 2 }}>View full queue</Button>
-          </Box>
-
-          <Box className="desktop-flat-panel" sx={{ p: 2 }}>
-            <Stack direction="row" justifyContent="space-between" spacing={1}>
-              <Box>
-                <Typography sx={{ fontSize: 14, fontWeight: 600 }}>OpenAI Credits</Typography>
-                <Typography sx={{ mt: 0.25, color: "text.secondary", fontSize: 11 }}>Environment budget minus multiplied usage</Typography>
-              </Box>
-              <IconButton aria-label="Sync OpenAI credits" size="small" disabled={openAICreditsLoading} onClick={() => void loadOpenAICredits(true)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "3px" }}><RefreshCcw size={15} /></IconButton>
-            </Stack>
-            {openAICreditsLoading && !openAICredits ? (
-              <Typography role="status" sx={{ mt: 2, color: "text.secondary", fontSize: 12 }}>Loading credit balance...</Typography>
-            ) : openAICreditsError && !openAICredits ? (
-              <Alert severity="error" sx={{ mt: 1.5, py: 0.25, fontSize: 11 }}>{openAICreditsError}</Alert>
-            ) : (
-              <>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mt: 2 }}>
-                  <Box>
-                    <Typography sx={{ color: "text.secondary", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Remaining balance</Typography>
-                    <Typography sx={{ mt: 0.25, color: creditIsLow ? "error.main" : "text.primary", fontSize: 26, fontWeight: 650, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditBalance)}</Typography>
-                  </Box>
-                  {creditIsLow ? <Chip size="small" color="error" label={`Low · below ${formatCreditValue(creditThreshold)}`} sx={{ height: 22, fontSize: 10 }} /> : null}
-                </Stack>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 12px", mt: 1.5 }}>
-                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Configured budget</Typography>
-                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditBudget)}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Requests</Typography>
-                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditRequestCount)}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Web searches</Typography>
-                  <Typography sx={{ fontSize: 11, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{formatCreditValue(creditWebSearchCount)}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Status</Typography>
-                  <Typography sx={{ fontSize: 11, fontWeight: 650 }}>{formatStatus(openAICredits?.status)}</Typography>
-                </Box>
-                {creditWarning ? <Alert severity="warning" sx={{ mt: 1.5, py: 0.25, fontSize: 11 }}>{creditWarning}</Alert> : null}
-                {openAICreditsError ? <Alert severity="error" sx={{ mt: 1.5, py: 0.25, fontSize: 11 }}>{openAICreditsError}</Alert> : null}
-              </>
-            )}
-          </Box>
-        </Stack>
-      </Box>
-
-      <Box className="desktop-flat-panel" sx={{ mt: 1.5, overflow: "hidden" }}>
-        <Box sx={{ px: 2.5, py: 2 }}><Typography sx={{ fontSize: 17, fontWeight: 600 }}>Recent Reports</Typography></Box>
-        <Box sx={{ overflowX: "auto" }}>
-          <Box component="table" sx={{ width: "100%", minWidth: 860, borderCollapse: "collapse", "& th": { px: 2, py: 1.25, borderTop: "1px solid", borderBottom: "1px solid", borderColor: "divider", textAlign: "left", fontSize: 11, fontWeight: 650 }, "& td": { px: 2, py: 1.2, borderBottom: "1px solid", borderColor: "divider", fontSize: 12 } }}>
-            <Box component="thead"><Box component="tr"><Box component="th">Report</Box><Box component="th">Type</Box><Box component="th">Lot / Asset</Box><Box component="th">Created</Box><Box component="th">Status</Box><Box component="th">Action</Box></Box></Box>
-            <Box component="tbody">
-              {(data?.recentReports || []).map((report) => (
-                <Box component="tr" key={report._id}>
-                  <Box component="td"><Stack direction="row" spacing={1.25} alignItems="center">{report.thumbnailUrl ? <Box component="img" src={report.thumbnailUrl} alt="" sx={{ width: 52, height: 44, objectFit: "cover", border: "1px solid", borderColor: "divider" }} /> : null}<Box><Typography sx={{ fontSize: 12, fontWeight: 650 }}>{report.title}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{report.contractNo || report._id.slice(-6)}</Typography></Box></Stack></Box>
-                  <Box component="td">{report.type === "LotListing" ? "Lot Listing" : report.type}</Box>
-                  <Box component="td">{report.lotNumberSummary || `${number(report.lotCount)} lot${report.lotCount === 1 ? "" : "s"}`}</Box>
-                  <Box component="td"><Typography sx={{ fontSize: 12 }}>{formatDate(report.createdAt)}</Typography><Typography sx={{ color: "text.secondary", fontSize: 11 }}>{ownerLabel(report.owner)}</Typography></Box>
-                  <Box component="td"><Chip size="small" label={report.releaseStatus === "released" || report.status === "released" ? "Released" : report.status || "Approved"} sx={{ height: 22, bgcolor: "#e9f7f2", color: "#087f5b", fontSize: 10 }} /></Box>
-                  <Box component="td"><IconButton aria-label="Open report" size="small" onClick={() => router.push(`/reports?search=${encodeURIComponent(report.contractNo || report.title)}`)} sx={{ border: "1px solid", borderColor: "divider", borderRadius: "3px" }}><ChevronRight size={15} /></IconButton></Box>
-                </Box>
-              ))}
-            </Box>
-          </Box>
-        </Box>
-      </Box>
-
-      <Drawer
-        anchor="right"
-        open={Boolean(queueStage)}
-        onClose={() => setQueueStage(null)}
-        PaperProps={{ sx: { width: { xs: "100%", sm: 460 }, maxWidth: "100vw" } }}
-      >
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ px: 2.5, py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
-          <Box>
-            <Typography sx={{ fontSize: 19, fontWeight: 700 }}>{queueStage ? workflowLabels[queueStage] : "Workflow queue"}</Typography>
-            <Typography sx={{ color: "text.secondary", fontSize: 11 }}>Current reports, oldest elapsed work first.</Typography>
-          </Box>
-          <IconButton aria-label="Close workflow queue" onClick={() => setQueueStage(null)}><X size={18} /></IconButton>
-        </Stack>
-        <Box sx={{ flex: 1, overflowY: "auto" }}>
-          {visibleQueueItems.length ? visibleQueueItems
-            .slice()
-            .sort((left, right) => right.elapsedMinutes - left.elapsedMinutes)
-            .map((item) => (
-              <Box key={`${item.reportType}-${item.id}`} sx={{ display: "flex", gap: 1.5, p: 2, borderBottom: "1px solid", borderColor: "divider" }}>
-                {item.thumbnailUrl ? (
-                  <Box component="img" src={item.thumbnailUrl} alt="" loading="lazy" sx={{ width: 66, height: 56, flexShrink: 0, objectFit: "cover", border: "1px solid", borderColor: "divider" }} />
-                ) : (
-                  <Box sx={{ display: "grid", width: 66, height: 56, flexShrink: 0, placeItems: "center", bgcolor: "action.hover", border: "1px solid", borderColor: "divider" }}><FileCheck2 size={19} /></Box>
-                )}
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Stack direction="row" justifyContent="space-between" gap={1}>
-                    <Typography noWrap sx={{ fontSize: 13, fontWeight: 700 }}>{item.title || item.contractNo || item.reportType}</Typography>
-                    <Typography sx={{ flexShrink: 0, color: "text.secondary", fontSize: 11 }}>{elapsed(item.elapsedMinutes)}</Typography>
-                  </Stack>
-                  <Typography noWrap sx={{ color: "text.secondary", fontSize: 11 }}>{item.creator}{item.creatorEmail ? ` - ${item.creatorEmail}` : ""}</Typography>
-                  <Typography sx={{ mt: 0.5, color: "text.secondary", fontSize: 11 }}>{item.contractNo || "No contract"} - {item.lotCount} lot{item.lotCount === 1 ? "" : "s"}</Typography>
-                  <Typography sx={{ mt: 0.5, fontSize: 11 }}>{item.workflowMessage}</Typography>
-                  {item.error ? <Alert severity="error" icon={<AlertTriangle size={15} />} sx={{ mt: 1, py: 0, fontSize: 11 }}>{item.error}</Alert> : null}
-                </Box>
-              </Box>
-            )) : <Typography sx={{ p: 3, color: "text.secondary", fontSize: 12 }}>No reports are currently in this stage.</Typography>}
-        </Box>
-        <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
-          <Button fullWidth variant="contained" onClick={() => router.push(queueStage ? `/stats?workflowStage=${queueStage}` : "/stats")}>Open filtered Stats</Button>
-        </Box>
-      </Drawer>
-
-      <Dialog open={dateDialogOpen} onClose={() => setDateDialogOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>Date range</DialogTitle>
-        <DialogContent sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, pt: "12px !important" }}>
-          <TextField type="date" label="From" value={from} onChange={(event) => setFrom(event.target.value)} InputLabelProps={{ shrink: true }} />
-          <TextField type="date" label="To" value={to} onChange={(event) => setTo(event.target.value)} InputLabelProps={{ shrink: true }} />
-        </DialogContent>
-        <DialogActions><Button onClick={() => setDateDialogOpen(false)}>Cancel</Button><Button variant="contained" onClick={() => { setDateDialogOpen(false); void loadDashboard(); }}>Apply</Button></DialogActions>
-      </Dialog>
-
-      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Operations settings</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2.5}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-              <Box><Typography sx={{ fontWeight: 650 }}>Spec web search</Typography><Typography sx={{ color: "text.secondary", fontSize: 12 }}>Off uses uploaded images and provided data only.</Typography></Box>
-              <Switch checked={specWebSearch?.enabled === true} onChange={() => void toggleSpecSearch()} disabled={specSaving} color="success" />
-            </Stack>
-            <Divider />
-            <Box>
-              <Typography sx={{ fontWeight: 650 }}>Asset approval limit</Typography>
-              <Typography sx={{ mb: 1.5, color: "text.secondary", fontSize: 12 }}>Asset reports above this value require manager approval.</Typography>
-              <Stack direction="row" spacing={1}><TextField fullWidth size="small" value={thresholdInput} onChange={(event) => setThresholdInput(event.target.value)} inputProps={{ inputMode: "decimal" }} /><Button variant="contained" onClick={() => void saveThreshold()} disabled={thresholdSaving}>Save</Button></Stack>
-            </Box>
-          </Stack>
-        </DialogContent>
-        <DialogActions><Button variant="contained" onClick={() => setSettingsOpen(false)}>Close</Button></DialogActions>
-      </Dialog>
-
-    </Box>
-  );
+    <section className={styles.metrics} aria-label="Report overview metrics">
+      {kpis.map(({ label, value, percent, note, Icon }) => <div className={styles.metric} key={label}>
+        <Icon size={28} strokeWidth={1.65} className={styles.metricIcon} aria-hidden />
+        <div><p className={styles.metricLabel}>{label}</p><div className={styles.metricValue}>{value}</div><p className={styles.metricNote}>
+          {typeof percent === 'number' && Number.isFinite(percent) ? <Box component="span" sx={{ color: theme.palette.mode === 'dark' ? percent >= 0 ? 'success.light' : 'warning.light' : percent >= 0 ? 'success.dark' : 'warning.dark', mr: .5 }}>{percent >= 0 ? '+' : ''}{percent.toFixed(1)}%</Box> : null}{note}
+        </p></div>
+      </div>)}
+    </section>
+    <div className={styles.analysisRow}>
+      <DashboardActivity data={data} />
+      <section className={styles.panel} aria-labelledby="types-heading">
+        <div className={styles.panelHeader}><div><h2 id="types-heading">Reports by type</h2><p>Selected period</p></div></div>
+        <div className={styles.typeBars}>{typeData.map(({ type, value }, index) => <div className={styles.typeRow} key={type}>
+          <span>{reportTypeLabel(type)}</span><div className={styles.track} aria-hidden><div className={styles.bar} style={{ width: `${typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value / typeMax * 100 : 0}%`, background: typeColors[index] }} /></div>
+          <span className={styles.typeCount}>{formatCount(value)}</span><span className={styles.share}>{completeTypes ? `${typeTotal ? ((value ?? 0) / typeTotal * 100).toFixed(1) : '0.0'}%` : '—'}</span>
+        </div>)}</div>
+        {data && typeTotal === 0 && completeTypes ? <p className={styles.footnote}>No reports in this period.</p> : null}
+      </section>
+    </div>
+    <div className={styles.operationsRow}>
+      <section className={styles.panel} aria-labelledby="workflow-heading">
+        <div className={styles.panelHeader}><div><h2 id="workflow-heading">Workflow snapshot</h2><p>Current queue · all dates</p></div></div>
+        <div className={styles.workflowList}>{STAGES.map(({ stage, key }) => <button type="button" className={styles.workflowButton} key={stage} disabled={!data} onClick={() => setQueueStage(stage)} aria-label={`View ${workflowLabels[stage]}: ${formatCount(data?.queue[key])}`}>
+          <span>{workflowLabels[stage]}</span><span className={styles.track} aria-hidden><span className={styles.bar} style={{ display: 'block', background: theme.palette.primary.main, width: `${(data?.queue[key] ?? 0) / queueMax * 100}%` }} /></span><strong>{formatCount(data?.queue[key])}</strong><ChevronRight size={16} />
+        </button>)}</div>
+        <div className={styles.readyRow}><button type="button" className={styles.workflowButton} disabled={!data} onClick={() => setQueueStage('ready')}><span>Ready today</span><strong>{formatCount(data?.queue.releasedToday)}</strong><ChevronRight size={16} /></button></div>
+        <Button component={Link} href="/stats" prefetch={false} className={styles.queueLink} sx={{ color: theme.palette.mode === 'dark' ? 'primary.light' : 'primary.main' }} endIcon={<ChevronRight size={15} />}>View full queue</Button>
+      </section>
+      <DashboardRecentReports reports={data?.recentReports} />
+    </div>
+    <DashboardCredits />
+    <DashboardQueueDrawer stage={queueStage} items={data?.queue.items ?? EMPTY_QUEUE} onClose={() => setQueueStage(null)} />
+    <Dialog open={dateDialogOpen} onClose={() => setDateDialogOpen(false)} fullWidth maxWidth="xs" aria-labelledby="dashboard-range-title" sx={theme => ({ '& .MuiInputLabel-root.Mui-focused:not(.Mui-error)': { color: theme.palette.mode === 'dark' ? 'primary.light' : 'primary.main' } })}>
+      <DialogTitle id="dashboard-range-title">Date range</DialogTitle>
+      <DialogContent><Typography sx={{ mb: 2, color: 'text.secondary', fontSize: 13 }}>Applies to reports, lots, activity and report types. Dates use UTC; queue and directory totals use all dates.</Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, pt: 1 }}><TextField autoFocus type="date" label="From" value={draftRange.from} onChange={event => setDraftRange(current => ({ ...current, from: event.target.value }))} slotProps={{ inputLabel: { shrink: true } }} /><TextField type="date" label="To" value={draftRange.to} onChange={event => setDraftRange(current => ({ ...current, to: event.target.value }))} slotProps={{ inputLabel: { shrink: true } }} /></Box>
+        {rangeError ? <Alert severity="warning" sx={{ mt: 1.5 }}>{rangeError}</Alert> : null}
+      </DialogContent>
+      <DialogActions><Button sx={{ color: theme.palette.mode === 'dark' ? 'primary.light' : 'primary.main' }} onClick={() => setDateDialogOpen(false)}>Cancel</Button><Button variant="contained" sx={{ '&:not(.Mui-disabled)': { bgcolor: theme.palette.mode === 'dark' ? 'primary.dark' : 'primary.main', color: '#fff', '&:hover': { bgcolor: 'primary.dark' } } }} disabled={!!rangeError} onClick={() => { setDateDialogOpen(false); if (draftRange.from !== range.from || draftRange.to !== range.to) setRange(draftRange); }}>Apply</Button></DialogActions>
+    </Dialog>
+    <DashboardSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+  </div>;
 }
