@@ -82,8 +82,10 @@ processing or pending report into a Released badge.
 
 Settings load on first open, handle independent failures, and cannot save unloaded
 defaults. Credit loading/retry is GET; only explicit Sync uses the existing POST.
-Low-balance warnings, source warnings and server balances are retained without
-multiplier formulas. No additional dependencies or API/schema changes are needed.
+Low-balance warnings, operational source warnings and server balances are retained
+without multiplier formulas. The two technical model/token-pricing notices are
+hidden in the credit UI only; backend accounting, warnings and multiplier remain
+unchanged. No additional dependencies or API/schema changes are needed.
 
 Verification: `npm run verify` and `node --test tests/*.test.mjs`. Dashboard-focused
 data/status/date/payload cases live in `tests/dashboard-data.test.mjs` and

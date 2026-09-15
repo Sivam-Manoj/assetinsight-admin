@@ -7,6 +7,7 @@ import Button from "@mui/material/Button";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { visibleCreditWarnings } from "@/lib/creditWarnings";
 
 type OpenAICredits = {
   remainingCredits?: number | null;
@@ -88,9 +89,7 @@ export default function DashboardCredits() {
   const balance = finiteNumber(credits?.remainingCredits);
   const lowThreshold = finiteNumber(credits?.lowBalanceThreshold) ?? 100;
   const isLow = balance !== null && balance < lowThreshold;
-  const warnings = Array.isArray(credits?.warnings)
-    ? credits.warnings.filter((warning): warning is string => typeof warning === "string" && Boolean(warning.trim()))
-    : [];
+  const warnings = visibleCreditWarnings(credits?.warnings);
   if (credits?.usageSourceAvailable === false && warnings.length === 0) {
     warnings.push("OpenAI usage is currently unavailable; this balance may not include the latest usage.");
   }
