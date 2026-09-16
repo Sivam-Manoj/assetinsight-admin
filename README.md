@@ -85,7 +85,12 @@ defaults. Credit loading/retry is GET; only explicit Sync uses the existing POST
 Low-balance warnings, operational source warnings and server balances are retained
 without multiplier formulas. The two technical model/token-pricing notices are
 hidden in the credit UI only; backend accounting, warnings and multiplier remain
-unchanged. No additional dependencies or API/schema changes are needed.
+unchanged. Suppression also handles both notices in one warning, repeated notices
+and wrapped whitespace, while preserving any operational warning in that same
+entry. This applies to the displayed alert and its tooltip after both loading and
+Sync. Rebuild/redeploy the admin application to update an existing production UI;
+restarting the backend alone cannot update the browser bundle. No additional
+dependencies or API/schema changes are needed.
 
 Verification: `npm run verify` and `node --test tests/*.test.mjs`. Dashboard-focused
 data/status/date/payload cases live in `tests/dashboard-data.test.mjs` and

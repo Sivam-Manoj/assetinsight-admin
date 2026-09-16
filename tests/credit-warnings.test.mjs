@@ -10,6 +10,24 @@ test("hides the two model-pricing notices from the credit UI", () => {
   assert.deepEqual(visibleCreditWarnings([` ${tokenNotice} `, `\n${modelNotice}\n`]), []);
 });
 
+test("hides the reported label when notices arrive bundled together", () => {
+  assert.deepEqual(visibleCreditWarnings([`${tokenNotice} ${modelNotice}`]), []);
+  assert.deepEqual(visibleCreditWarnings([`${modelNotice}\n${tokenNotice}`]), []);
+  assert.deepEqual(visibleCreditWarnings([`${tokenNotice} ${modelNotice} ${tokenNotice}`]), []);
+});
+
+test("hides notices with line wrapping and non-breaking spaces", () => {
+  const wrapped = `${tokenNotice} ${modelNotice}`.replaceAll(" ", "\n\u00a0");
+  assert.deepEqual(visibleCreditWarnings([wrapped]), []);
+});
+
+test("removes only pricing notices from a combined operational warning", () => {
+  const operational = "OpenAI organization cost sync failed (403).";
+  assert.deepEqual(visibleCreditWarnings([`${tokenNotice} ${operational} ${modelNotice}`]), [operational]);
+  assert.deepEqual(visibleCreditWarnings([`${operational} ${modelNotice}`]), [operational]);
+  assert.deepEqual(visibleCreditWarnings([`${tokenNotice}\n${operational}`]), [operational]);
+});
+
 test("retains genuine sync, configuration and missing-usage warnings", () => {
   const operational = [
     "OpenAI organization cost sync failed (403).",
