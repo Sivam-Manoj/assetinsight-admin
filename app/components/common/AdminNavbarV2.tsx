@@ -2,6 +2,7 @@
 
 import {
   CheckCircle2,
+  Camera,
   ClipboardCheck,
   FileCheck2,
   FileClock,
@@ -172,6 +173,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         : []),
       { href: "/reports", label: "Approved Reports", icon: FileCheck2 },
       { href: "/pending-approvals", label: "Pending Approvals", icon: ClipboardCheck },
+      { href: "/offline-captures", label: "Offline Captures", icon: Camera },
       { href: "/users", label: "Users", icon: Users },
       {
         href: "/devices",

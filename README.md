@@ -181,6 +181,59 @@ delivery and accepted processing refresh the list with accurate status feedback.
 The existing superadmin boundary is unchanged; deploy backend support first.
 Policy checks: `node --test tests/preview-reminder-request.test.mjs`.
 
+## Offline capture inventory
+
+`/offline-captures` is available to **admin and superadmin**. It displays only
+the device metadata last synchronized to the backend: creator, contract, report
+type, device status, lot/photo counts and device-clock capture/save times.
+Filters are applied explicitly; user lookup, list rows and per-lot details are
+bounded and paginated. **Last synchronized** date filters use inclusive UTC days
+against the server receipt time, not the untrusted device clock.
+
+Device counts are not proof of an uploaded photo or a cloud backup. Offline
+devices may have newer changes; captures never synchronized cannot appear here.
+The detail dialog separates device-reported inventory from server-confirmed
+upload counts, acceptance, preview submission, processing and file generation.
+Unknown uploaded counts remain **Not confirmed**, distinct from zero. **Files
+generated** does not grant approval, release or download access. Existing Preview
+Reports permissions remain unchanged; a linked report ID is informational only.
+There are no photo URLs, device paths, private form notes or media previews.
+
+Browser requests stay on the HttpOnly BFF:
+
+- `GET /api/admin/capture-inventory/users?search=&limit=`
+- `GET /api/admin/capture-inventory?userId=&search=&reportType=&localStatus=&receivedFrom=&receivedTo=&page=&limit=`
+- `GET /api/admin/capture-inventory/:id?lotsPage=&lotsLimit=`
+- `DELETE /api/admin/capture-inventory/:id` with the exact loaded `{revision}`.
+
+Capture ledger `:id` is the backend's 64-character SHA-256 identity. It is distinct
+from the device capture UUID and the 24-character Mongo user/report IDs; user
+filters keep their existing Mongo ID validation.
+
+The final action is offered **only for discarded device history**, after explicit
+confirmation. It tombstones metadata; it never deletes device photos, uploaded
+objects, drafts or reports. The proxy enforces same-origin JSON, a streamed 1 KiB
+body bound and revision-only input; the backend freshly verifies role, state and
+revision. A conflict or uncertain response requires reload and review, never an
+automatic replay. Reads are no-store and abort-fenced. A failed refresh retains
+the last valid snapshot with a warning, rather than turning invalid data into
+zero counts. Deploy backend inventory support before enabling this admin build.
+
+Focused policies: `node --test tests/capture-inventory.test.mjs`.
+
+Verification (2026-09-17): admin verification/build and 70 policy tests passed.
+An isolated mock backend and the production Next build passed Chromium checks
+with actual backend-style owner/UUID SHA-256 capture identities
+at 1440px in light/dark, 768px, 390px and 320px, including list/lot pagination,
+staged filters, failed/malformed refreshes, roles, BFF origin/size/allowlist gates,
+out-of-order reads, revision conflicts and uncertain removal. Page/detail axe
+checks found no remaining violations, and no browser bearer headers, external
+requests or production runtime console errors were observed. Browser plugin was
+unavailable, so the existing sibling Playwright installation was used. Safari,
+Firefox, real-device interaction and production latency remain unverified. MUI
+7.3.11 emits an internal Autocomplete key warning only in development; no package
+changes were introduced. No production data, files or deployments were touched.
+
 ## Production deployment
 
 Production runs as the `assetinsight-admin` PM2 application from `ecosystem.config.cjs`, normally as two cluster workers on port `3001` behind Nginx.
