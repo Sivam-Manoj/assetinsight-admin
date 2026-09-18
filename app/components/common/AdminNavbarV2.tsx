@@ -173,7 +173,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
         : []),
       { href: "/reports", label: "Approved Reports", icon: FileCheck2 },
       { href: "/pending-approvals", label: "Pending Approvals", icon: ClipboardCheck },
-      { href: "/offline-captures", label: "Offline Captures", icon: Camera },
+      { href: "/report-activity", label: "Report Activity", icon: Camera },
       { href: "/users", label: "Users", icon: Users },
       {
         href: "/devices",
@@ -356,7 +356,7 @@ export default function AdminNavbarV2({ children }: { children?: ReactNode }) {
           </Box>
           <Box sx={{ minWidth: 0, maxWidth: expanded ? 150 : 0, flex: expanded ? 1 : 0, overflow: "hidden", opacity: expanded ? 1 : 0, transition: "opacity 120ms ease, max-width 180ms ease" }}>
             <Typography noWrap sx={{ fontSize: 13, fontWeight: 600, color: "#f3f3f3" }}>{displayName}</Typography>
-            <Typography noWrap sx={{ fontSize: 11, color: "#777b77", textTransform: "lowercase" }}>{roleLabel}</Typography>
+            <Typography noWrap sx={{ fontSize: 11, color: "#969c96", textTransform: "lowercase" }}>{roleLabel}</Typography>
           </Box>
         </Box>
         <Stack direction={expanded ? "row" : "column"} alignItems="center" spacing={0.25} sx={{ mt: 0.25 }}>

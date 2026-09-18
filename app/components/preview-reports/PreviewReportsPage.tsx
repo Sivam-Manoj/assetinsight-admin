@@ -203,7 +203,7 @@ function ReportCard({
   );
 }
 
-export default function PreviewReportsPage() {
+export default function PreviewReportsPage({ initialReportId = null }: { initialReportId?: string | null }) {
   const [viewMode, setViewMode] = useState<"reports" | "drafts">("reports");
   const [data, setData] = useState<PreviewReportsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -220,7 +220,7 @@ export default function PreviewReportsPage() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [reloadToken, setReloadToken] = useState(0);
-  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(initialReportId);
   const [selectedReportReadOnly, setSelectedReportReadOnly] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PreviewReportSummary | null>(null);
   const [deleting, setDeleting] = useState(false);

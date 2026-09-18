@@ -4,6 +4,32 @@ The production administration console for Asset Insight. It is a Next.js App Rou
 
 ## Runtime architecture
 
+### Report Activity
+
+`/report-activity` provides a searchable Asset/Lot Listing activity table and a
+paginated timeline for admin and superadmin. Search by user name/email and
+contract, then apply source/type/action/outcome/UTC-date filters. Counts, camera
+stamping, upload-logo selections, receipt verification, source/destination,
+errors and permitted field comparisons remain separate facts. Missing historical
+evidence is labelled Not recorded; older records show a current-state baseline.
+
+The Captures tab reuses Offline Captures; `/offline-captures` redirects to
+`/report-activity?tab=captures`. All reads and removal go through the same-origin
+HttpOnly BFF. Operational visibility does not grant preview/field-value access.
+Deleted-report values are superadmin-only, and deleted preview links are disabled.
+Superadmin removal requires confirmation plus the reviewed revision and removes
+only history, not reports/photos. A server tombstone rejects delayed restoration.
+
+Filters are explicitly applied, requests are abort-fenced, previous results are
+labelled when a refresh fails, and last-refresh/receipt/device times are distinct.
+Deploy the backend ledger before this admin build. See the backend
+`docs/report-activity.md` for audit/privacy boundaries and release gates.
+
+Verification: `npm run verify`, `node --test tests/*.test.mjs`; isolated local
+Chromium checks cover 320/390/768/1440px, light/dark, timeline expansion, filters,
+deleted/baseline/error states, keyboard controls and axe accessibility. No live
+reports or production endpoints are needed for these fixtures.
+
 ```mermaid
 flowchart LR
   Browser["Admin browser"] -->|"HTTPS + HttpOnly session cookies"| Next["Next.js admin app"]

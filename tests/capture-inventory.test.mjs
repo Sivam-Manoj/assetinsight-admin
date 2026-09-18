@@ -111,8 +111,8 @@ test("removal reader enforces origin, content type and one-KiB request limit", a
   await assert.rejects(readPreviewMutationJson(request({ revision: 4, text: "x".repeat(1024) }), 1024), error => error.status === 413);
 });
 test("page and BFF maintain role and server-only credential boundaries", () => {
-  const page = readFileSync(new URL("../app/offline-captures/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /payload.user\?\.role !== "admin" && payload.user\?\.role !== "superadmin"/);
+  const page = readFileSync(new URL("../app/report-activity/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /\["admin", "superadmin"\]\.includes\(payload.user\?\.role\)/);
   for (const path of ["route.ts", "users/route.ts", "[id]/route.ts"]) {
     const source = readFileSync(new URL("../app/api/admin/capture-inventory/" + path, import.meta.url), "utf8");
     assert.match(source, /proxyJsonWithAdminAuth/); assert.match(source, /no-store/);
