@@ -13,6 +13,19 @@ stamping, upload-logo selections, receipt verification, source/destination,
 errors and permitted field comparisons remain separate facts. Missing historical
 evidence is labelled Not recorded; older records show a current-state baseline.
 
+The detail drawer also shows **Photos by lot** (10 rows per page), for example
+`Lot 5 · 8 images`. Saved lot numbers and order are preserved. Report-only and
+known missing counts are separate, and cover/thumbnail images are not counted
+again. The BFF `/api/admin/report-activity/:id/lots` uses the new matching backend
+endpoint; publish backend support first. Current saved report/draft counts and
+last-synchronized device counts are labelled, not presented as historical events.
+A deleted report without a complete current breakdown shows unavailable, not zero.
+
+Per-lot UI verification: admin lint/typecheck/build and 77 policy tests pass.
+Isolated Chromium checks exercise legacy/current records, 43-lot pagination,
+keyboard navigation, retry and unavailable states, and 320/390/1440px light/dark
+layouts with axe checks. Screenshot fixtures are local, not production records.
+
 The Captures tab reuses Offline Captures; `/offline-captures` redirects to
 `/report-activity?tab=captures`. All reads and removal go through the same-origin
 HttpOnly BFF. Operational visibility does not grant preview/field-value access.

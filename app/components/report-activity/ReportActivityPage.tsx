@@ -6,6 +6,7 @@ import { Alert, Autocomplete, Box, Button, Chip, Dialog, DialogActions, DialogCo
 import { ArrowRight, Camera, ChevronRight, Clock3, History, RefreshCw, Trash2, X } from "lucide-react";
 import { ACTIVITY_LABELS, activityQuery, activityTime, logoLabel, parseActivityDetail, parseActivityPage, type ActivityCounts, type ActivityDetail, type ActivityEvent, type ActivityField, type ActivityPage, type ActivityRow } from "@/lib/reportActivity";
 import { parseCaptureUsers, type CaptureUser } from "@/lib/captureInventory";
+import ActivityLotCounts from "./ActivityLotCounts";
 
 const Captures = dynamic(() => import("@/app/components/offline-captures/OfflineCapturesPage"), { loading: () => <LinearProgress aria-label="Loading captures" /> });
 const emptyFilters = { userId: "", search: "", reportType: "", source: "", action: "", outcome: "", from: "", to: "" };
@@ -80,7 +81,7 @@ function ActivityDrawer({ id, close, removed }: { id: string; close: () => void;
     } catch (error) { setRemovalIssue(error instanceof Error ? error.message : "Removal could not be confirmed."); }
     finally { clearTimeout(timeout); removalLock.current = false; setRemoving(false); }
   }
-  return <><Drawer open sx={{ zIndex: theme => theme.zIndex.modal }} anchor="right" onClose={removing ? undefined : close} slotProps={{ paper: { sx: { width: { xs: "100%", md: 760 }, maxWidth: "100vw" }, role: "dialog", "aria-label": "Report activity details" } }}>
+  return <><Drawer open sx={{ zIndex: theme => theme.zIndex.modal }} anchor="right" onClose={removing ? undefined : close} slotProps={{ paper: { sx: { width: { xs: "100%", md: 760 }, maxWidth: "100vw", "& .MuiButton-outlinedPrimary:not(.Mui-disabled), & .MuiButton-textPrimary:not(.Mui-disabled)": { color: theme => theme.palette.mode === "dark" ? theme.palette.primary.light : undefined } }, role: "dialog", "aria-label": "Report activity details" } }}>
     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: "divider" }}><Box><Typography sx={{ fontWeight: 700, fontSize: 19 }}>Contract {detail?.contract || "Not assigned"}</Typography><Typography sx={{ fontSize: 12, color: "text.secondary" }}>{detail ? person(detail.owner) : "Loading history…"}</Typography></Box><IconButton onClick={close} disabled={removing} aria-label="Close activity details" sx={touch}><X /></IconButton></Stack>
     {busy ? <LinearProgress aria-label="Loading activity details" /> : null}
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, overflowY: "auto" }}>
@@ -89,6 +90,7 @@ function ActivityDrawer({ id, close, removed }: { id: string; close: () => void;
         <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 2 }}><Button variant="outlined" startIcon={<RefreshCw size={15} />} onClick={() => setRefresh(value => value + 1)} disabled={busy} sx={touch}>Refresh history</Button><Button variant="outlined" disabled={!detail.canOpenPreview || detail.deleted} href={detail.canOpenPreview ? `${detail.previewPath || "/preview-reports"}?reportId=${detail.reportId}` : undefined} sx={touch}>Open preview</Button>{detail.canRemove ? <Button color="error" startIcon={<Trash2 size={15} />} onClick={() => { setRemovalIssue(""); setConfirm(true); }} disabled={busy || !!issue} sx={touch}>Remove history</Button> : null}</Stack>
         {!detail.canViewValues ? <Alert severity="info" sx={{ mb: 2 }}>Operational history is available. Saved field values require access to this report.</Alert> : null}
       </> : null}
+      {detail ? <ActivityLotCounts key={id} id={id} refresh={refresh} /> : null}
       {events?.items.map(event => <EventItem key={event.id} event={event} />)}
       {events && events.items.length === 0 ? <Typography sx={{ py: 3 }}>No activity events have been received.</Typography> : null}
       {events && events.total > 25 ? <Pagination size="small" count={Math.ceil(events.total / 25)} page={page} disabled={busy} onChange={(_, value) => setPage(value)} /> : null}

@@ -1,9 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { activityQuery, activityRemoval, activityIdValid, logoLabel, parseActivityPage, parseActivityDetail } from '../lib/reportActivity.ts';
+import { activityQuery, activityRemoval, activityIdValid, logoLabel, parseActivityPage, parseActivityDetail, parseActivityLotPage } from '../lib/reportActivity.ts';
 const id='a'.repeat(64);
 const row={id,owner:{id:'a'.repeat(24),name:'Example',email:'test@example.test'},source:'web',reportType:'asset',contract:'93530',latestCounts:{lots:1,photos:2,mainPhotos:1,extraPhotos:1},revision:2};
+test('per-lot pages preserve numbers and unknown availability without inventing zeros', () => {
+ const item={id,lotNumber:'X',position:4,photos:13,mainPhotos:10,extraPhotos:3,missingPhotos:null};
+ const data={items:[item],total:43,page:1,limit:10,source:'report',asOf:null};
+ assert.equal(parseActivityLotPage({data}).items[0].lotNumber,'X');
+ assert.equal(parseActivityLotPage({data}).items[0].missingPhotos,null);
+ for(const changes of [{photos:14},{extraPhotos:undefined},{mainPhotos:-1},{missingPhotos:14},{lotNumber:5}]) assert.throws(()=>parseActivityLotPage({data:{...data,items:[{...item,...changes}]}}));
+ for(const changes of [{source:'unavailable'},{source:'guessed'},{asOf:'not-date'},{limit:101},{page:0}]) assert.throws(()=>parseActivityLotPage({data:{...data,...changes}}));
+ assert.equal(parseActivityLotPage({data:{...data,source:'unavailable',total:0,items:[]}}).source,'unavailable');
+ const route=readFileSync(new URL('../app/api/admin/report-activity/[id]/lots/route.ts',import.meta.url),'utf8');
+ assert.match(route,/proxyJsonWithAdminAuth/); assert.match(route,/activityQuery/); assert.match(route,/no-store/);
+});
 test('unknown logo evidence is never shown as Off',()=>{assert.equal(logoLabel(null),'Not recorded');assert.equal(logoLabel(),'Not recorded');assert.equal(logoLabel(false),'Off');assert.equal(logoLabel(true),'On');});
 test('bounded search, filters and identities',()=>{
  assert.equal(activityIdValid(id),true);assert.equal(activityIdValid('a'.repeat(24)),false);

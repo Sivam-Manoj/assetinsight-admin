@@ -9,6 +9,23 @@ export type ActivityField = string | { field: string; before?: unknown; after?: 
 export type ActivityLot = { id: string; lotNumber?: string; beforePosition?: number | null; afterPosition?: number | null; beforeCover?: number | null; afterCover?: number | null; before: { mainPhotos: number; extraPhotos: number; cover?: number | null } | null; after: { mainPhotos: number; extraPhotos: number; cover?: number | null } | null; photos?: { id: string; before: number | null; after: number | null; slot?: string }[] };
 export type ActivityEvent = { id: string; action: string; outcome: string; source: string; authority: "device" | "server"; actor: ActivityPerson | null; actorRole: string; observedAt: string | null; receivedAt: string; sequence: number | null; appVersion: string | null; data: { baseline?: boolean; error?: string | null; verifiedLogoReceipts?: number | null; deliveryStatus?: string | null; beforeCounts: ActivityCounts | null; afterCounts: ActivityCounts | null; fields?: ActivityField[]; lots?: ActivityLot[]; uploadLogo?: boolean | null; previousUploadLogo?: boolean | null; cameraStamp?: string; captureMode?: string; destination?: string | null; status?: string; part?: number; parts?: number } };
 export type ActivityPage<T> = { items: T[]; total: number; page: number; limit: number };
+export type ActivityLotCount = { id: string; lotNumber: string; position: number; mainPhotos: number; extraPhotos: number; photos: number; missingPhotos: number | null };
+export type ActivityLotPage = ActivityPage<ActivityLotCount> & { source: "report" | "draft" | "capture" | "unavailable"; asOf: string | null };
+export function parseActivityLotPage(value: unknown): ActivityLotPage {
+  const data = (value as { data?: ActivityLotPage })?.data;
+  const count = (n: unknown) => Number.isSafeInteger(n) && Number(n) >= 0;
+  if (!data || !Array.isArray(data.items) || !count(data.total) || !count(data.page) || data.page < 1 ||
+      !count(data.limit) || data.limit < 1 || data.limit > 100 || data.items.length > data.limit || data.items.length > data.total ||
+      !["report", "draft", "capture", "unavailable"].includes(data.source) ||
+      (data.asOf !== null && (typeof data.asOf !== "string" || !Number.isFinite(Date.parse(data.asOf)))) ||
+      (data.source === "unavailable" && (data.total !== 0 || data.items.length !== 0)) ||
+      data.items.some(lot => !lot || !activityIdValid(lot.id) || typeof lot.lotNumber !== "string" ||
+        ![lot.position, lot.mainPhotos, lot.extraPhotos, lot.photos].every(count) || lot.photos !== lot.mainPhotos + lot.extraPhotos ||
+        (lot.missingPhotos !== null && (!count(lot.missingPhotos) || lot.missingPhotos > lot.photos)))) {
+    throw new Error("Per-lot counts could not be verified. Refresh to try again.");
+  }
+  return data;
+}
 export const activityIdValid = (id: string) => /^[a-f\d]{64}$/.test(id);
 export function activityQuery(params: URLSearchParams, mode: "list" | "events" | "users" = "list") {
   const result = new URLSearchParams();
