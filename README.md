@@ -1,5 +1,11 @@
 # Asset Insight Admin
 
+Offline review activity (2026-09-18): Report Activity displays and filters
+`draft_opened` as **Draft opened for review**. It is a device observation of
+opening saved local work, not evidence of upload/submission. Counts, receipt
+times and server-confirmed submission events retain their existing meanings.
+Backend allowlist support must ship before the updated mobile client.
+
 The production administration console for Asset Insight. It is a Next.js App Router application used by verified `admin` and `superadmin` accounts to manage reports, users, devices, CRM workflows, and approvals. Its Support page is a private requester experience: an administrator can contact the Asset Insight Developer team and can read only requests owned by the same account.
 
 ## Runtime architecture

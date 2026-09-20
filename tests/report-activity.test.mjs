@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { activityQuery, activityRemoval, activityIdValid, logoLabel, parseActivityPage, parseActivityDetail, parseActivityLotPage } from '../lib/reportActivity.ts';
+import { ACTIVITY_LABELS, activityQuery, activityRemoval, activityIdValid, logoLabel, parseActivityPage, parseActivityDetail, parseActivityLotPage } from '../lib/reportActivity.ts';
+test('offline review opens have a distinct searchable label, never a submission label', () => {
+ assert.equal(ACTIVITY_LABELS.draft_opened, 'Draft opened for review');
+ assert.equal(new URLSearchParams(activityQuery(new URLSearchParams('action=draft_opened'))).get('action'), 'draft_opened');
+});
 const id='a'.repeat(64);
 const row={id,owner:{id:'a'.repeat(24),name:'Example',email:'test@example.test'},source:'web',reportType:'asset',contract:'93530',latestCounts:{lots:1,photos:2,mainPhotos:1,extraPhotos:1},revision:2};
 test('per-lot pages preserve numbers and unknown availability without inventing zeros', () => {
