@@ -10,6 +10,47 @@ The production administration console for Asset Insight. It is a Next.js App Rou
 
 ## Runtime architecture
 
+### YouTube videos
+
+`/youtube` lets admin and superadmin connect one YouTube channel through Google.
+The channel owner reviews a public-publication consent before connecting. The
+OAuth redirect is the exact admin origin plus `/youtube/callback`; this page
+removes the authorization query immediately and requires **Finish connecting**.
+The one-time code is sent only to the same-origin HttpOnly BFF; Google credentials
+and encrypted refresh tokens belong to the backend, never this application.
+
+The bounded BFF exposes only `status` (GET), `connect`, `complete` and `disconnect`
+(POST) under `/api/admin/youtube`. Mutations enforce same-origin JSON, exact fields
+and body limits. They are not automatically replayed after authentication failure
+or ambiguous responses. Disconnect requires the current connection revision and
+confirmation; it does not delete YouTube videos, R2 originals or ZIP media.
+
+Future explicitly reviewed Asset/Lot submissions prepare videos privately and
+publish after the existing release gate. Excel includes the saved video links.
+Connecting does not backfill historical reports. Google may restrict an unaudited
+API project's uploads to private status; the UI explains this rather than claiming
+that a requested public setting proves publication. Backend setup/support must
+ship before this page. No additional admin environment secrets are required.
+
+The video status list requests 20 rows per page, without polling. Private,
+uploading, needs-attention and confirmed public outcomes remain separate; only
+confirmed public rows expose the YouTube link. An eligible **Retry publication**
+posts the exact saved `updatedAt` revision to `/videos/:id/retry-publication`.
+It requests metadata publication of an existing released video, never a second
+upload. Conflicts and uncertain responses require manual refresh; provider/error
+rows remain visible. Ordinary report submission/release remains authoritative.
+
+Focused policy checks: `node --test tests/youtube.test.mjs`. Rendered QA must use
+an isolated backend fixture; do not connect or publish to a real channel as a test.
+
+Verification (2026-09-28): admin verify and 85 policy tests pass. Isolated
+production-build Chromium checks cover 25 flows at 320/390/768/1366px, light/dark,
+keyboard consent, role denial, callback query/Flight stripping, one-time completion,
+token redaction, disconnect cancellation/conflicts, missing configuration, paginated
+videos and publication retry. Axe checks have no WCAG A/AA violations in the tested
+states. Browser plugin was unavailable; existing Playwright dependencies were reused.
+Real Google consent, YouTube uploads/publication, Safari and Firefox were not tested.
+
 ### Report Activity
 
 `/report-activity` provides a searchable Asset/Lot Listing activity table and a
