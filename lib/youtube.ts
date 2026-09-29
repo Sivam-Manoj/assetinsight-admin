@@ -6,7 +6,11 @@ export type YouTubeStatus = {
   revision: number;
   channel: { id: string; title: string; url: string } | null;
   connectedAt: string | null;
-  privacyStatus: "public";
+  privacyStatus: "public" | "private";
+  canConnect: boolean;
+  canAcknowledgeRevocation: boolean;
+  dataCleanup: { status: "not_requested" | "pending" | "completed"; requestedAt: string | null; completedAt: string | null; reason: string | null };
+  revocation: { status: "not_requested" | "pending" | "completed" | "unavailable" | "needs_attention" | "manually_confirmed"; requestedAt: string | null; completedAt: string | null; manuallyConfirmedAt: string | null };
 };
 export type YouTubeCallback = { code: string; state: string };
 const invalid = () => new Error("YouTube connection details could not be verified. Refresh and try again.");
@@ -20,7 +24,7 @@ function text(value: unknown, limit: number): string {
 }
 export function parseYouTubeStatus(value: unknown): YouTubeStatus {
   const data = object(value);
-  if (typeof data.configured !== "boolean" || typeof data.connected !== "boolean" || typeof data.needsReconnect !== "boolean" || data.privacyStatus !== "public" || !Number.isSafeInteger(data.revision) || (data.revision as number) < 0) throw invalid();
+  if (typeof data.configured !== "boolean" || typeof data.connected !== "boolean" || typeof data.needsReconnect !== "boolean" || !["public", "private"].includes(String(data.privacyStatus)) || !Number.isSafeInteger(data.revision) || (data.revision as number) < 0) throw invalid();
   let channel: YouTubeStatus["channel"] = null;
   if (data.channel !== null) {
     const item = object(data.channel);
@@ -31,6 +35,15 @@ export function parseYouTubeStatus(value: unknown): YouTubeStatus {
   if (data.connected !== Boolean(channel)) throw invalid();
   const connectedAt = data.connectedAt == null ? null : text(data.connectedAt, 50);
   if (connectedAt && !Number.isFinite(Date.parse(connectedAt))) throw invalid();
+  function lifecycleDate(value: unknown): string | null {
+    if (value == null) return null;
+    const result = text(value, 50);
+    if (!Number.isFinite(Date.parse(result))) throw invalid();
+    return result;
+  }
+  const cleanup = data.dataCleanup === undefined ? { status: "not_requested" } : object(data.dataCleanup);
+  const revocation = data.revocation === undefined ? { status: "not_requested" } : object(data.revocation);
+  if (!["not_requested", "pending", "completed"].includes(String(cleanup.status)) || !["not_requested", "pending", "completed", "unavailable", "needs_attention", "manually_confirmed"].includes(String(revocation.status)) || (data.canConnect !== undefined && typeof data.canConnect !== "boolean") || (data.canAcknowledgeRevocation !== undefined && typeof data.canAcknowledgeRevocation !== "boolean")) throw invalid();
   return {
     configured: data.configured,
     configurationIssue: data.configurationIssue == null ? null : text(data.configurationIssue, 1000),
@@ -39,12 +52,16 @@ export function parseYouTubeStatus(value: unknown): YouTubeStatus {
     revision: data.revision as number,
     channel,
     connectedAt,
-    privacyStatus: "public",
+    privacyStatus: data.privacyStatus as YouTubeStatus["privacyStatus"],
+    canConnect: data.canConnect === true,
+    canAcknowledgeRevocation: data.canAcknowledgeRevocation === true,
+    dataCleanup: { status: cleanup.status as YouTubeStatus["dataCleanup"]["status"], requestedAt: lifecycleDate(cleanup.requestedAt), completedAt: lifecycleDate(cleanup.completedAt), reason: cleanup.reason == null ? null : text(cleanup.reason, 500) },
+    revocation: { status: revocation.status as YouTubeStatus["revocation"]["status"], requestedAt: lifecycleDate(revocation.requestedAt), completedAt: lifecycleDate(revocation.completedAt), manuallyConfirmedAt: lifecycleDate(revocation.manuallyConfirmedAt) },
   };
 }
-export function youtubeConnectBody(value: Record<string, unknown>): { publicationConsent: true } {
-  if (Object.keys(value).length !== 1 || value.publicationConsent !== true) throw new Error("Confirm public publication before connecting the channel.");
-  return { publicationConsent: true };
+export function youtubeConnectBody(value: Record<string, unknown>): { policyConsent: true } {
+  if (Object.keys(value).length !== 1 || value.policyConsent !== true) throw new Error("Review and accept the YouTube terms and privacy policy before connecting.");
+  return { policyConsent: true };
 }
 export function youtubeCompleteBody(value: Record<string, unknown>): YouTubeCallback {
   if (Object.keys(value).length !== 2 || !Object.hasOwn(value, "code") || !Object.hasOwn(value, "state")) throw invalid();
@@ -56,6 +73,10 @@ export function youtubeCompleteBody(value: Record<string, unknown>): YouTubeCall
 export function youtubeDisconnectBody(value: Record<string, unknown>): { revision: number } {
   if (Object.keys(value).length !== 1 || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1) throw new Error("Refresh the channel connection before disconnecting.");
   return { revision: value.revision as number };
+}
+export function youtubeEraseBody(value: Record<string, unknown>): { revision: number; confirm: true } {
+  if (Object.keys(value).length !== 2 || value.confirm !== true || !Number.isSafeInteger(value.revision) || (value.revision as number) < 0) throw new Error("Refresh the connection and confirm removal before continuing.");
+  return { revision: value.revision as number, confirm: true };
 }
 export function parseYouTubeCallback(search: string): YouTubeCallback {
   const params = new URLSearchParams(search);

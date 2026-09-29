@@ -1,14 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { proxyJsonWithAdminAuth } from "@/lib/adminProxy";
 import { PreviewResubmitRequestError, readPreviewMutationJson } from "@/lib/previewResubmitRequest";
-import { parseYouTubeAuthorization, parseYouTubeStatus, youtubeCompleteBody, youtubeConnectBody, youtubeDisconnectBody } from "@/lib/youtube";
+import { parseYouTubeAuthorization, parseYouTubeStatus, youtubeCompleteBody, youtubeConnectBody, youtubeDisconnectBody, youtubeEraseBody } from "@/lib/youtube";
 
-export async function youtubeProxy(request: NextRequest, action: "status" | "connect" | "complete" | "disconnect") {
+export async function youtubeProxy(request: NextRequest, action: "status" | "connect" | "complete" | "disconnect" | "revoke" | "erase-data" | "acknowledge-revocation") {
   let body: string | undefined;
   if (action !== "status") {
     try {
       const input = await readPreviewMutationJson(request, action === "complete" ? 8192 : 1024);
-      const parsed = action === "connect" ? youtubeConnectBody(input) : action === "complete" ? youtubeCompleteBody(input) : youtubeDisconnectBody(input);
+      const parsed = action === "connect" ? youtubeConnectBody(input) : action === "complete" ? youtubeCompleteBody(input) : action === "revoke" || action === "erase-data" || action === "acknowledge-revocation" ? youtubeEraseBody(input) : youtubeDisconnectBody(input);
       body = JSON.stringify(parsed);
     } catch (error) {
       return NextResponse.json({ message: error instanceof Error ? error.message : "Invalid connection request." }, { status: error instanceof PreviewResubmitRequestError ? error.status : 400, headers: { "Cache-Control": "no-store" } });
