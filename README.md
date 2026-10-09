@@ -10,6 +10,18 @@ The production administration console for Asset Insight. It is a Next.js App Rou
 
 ## Runtime architecture
 
+### Proposal Valuation monetary column totals (2026-10-09, local)
+
+The desktop footer and mobile all-lot card now include Total Expected Gross,
+Allocated Value, Cleaning, Lien Search, Video Cost, Lotting Fee and Advertising.
+They sum the same recalculated row amounts across the entire sheet, not only
+the current page or selected lot. Buyer-premium percentages remain nonsummed;
+the formatted Asset Insight reference column is not parsed as a valuation.
+Row formulas, saved inputs, permissions and export layouts are unchanged. Cents
+are retained until display, and blank row values remain blank.
+
+Focused regressions: `node --test tests/asset-schedule-totals.test.mjs`.
+
 ### Proposal Valuation report owner (2026-10-09, local)
 
 The backend supplies an intrinsic owner evaluator column and its read-only
