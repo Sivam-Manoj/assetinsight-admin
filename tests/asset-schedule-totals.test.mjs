@@ -30,8 +30,8 @@ test("all-lot totals sum each evaluator and existing per-row average, high, low 
   assert.equal(totals.total_low_est_value, 50000);
   assert.equal(totals.total_high_est_value, 70000);
   assert.equal(totals.total_capped_bp, 4000); // Sum of each capped amount, not cap of aggregate or sum of rates
-  assert.equal(totals.total_expected_gross, 74000);
-  assert.equal(totals.total_allocated_value, 74000);
+  assert.equal(totals.total_expected_gross, 64000);
+  assert.equal(totals.total_allocated_value, 64000);
   assert.equal(totals.total_cleaning, 700);
   assert.equal(totals.total_lotting_fee, 700);
   assert.equal(totals.total_advertising, 700);
@@ -98,9 +98,9 @@ test("precision is preserved until display, including explicit zero and existing
   assert.equal(totals.total_asset_value, 0.003);
   assert.equal(totals.total_low_est_value, -0.002);
   assert.equal(totals.total_high_est_value, 0.008);
-  assert.equal(totals.total_expected_gross, 0.0092);
-  assert.equal(totals.total_allocated_value, 0.0092);
-  assert.equal(formatCurrencyCell(totals.total_expected_gross), "0.01");
+  assert.equal(totals.total_expected_gross, 0.00345);
+  assert.equal(totals.total_allocated_value, 0.00345);
+  assert.equal(formatCurrencyCell(totals.total_expected_gross), "0.00");
 });
 
 test("canonical parsing ignores unavailable/nonfinite values and honours entered zero", () => {
@@ -122,9 +122,9 @@ test("editing an evaluator value recalculates totals from the same updated row f
   assert.deepEqual(totals.evaluator_totals, { riley: 100, femi: 300, jay: 0 });
   assert.equal(totals.total_asset_value, 200);
   assert.equal(totals.total_high_est_value, 300);
-  assert.equal(totals.total_capped_bp, 45);
-  assert.equal(totals.total_expected_gross, 345);
-  assert.equal(totals.total_allocated_value, 345);
+  assert.equal(totals.total_capped_bp, 30);
+  assert.equal(totals.total_expected_gross, 230);
+  assert.equal(totals.total_allocated_value, 230);
 });
 
 test("gross and allocated totals sum the displayed finite row amounts independently", () => {
@@ -166,11 +166,69 @@ test("loaded and edited sheets use recomputed row amounts rather than stale deri
     cleaning: 99999, lotting_fee: 99999, advertising: 99999,
   });
   const totals = deriveAssetScheduleSummary(recalculateAssetScheduleSheet(data));
-  assert.equal(totals.total_expected_gross, 230);
-  assert.equal(totals.total_allocated_value, 230);
+  assert.equal(totals.total_expected_gross, 172.5);
+  assert.equal(totals.total_allocated_value, 172.5);
   assert.equal(totals.total_cleaning, 2);
   assert.equal(totals.total_lotting_fee, 2);
   assert.equal(totals.total_advertising, 2);
+});
+
+test("buyer premium and gross use the entered evaluator average while high-based costs stay unchanged", () => {
+  const data = sheet([{ riley: 100, femi: 300, jay: null }]);
+  const row = data.rows[0];
+  assert.equal(row.low_est_sale_value, 100);
+  assert.equal(row.high_est_sale_value, 300);
+  assert.equal(row.buyer_premium_percent, 15);
+  assert.equal(row.buyer_premium_amount, 30);
+  assert.equal(row.total_expected_gross, 230);
+  assert.equal(row.allocated_value, 230);
+  assert.equal(row.cleaning, 3);
+  assert.equal(row.lotting_fee, 3);
+  assert.equal(row.advertising, 3);
+  const totals = deriveAssetScheduleSummary(data);
+  assert.equal(totals.total_capped_bp, 30);
+  assert.equal(totals.total_expected_gross, 230);
+  assert.equal(totals.capped.sale_total_inc_bp, 230);
+});
+
+test("the per-lot premium cap applies after averaging and totals sum those capped premiums", () => {
+  const data = sheet([{ riley: 20000, femi: 0 }, { riley: 20000, femi: 40000 }]);
+  assert.equal(data.rows[0].buyer_premium_amount, 1500);
+  assert.equal(data.rows[0].total_expected_gross, 11500);
+  assert.equal(data.rows[1].buyer_premium_amount, 2000);
+  assert.equal(data.rows[1].total_expected_gross, 32000);
+  const totals = deriveAssetScheduleSummary(data);
+  assert.equal(totals.total_capped_bp, 3500);
+  assert.equal(totals.total_expected_gross, 43500);
+  assert.equal(totals.total_allocated_value, 43500);
+});
+
+test("blank and invalid evaluator values do not dilute averages, but explicit zero does", () => {
+  const data = sheet([
+    { riley: 100, femi: null, jay: Number.NaN },
+    { riley: 100, femi: 0, jay: "" },
+    { riley: 0, femi: null, jay: Number.POSITIVE_INFINITY },
+    { riley: null, femi: "", jay: Number.NaN },
+  ]);
+  assert.deepEqual(data.rows.map(row => row.buyer_premium_amount), [15, 7.5, 0, null]);
+  assert.deepEqual(data.rows.map(row => row.total_expected_gross), [115, 57.5, 0, null]);
+  assert.deepEqual(data.rows.map(row => row.allocated_value), [115, 57.5, 0, null]);
+});
+
+test("adding, removing and clearing active evaluators recomputes the average-based amounts", () => {
+  const data = sheet([{ left: 100, right: 300, removed: 99999 }], ["left", "right"]);
+  assert.equal(data.rows[0].total_expected_gross, 230);
+  const added = recalculateAssetScheduleSheet({
+    ...data, evaluator_columns: [...data.evaluator_columns, { id: "new", name: "New" }],
+  });
+  assert.equal(added.rows[0].total_expected_gross, 230, "a blank new evaluator does not dilute the average");
+  const removed = recalculateAssetScheduleSheet({ ...data, evaluator_columns: [data.evaluator_columns[0]] });
+  assert.equal(removed.rows[0].total_expected_gross, 115);
+  assert.equal(removed.rows[0].buyer_premium_amount, 15);
+  const cleared = recalculateAssetScheduleSheet({ ...removed, rows: removed.rows.map(row => ({ ...row, evaluator_values: { left: null } })) });
+  assert.equal(cleared.rows[0].buyer_premium_amount, null);
+  assert.equal(cleared.rows[0].total_expected_gross, null);
+  assert.equal(cleared.rows[0].allocated_value, null);
 });
 
 test("desktop and mobile render the same all-sheet totals with amount-only premium", () => {

@@ -148,10 +148,13 @@ function recalculateRow(
 
   const low = filledValues.length ? Math.min(...filledValues) : null;
   const high = filledValues.length ? Math.max(...filledValues) : null;
+  const average = filledValues.length
+    ? filledValues.reduce((sum, value) => sum + value, 0) / filledValues.length
+    : null;
   const buyerPremiumPercent = 15;
-  const buyerPremiumAmount = high === null ? null : Math.min(high * 0.15, 2000);
+  const buyerPremiumAmount = average === null ? null : Math.min(average * 0.15, 2000);
   const totalExpectedGross =
-    high === null || buyerPremiumAmount === null ? null : high + buyerPremiumAmount;
+    average === null || buyerPremiumAmount === null ? null : average + buyerPremiumAmount;
   const allocatedValue = totalExpectedGross;
   const cleaning = high === null ? null : high * 0.01;
   const lottingFee = high === null ? null : high * 0.01;
