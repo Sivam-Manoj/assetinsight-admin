@@ -115,9 +115,11 @@ generation does not wait for YouTube. Confirmed public/unlisted links remain in
 the video list. Excel keeps its original column layout without a YouTube column;
 video review never regenerates report files automatically. Existing files and
 stored video links are not rewritten or recovered by this layout change.
-Connecting does not backfill historical reports. Google may restrict an unaudited
-API project's uploads to private status; the UI explains this rather than claiming
-that a requested public setting proves publication. Backend setup/support must
+Connecting does not backfill historical reports. Publication depends on channel
+authorization, processing and YouTube's confirmed visibility; a requested public
+setting does not prove publication. The UI links Google's current upload
+requirements without inferring project verification or a private-only restriction.
+Backend setup/support must
 ship before this page. No additional admin environment secrets are required.
 
 The video status list requests 20 rows per page, without polling. Pending review,
@@ -125,8 +127,18 @@ private, uploading, needs-attention, removed, confirmed unlisted and public outc
 remain separate. Only confirmed public/unlisted rows expose a watch link. An eligible **Retry reviewed request**
 posts the exact saved `updatedAt` revision to `/videos/:id/retry-publication`.
 It requests metadata publication of an existing released video, never a second
-upload. Conflicts and uncertain responses require manual refresh; provider/error
-rows remain visible. Ordinary report submission/release remains authoritative.
+upload. An eligible **Resume reviewed upload** uses the same revision-bound endpoint
+for an already-reviewed initial transfer. The backend preserves the existing
+resumable session, byte offset and final-attempt evidence, checking its outcome
+before sending more bytes. This is not new publication consent or confirmation.
+Uploading rows with a saved future `nextAttemptAt` show **Waiting to resume** and
+the scheduled automatic retry time instead of a terminal needs-attention label.
+Refreshing the list retrieves saved worker status, not a live YouTube probe.
+Known review/retry error codes map to static correction guidance; arbitrary
+provider messages and credentials remain private. Conflicts and uncertain
+responses require manual refresh; provider/error rows remain visible. Ordinary
+report submission/release remains authoritative. Backend capability support
+must precede this admin build; older servers retain publication-only retries.
 
 Review/erasure mutations share same-origin guards and never replay on 401. The
 review body has a 32 KiB transport bound to allow JSON escaping of valid 5 KiB text;
