@@ -42,6 +42,7 @@ import type {
   PreviewReportDetailResponse,
   PreviewTransferUser,
 } from "./previewReportTypes";
+import ReportLotNavigationControls from "@/app/components/reports/ReportLotNavigationControls";
 
 type Props = {
   open: boolean;
@@ -206,6 +207,14 @@ export default function PreviewReportDrawer({
   const [reloadToken, setReloadToken] = useState(0);
   const resubmitInFlight = useRef(false);
   const transferInFlight = useRef(false);
+  const lotDetailsTop = useRef<HTMLDivElement>(null);
+  const selectLot = (index: number) => {
+    setSelectedLot(index);
+    requestAnimationFrame(() => {
+      lotDetailsTop.current?.focus({ preventScroll: true });
+      lotDetailsTop.current?.scrollIntoView({ block: "start" });
+    });
+  };
 
   useEffect(() => {
     if (!open || !reportId) return;
@@ -550,7 +559,7 @@ export default function PreviewReportDrawer({
                                 component="button"
                                 type="button"
                                 key={`${lotNumber}-${index}`}
-                                onClick={() => setSelectedLot(index)}
+                                onClick={() => selectLot(index)}
                                 sx={{ minWidth: { xs: 190, md: 0 }, width: { md: "100%" }, border: "1px solid", borderColor: selectedLot === index ? "primary.main" : "divider", borderRadius: "4px", bgcolor: selectedLot === index ? "action.selected" : "background.paper", color: "text.primary", cursor: "pointer", p: 1.25, textAlign: "left" }}
                               >
                                 <Typography sx={{ fontSize: 13, fontWeight: 750 }}>Lot {lotNumber}</Typography>
@@ -562,6 +571,9 @@ export default function PreviewReportDrawer({
                       </Box>
 
                       <Box sx={{ minWidth: 0 }}>
+                        <Box ref={lotDetailsTop} tabIndex={-1} sx={{ scrollMarginTop: 12 }}>
+                          <ReportLotNavigationControls lots={lots} selectedIndex={selectedLot} onSelect={selectLot} placement="top" />
+                        </Box>
                         <Stack direction="row" alignItems="center" spacing={1}>
                           <ImageIcon size={18} />
                           <Typography sx={{ fontSize: 19, fontWeight: 750 }}>Lot {String(activeLot?.lot_number || selectedLot + 1)}</Typography>
@@ -577,6 +589,7 @@ export default function PreviewReportDrawer({
                           </Box>
                         ) : <Alert severity="info" sx={{ mt: 1.5 }}>No image URLs are stored for this lot.</Alert>}
                         <Box sx={{ mt: 2 }}><DataValue value={activeLot} /></Box>
+                        <ReportLotNavigationControls lots={lots} selectedIndex={selectedLot} onSelect={selectLot} placement="bottom" />
                       </Box>
                     </Box>
                   ) : (

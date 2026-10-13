@@ -10,6 +10,21 @@ The production administration console for Asset Insight. It is a Next.js App Rou
 
 ## Runtime architecture
 
+### Complete lot navigation (2026-10-13)
+
+Asset/Lot preview drawers and saved-report data views load the complete lot
+array, then show one selected lot. Both ends of the lot details now state the
+full loaded count and current position, with Previous/Next and Jump to lot.
+Navigation returns keyboard focus and scroll position to the selected details.
+This is view-only: report payloads, photo identities, generation, approvals and
+release gates are unchanged. Excel condition editing already lists all rows
+with search and a full count; its save behavior is untouched.
+
+Focused regression: `node --test tests/report-lot-navigation.test.mjs` covers
+142 lots / 1,824 photos, final-lot navigation, summary/empty boundaries and
+unchanged report data. Full admin verification remains `npm run verify` plus
+`node --test tests/*.test.mjs`; rendered browser checks use synthetic reports.
+
 ### Proposal Valuation average-based buyer premium (2026-10-09, local)
 
 Each lot's Buyer Premium is 15% of its active evaluators' average, capped at
