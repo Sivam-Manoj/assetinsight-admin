@@ -10,6 +10,25 @@ The production administration console for Asset Insight. It is a Next.js App Rou
 
 ## Runtime architecture
 
+### Condition report Title and Description (2026-10-14, local)
+
+The Excel condition editor now exposes the saved Description separately from
+the Title. Changing a Title does not overwrite a distinct Description. Save &
+regenerate files publishes the saved Description to Excel and CR PDF/DOCX;
+blank descriptions retain the exporters' existing Title fallback. Save changes
+alone persists edits without rebuilding files. Appraisal DOCX and Images ZIP
+remain outside this action, as the footer states.
+Nested catalogue items retain their existing separate scope: their Description
+updates the item's Excel row; CR PDF/DOCX use the parent lot's Description. The
+editor explains this and directs parent-lot edits to the full report preview.
+
+Deploy matching backend Description DTO/save support first. Older responses
+without a Description keep that input disabled and omit the field on save,
+rather than clearing unseen data. Explicit empty strings and multiline text
+are preserved. Revision/full-row snapshot fences, row/photo identities and
+file-readiness/download gates are unchanged. Focused coverage is in
+`tests/excel-condition-report-description.test.mjs`.
+
 ### Complete lot navigation (2026-10-13)
 
 Asset/Lot preview drawers and saved-report data views load the complete lot
