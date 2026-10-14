@@ -40,6 +40,8 @@ test("Title-only editor preserves hidden descriptions through the existing atomi
   assert.match(source, /revision: payload\.revision/);
   assert.match(source, /The server queued file regeneration without confirming the saved editor snapshot/);
   assert.doesNotMatch(source, /description: row\.title|description: activeRow\.title/);
+  assert.match(source, /gridTemplateColumns: \{ xs: "minmax\(0, 1fr\)", md: "260px minmax\(0, 1fr\)"/);
+  assert.match(source, /aria-label="Excel condition report rows"[\s\S]*?display: "flex",\s*minWidth: 0,/);
 });
 
 test("output scope distinguishes lot CR documents from nested Excel item rows", () => {

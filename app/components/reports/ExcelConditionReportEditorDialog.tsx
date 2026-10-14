@@ -1144,8 +1144,9 @@ export default function ExcelConditionReportEditorDialog({
               sx={{
                 display: "grid",
                 flex: 1,
+                minWidth: 0,
                 minHeight: 0,
-                gridTemplateColumns: { xs: "1fr", md: "260px minmax(0, 1fr)", xl: "260px minmax(0, 1fr) 340px" },
+                gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "260px minmax(0, 1fr)", xl: "260px minmax(0, 1fr) 340px" },
                 gridTemplateRows: { xs: "auto minmax(0, 1fr)", md: "minmax(0, 1fr)" },
                 overflow: { xs: "auto", md: "hidden" },
               }}
@@ -1155,6 +1156,7 @@ export default function ExcelConditionReportEditorDialog({
                 aria-label="Excel condition report rows"
                 sx={{
                   display: "flex",
+                  minWidth: 0,
                   minHeight: 0,
                   maxHeight: { xs: 250, md: "none" },
                   flexDirection: "column",
