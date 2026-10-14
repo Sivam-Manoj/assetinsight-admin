@@ -83,7 +83,7 @@ import TableChartRoundedIcon from "@mui/icons-material/TableChartRounded";
 import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
-import { excelConditionReportDescription, excelConditionReportDescriptionHelp } from "@/lib/excelConditionReportDescription";
+import { excelConditionReportDescription, excelConditionReportTitleHelp } from "@/lib/excelConditionReportDescription";
 
 type BidValue = 5 | 25 | 100 | 1000 | null;
 
@@ -839,7 +839,6 @@ export default function ExcelConditionReportEditorDialog({
       const searchable = [
         row.lotNumber,
         row.title,
-        row.description,
         row.category,
         ...row.specs.flatMap((spec) => [spec.field, spec.value]),
       ]
@@ -1297,7 +1296,7 @@ export default function ExcelConditionReportEditorDialog({
                     ) : null}
 
                     <Box sx={{ border: "1px solid #dedfe1", bgcolor: "#fff", p: { xs: 1.5, sm: 2 } }}>
-                      <SectionHeading title="Lot title and description" description="Title identifies the row. Edit Description to change its generated text; the output scope is explained below." />
+                      <SectionHeading title="Lot details" description="Edit the Title used in generated files, along with the lot number and category." />
                       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "140px minmax(0, 1fr)", lg: "140px minmax(0, 1.4fr) minmax(180px, 0.8fr)" }, gap: 1.25, mt: 1.5 }}>
                         <TextField
                           size="small"
@@ -1319,7 +1318,7 @@ export default function ExcelConditionReportEditorDialog({
                         <TextField
                           size="small"
                           label="Title"
-                          helperText="Changing the title does not change the saved description."
+                          helperText={excelConditionReportTitleHelp(activeRow.descriptionScope)}
                           value={activeRow.title}
                           disabled={saving}
                           onChange={(event) => updateActiveRow((row) => ({ ...row, title: event.target.value }))}
@@ -1332,20 +1331,6 @@ export default function ExcelConditionReportEditorDialog({
                           onChange={(event) => updateActiveRow((row) => ({ ...row, category: event.target.value }))}
                         />
                       </Box>
-                      <TextField
-                        fullWidth
-                        multiline
-                        minRows={3}
-                        size="small"
-                        label="Description"
-                        value={typeof activeRow.description === "string" ? activeRow.description : ""}
-                        disabled={saving || typeof activeRow.description !== "string"}
-                        helperText={typeof activeRow.description === "string"
-                          ? excelConditionReportDescriptionHelp(activeRow.descriptionScope)
-                          : "Description editing requires the updated server. The existing description will be preserved."}
-                        onChange={(event) => updateActiveRow((row) => ({ ...row, description: event.target.value }))}
-                        sx={{ mt: 1.5 }}
-                      />
                     </Box>
 
                     {activeRow.imageUrls.length > 0 ? (
@@ -1488,7 +1473,7 @@ export default function ExcelConditionReportEditorDialog({
                     </Box>
 
                     <Box sx={{ display: { xl: "none" }, border: "1px solid #dedfe1", bgcolor: "#fff", p: { xs: 1.5, sm: 2 } }}>
-                      <SectionHeading title="Lot content preview" description="Title, generated description and condition report details. File layouts differ." />
+                      <SectionHeading title="Lot content preview" description="Title and condition report details. Generated files use Title as Description; file layouts differ." />
                       <Box sx={{ mt: 1.5 }}><ConditionReportPreview row={activeRow} /></Box>
                     </Box>
                   </Stack>
@@ -1505,7 +1490,7 @@ export default function ExcelConditionReportEditorDialog({
                 aria-label="Lot content preview"
                 sx={{ display: { xs: "none", xl: "block" }, minHeight: 0, overflowY: "auto", borderLeft: "1px solid #dedfe1", bgcolor: "#fff", p: 2 }}
               >
-                <SectionHeading title="Lot content preview" description="Title, generated description and condition report details. File layouts differ." />
+                <SectionHeading title="Lot content preview" description="Title and condition report details. Generated files use Title as Description; file layouts differ." />
                 {activeRow ? <Box sx={{ mt: 1.5 }}><ConditionReportPreview row={activeRow} /></Box> : null}
               </Box>
             </Box>
@@ -1617,13 +1602,6 @@ function ConditionReportPreview({ row }: { row: ExcelCrRow }) {
         <Typography sx={{ mt: 0.2, color: "rgba(255,255,255,0.72)", fontSize: 11.5 }}>{row.title || "Untitled lot"}</Typography>
       </Box>
       <Stack divider={<Divider flexItem />}>
-        {typeof row.description === "string" ? (
-          <Box sx={{ p: 1.5 }}>
-            <Typography sx={{ mb: 0.6, color: "#17191d", fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase" }}>{row.descriptionScope === "item" ? "Description — Excel item row" : "Description"}</Typography>
-            <Typography sx={{ color: "#3c403c", fontSize: 11.5, lineHeight: 1.55, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{row.description.trim() || row.title || "No description"}</Typography>
-            {!row.description.trim() && row.title ? <Typography sx={{ mt: 0.5, color: "#737773", fontSize: 11 }}>{row.descriptionScope === "lot" ? "Description is blank; generated files use the title." : "Description is blank; the existing title/parent fallback is used."}</Typography> : null}
-          </Box>
-        ) : null}
         {visibleSpecs.length > 0 ? (
           <Box sx={{ p: 1.5 }}>
             <Typography sx={{ mb: 1, color: "#17191d", fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase" }}>Specifications</Typography>

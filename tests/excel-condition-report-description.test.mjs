@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { excelConditionReportDescription, excelConditionReportDescriptionHelp } from "../lib/excelConditionReportDescription.ts";
+import { excelConditionReportDescription, excelConditionReportTitleHelp } from "../lib/excelConditionReportDescription.ts";
 
 test("Title and Description remain independent, including long multiline descriptions", () => {
   const description = `Reviewed description\n${"Detailed specification. ".repeat(30)}`;
@@ -23,19 +23,16 @@ test("old or malformed DTOs omit Description rather than clearing saved content"
   }
 });
 
-test("editor normalizes and saves separate descriptions through the existing atomic request", () => {
+test("Title-only editor preserves hidden descriptions through the existing atomic request", () => {
   const source = readFileSync(new URL("../app/components/reports/ExcelConditionReportEditorDialog.tsx", import.meta.url), "utf8");
   assert.equal(source.match(/\.\.\.excelConditionReportDescription\(row\)/g)?.length, 2);
   assert.match(source, /label="Title"/);
-  assert.match(source, /label="Description"/);
-  assert.match(source, /description: event\.target\.value/);
-  assert.match(source, /row\.description,/);
-  assert.match(source, /disabled=\{saving \|\| typeof activeRow\.description !== "string"\}/);
-  assert.match(source, /Changing the title does not change the saved description/);
-  assert.match(source, /excelConditionReportDescriptionHelp\(activeRow\.descriptionScope\)/);
+  assert.doesNotMatch(source, /label="Description"|description: event\.target\.value|row\.description\.trim/);
+  assert.match(source, /excelConditionReportTitleHelp\(activeRow\.descriptionScope\)/);
   assert.match(source, /descriptionScope: row\.descriptionScope === "lot" \|\| row\.descriptionScope === "item"/);
   assert.doesNotMatch(source.slice(source.indexOf("const editorBody ="), source.indexOf("const acceptSavedEditor")), /descriptionScope/);
-  assert.match(source, /Description is blank; generated files use the title/);
+  assert.match(source, /title="Specifications"/);
+  assert.match(source, /title="Custom note"/);
   assert.match(source, /title="Lot content preview"/);
   assert.doesNotMatch(source, /title="Final Excel preview"/);
   assert.match(source, /\/rerun-excel-cr`/);
@@ -46,10 +43,9 @@ test("editor normalizes and saves separate descriptions through the existing ato
 });
 
 test("output scope distinguishes lot CR documents from nested Excel item rows", () => {
-  assert.match(excelConditionReportDescriptionHelp("lot"), /Used in Excel, CR PDF and CR DOCX/);
-  assert.match(excelConditionReportDescriptionHelp("lot"), /If blank, the title is used/);
-  assert.match(excelConditionReportDescriptionHelp("item"), /this item's Excel row/);
-  assert.match(excelConditionReportDescriptionHelp("item"), /parent lot's description; edit it in the full report preview/);
-  assert.match(excelConditionReportDescriptionHelp(), /parent lot's description/);
-  assert.doesNotMatch(excelConditionReportDescriptionHelp("item"), /Used in Excel, CR PDF and CR DOCX/);
+  assert.match(excelConditionReportTitleHelp("lot"), /Title is used as Description in Excel, CR PDF and CR DOCX/);
+  assert.match(excelConditionReportTitleHelp("item"), /this item's Excel row/);
+  assert.match(excelConditionReportTitleHelp("item"), /parent lot's Title/);
+  assert.match(excelConditionReportTitleHelp(), /parent lot's Title/);
+  assert.doesNotMatch(excelConditionReportTitleHelp("item"), /Description in Excel, CR PDF and CR DOCX/);
 });

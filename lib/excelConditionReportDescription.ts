@@ -8,12 +8,12 @@ export function excelConditionReportDescription(
   return typeof row.description === "string" ? { description: row.description } : {};
 }
 
-export function excelConditionReportDescriptionHelp(scope?: "lot" | "item"): string {
+export function excelConditionReportTitleHelp(scope?: "lot" | "item"): string {
   if (scope === "lot") {
-    return "Used in Excel, CR PDF and CR DOCX after Save & regenerate files. If blank, the title is used.";
+    return "Title is used as Description in Excel, CR PDF and CR DOCX after Save & regenerate files.";
   }
   if (scope === "item") {
-    return "Used for this item's Excel row. CR PDF and CR DOCX use the parent lot's description; edit it in the full report preview. If blank, the existing title/parent fallback is used.";
+    return "Title is used as Description for this item's Excel row. CR PDF and CR DOCX use the parent lot's Title.";
   }
-  return "Used in Excel after Save & regenerate files. CR PDF and CR DOCX use the parent lot's description; edit parent-lot text in the full report preview.";
+  return "Title is used as Description in generated files. CR PDF and CR DOCX use the parent lot's Title.";
 }

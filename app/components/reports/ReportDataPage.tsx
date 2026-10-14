@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import AssetScheduleSheet from "@/app/components/reports/AssetScheduleSheet";
 import ReportLotNavigationControls from "@/app/components/reports/ReportLotNavigationControls";
+import { lotPreviewDisplay, usesLotTitleDescription } from "@/lib/lotPreviewDisplay";
 import SalvageReportEnrichment from "@/app/components/reports/SalvageReportEnrichment";
 import { isSalvageReportEnrichment } from "@/lib/salvageReportEnrichment";
 import { ADMIN_MOBILE_TITLEBAR_HEIGHT } from "@/app/components/common/adminLayout.constants";
@@ -468,7 +469,8 @@ function ReportDataPanel({
                 {lotTitle(activeLot)}
               </Typography>
             </Box>
-            <DataValue value={activeLot} name="lot" />
+            {usesLotTitleDescription(preview.meta) ? <Typography sx={{ mb: 1.5, color: "text.secondary", fontSize: 12 }}>Title is used as Description in generated files. Structured condition details are shown below.</Typography> : null}
+            <DataValue value={usesLotTitleDescription(preview.meta) ? lotPreviewDisplay(activeLot) : activeLot} name="lot" />
           </Box>
         )}
         <ReportLotNavigationControls lots={lots} selectedIndex={navigationSelection} onSelect={selectLot} placement="bottom" includeSummary />

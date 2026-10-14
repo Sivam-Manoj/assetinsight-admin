@@ -43,6 +43,7 @@ import type {
   PreviewTransferUser,
 } from "./previewReportTypes";
 import ReportLotNavigationControls from "@/app/components/reports/ReportLotNavigationControls";
+import { lotPreviewDisplay, reportPreviewDisplay } from "@/lib/lotPreviewDisplay";
 
 type Props = {
   open: boolean;
@@ -588,7 +589,8 @@ export default function PreviewReportDrawer({
                             ))}
                           </Box>
                         ) : <Alert severity="info" sx={{ mt: 1.5 }}>No image URLs are stored for this lot.</Alert>}
-                        <Box sx={{ mt: 2 }}><DataValue value={activeLot} /></Box>
+                        <Typography sx={{ mt: 2, color: "text.secondary", fontSize: 12 }}>Title is used as Description in generated files. Structured condition details are shown below.</Typography>
+                        <Box sx={{ mt: 1 }}><DataValue value={lotPreviewDisplay(activeLot)} /></Box>
                         <ReportLotNavigationControls lots={lots} selectedIndex={selectedLot} onSelect={selectLot} placement="bottom" />
                       </Box>
                     </Box>
@@ -598,7 +600,7 @@ export default function PreviewReportDrawer({
                 </Box>
               ) : null}
 
-              {tab === 1 ? <Box sx={{ p: { xs: 2, md: 3 } }}><DataValue value={payload.preview.data} /></Box> : null}
+              {tab === 1 ? <Box sx={{ p: { xs: 2, md: 3 } }}><DataValue value={reportPreviewDisplay(payload.preview.data)} /></Box> : null}
 
               {tab === 2 ? (
                 <Box sx={{ p: { xs: 2, md: 3 } }}>

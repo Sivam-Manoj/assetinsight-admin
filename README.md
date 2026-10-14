@@ -10,24 +10,23 @@ The production administration console for Asset Insight. It is a Next.js App Rou
 
 ## Runtime architecture
 
-### Condition report Title and Description (2026-10-14, local)
+### Title is the generated Description (2026-10-14, local)
 
-The Excel condition editor now exposes the saved Description separately from
-the Title. Changing a Title does not overwrite a distinct Description. Save &
-regenerate files publishes the saved Description to Excel and CR PDF/DOCX;
-blank descriptions retain the exporters' existing Title fallback. Save changes
-alone persists edits without rebuilding files. Appraisal DOCX and Images ZIP
-remain outside this action, as the footer states.
-Nested catalogue items retain their existing separate scope: their Description
-updates the item's Excel row; CR PDF/DOCX use the parent lot's Description. The
-editor explains this and directs parent-lot edits to the full report preview.
+The condition editor uses one Title field; Save & regenerate files uses that
+Title as Description in Excel and CR PDF/DOCX. Nested catalogue item Titles apply
+to their Excel rows; CR pages still use the parent lot's Title. A missing/blank
+Title retains the backend's legacy saved-Description fallback. Deploy the matching
+backend title-first export mapping before this UI. Save changes alone does not
+rebuild files. Appraisal DOCX and Images ZIP remain outside this editor's action.
 
-Deploy matching backend Description DTO/save support first. Older responses
-without a Description keep that input disabled and omit the field on save,
-rather than clearing unseen data. Explicit empty strings and multiline text
-are preserved. Revision/full-row snapshot fences, row/photo identities and
-file-readiness/download gates are unchanged. Focused coverage is in
-`tests/excel-condition-report-description.test.mjs`.
+Separate Description and freeform Specs/details are hidden in normal Asset/Lot
+views, not deleted. The editor echoes known hidden Description values unchanged,
+and older DTOs omit the field rather than clear unseen data. Structured condition
+specifications, damage analysis and Custom note remain available. Read-only data
+views use display projections only; Raw JSON retains the entire saved snapshot.
+Revision/full-row fences, pagination, media and file-readiness gates are unchanged.
+Coverage: `tests/excel-condition-report-description.test.mjs` and
+`tests/lot-preview-display.test.mjs`.
 
 ### Complete lot navigation (2026-10-13)
 
