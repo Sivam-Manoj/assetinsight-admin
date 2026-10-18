@@ -7,6 +7,7 @@ export type YouTubeStatus = {
   channel: { id: string; title: string; url: string } | null;
   connectedAt: string | null;
   privacyStatus: "public" | "private";
+  publicationMode: "automatic_public" | null;
   canConnect: boolean;
   canAcknowledgeRevocation: boolean;
   dataCleanup: { status: "not_requested" | "pending" | "completed"; requestedAt: string | null; completedAt: string | null; reason: string | null };
@@ -25,6 +26,7 @@ function text(value: unknown, limit: number): string {
 export function parseYouTubeStatus(value: unknown): YouTubeStatus {
   const data = object(value);
   if (typeof data.configured !== "boolean" || typeof data.connected !== "boolean" || typeof data.needsReconnect !== "boolean" || !["public", "private"].includes(String(data.privacyStatus)) || !Number.isSafeInteger(data.revision) || (data.revision as number) < 0) throw invalid();
+  if (data.publicationMode != null && data.publicationMode !== "automatic_public") throw invalid();
   let channel: YouTubeStatus["channel"] = null;
   if (data.channel !== null) {
     const item = object(data.channel);
@@ -53,6 +55,7 @@ export function parseYouTubeStatus(value: unknown): YouTubeStatus {
     channel,
     connectedAt,
     privacyStatus: data.privacyStatus as YouTubeStatus["privacyStatus"],
+    publicationMode: data.publicationMode === "automatic_public" ? "automatic_public" : null,
     canConnect: data.canConnect === true,
     canAcknowledgeRevocation: data.canAcknowledgeRevocation === true,
     dataCleanup: { status: cleanup.status as YouTubeStatus["dataCleanup"]["status"], requestedAt: lifecycleDate(cleanup.requestedAt), completedAt: lifecycleDate(cleanup.completedAt), reason: cleanup.reason == null ? null : text(cleanup.reason, 500) },

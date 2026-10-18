@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { parseYouTubeStatus, parseYouTubeAuthorization, parseYouTubeCallback, youtubeConnectBody, youtubeCompleteBody, youtubeDisconnectBody, youtubeEraseBody, finishYouTubeConnection, youtubeConnectionFailure } from '../lib/youtube.ts';
 import { readPreviewMutationJson } from '../lib/previewResubmitRequest.ts';
-import { parseYouTubeVideoPage, youtubeVideoQuery, youtubeVideoRetryBody, youtubeVideoReviewBody, youtubeVideoFailure } from '../lib/youtubeVideos.ts';
+import { parseYouTubeVideoPage, youtubeVideoQuery, youtubeVideoRetryBody, youtubeVideoFailure, youtubeVideoStatusLabel, youtubeVideoStatusMessage } from '../lib/youtubeVideos.ts';
 
 const state = 'a'.repeat(64);
 const status = { configured: true, configurationIssue: null, connected: true, needsReconnect: false, revision: 1, channel: { id: 'UC' + 'a'.repeat(22), title: 'Example channel', url: 'https://malicious.example' }, connectedAt: '2026-09-28T12:00:00Z', privacyStatus: 'public', accessToken: 'never-browser' };
@@ -63,8 +63,10 @@ test('status projects only safe fields and a canonical channel URL', () => {
   assert.equal(parseYouTubeStatus({ ...status, channel: { ...status.channel, title: 'x'.repeat(300) } }).channel.title.length, 300);
   assert.equal(parseYouTubeStatus({ ...status, connected: false, channel: null, revision: 0, connectedAt: null }).channel, null);
   assert.equal(result.canConnect, false);
+  assert.equal(result.publicationMode, null);
+  assert.equal(parseYouTubeStatus({ ...status, publicationMode: 'automatic_public' }).publicationMode, 'automatic_public');
   assert.equal(parseYouTubeStatus({ ...status, privacyStatus: 'private', canConnect: true }).canConnect, true);
-  for (const bad of [{ revision: -1 }, { connected: 'true' }, { connected: false }, { channel: { id: 'evil', title: 'X' } }, { privacyStatus: 'unknown' }, { connectedAt: 'never' }, { canConnect: 'true' }]) assert.throws(() => parseYouTubeStatus({ ...status, ...bad }));
+  for (const bad of [{ revision: -1 }, { connected: 'true' }, { connected: false }, { channel: { id: 'evil', title: 'X' } }, { privacyStatus: 'unknown' }, { connectedAt: 'never' }, { canConnect: 'true' }, { publicationMode: 'reviewed' }, { publicationMode: {} }]) assert.throws(() => parseYouTubeStatus({ ...status, ...bad }));
 });
 test('mutations have strict keys, consent and revision checks', () => {
   assert.deepEqual(youtubeConnectBody({ policyConsent: true }), { policyConsent: true });
@@ -109,42 +111,39 @@ test('data cleanup and Google revocation remain separate, safe status projection
   assert.equal('providerBody' in parsed.dataCleanup, false); assert.equal('token' in parsed.revocation, false);
   for (const patch of [{ dataCleanup: { status: 'unknown' } }, { revocation: { status: 'failed', completedAt: null } }, { dataCleanup: { status: 'pending', requestedAt: 'never' } }]) assert.throws(() => parseYouTubeStatus({ ...value, ...patch }));
 });
-test('video review retains exact text with Unicode character and UTF-8 byte limits', () => {
-  const body = { updatedAt: '2026-09-29T12:00:00.000Z', title: '  Lot 12 · Reviewed title  ', description: 'Line one\nLine two\tTest', privacyStatus: 'private', policyConsent: true };
-  assert.deepEqual(youtubeVideoReviewBody(body), body);
-  for (const privacyStatus of ['private', 'unlisted', 'public']) assert.equal(youtubeVideoReviewBody({ ...body, privacyStatus }).privacyStatus, privacyStatus);
-  assert.equal(youtubeVideoReviewBody({ ...body, title: '🚚'.repeat(100), description: '🚚'.repeat(1250) }).description.length, 2500);
-  for (const patch of [{ title: '🚚'.repeat(101) }, { title: ' ' }, { title: '<title>' }, { title: 'title\nline' }, { title: '\ud800' }, { description: '🚚'.repeat(1251) }, { description: '<private>' }, { description: 'bad\0' }, { description: '\udfff' }, { privacyStatus: 'hidden' }, { policyConsent: false }, { updatedAt: 'yesterday' }, { sourceUrl: 'do-not-forward' }]) assert.throws(() => youtubeVideoReviewBody({ ...body, ...patch }));
-});
-test('review DTO adds capabilities without exposing stored source or assuming legacy authority', () => {
+test('automatic publication DTO suppresses legacy review flags and preserves exact safe metadata', () => {
   const video = { id: 'a'.repeat(64), reportId: 'b'.repeat(24), reportType: 'lotListing', lotNumber: '12', status: 'pending_review', url: null, lastError: null, updatedAt: '2026-09-29T12:00:00Z', retryEligible: false, title: 'Lot 12', description: 'Exact text', privacyStatus: 'private', reviewRequired: true, reviewEligible: true, sourceUrl: 'secret' };
   const page = value => parseYouTubeVideoPage({ items: [value], page: 1, total: 1, totalPages: 1 }).items[0];
-  assert.equal(page(video).reviewEligible, true); assert.equal('sourceUrl' in page(video), false);
+  assert.equal(page(video).reviewEligible, false); assert.equal(page(video).reviewRequired, false); assert.equal('sourceUrl' in page(video), false);
+  assert.equal(page(video).title, video.title); assert.equal(page(video).description, video.description);
+  assert.equal(page(video).publicationMode, null); assert.equal(page(video).targetPrivacyStatus, null);
+  const automatic = page({ ...video, status: 'queued', publicationMode: 'automatic_public', targetPrivacyStatus: 'public' });
+  assert.equal(automatic.publicationMode, 'automatic_public'); assert.equal(automatic.targetPrivacyStatus, 'public');
+  assert.equal(automatic.status, 'queued'); assert.equal(automatic.url, null);
   const legacy = { ...video }; delete legacy.reviewEligible; delete legacy.reviewRequired;
   assert.equal(page(legacy).reviewEligible, false);
   assert.equal(page(legacy).metadataOmitted, false);
-  assert.equal(page({ ...video, title: '', description: '', metadataOmitted: true }).reviewEligible, true);
+  assert.equal(page({ ...video, title: '', description: '', metadataOmitted: true }).reviewEligible, false);
   assert.throws(() => page({ ...video, metadataOmitted: true }));
   assert.throws(() => page({ ...video, metadataOmitted: 'yes' }));
   for (const status of ['pending_review', 'unlisted', 'data_removed']) assert.equal(page({ ...video, status }).status, status);
   const removed = page({ ...video, status: 'data_removed', reportType: null, reportId: null, privacyStatus: null });
   assert.equal(removed.reportId, null); assert.equal(removed.title, ''); assert.equal(removed.privacyStatus, null); assert.equal(removed.reviewEligible, false);
   assert.equal(page({ ...video, status: 'data_removed', updatedAt: null }).updatedAt, null);
-  for (const patch of [{ reviewEligible: 'yes' }, { privacyStatus: 'everyone' }, { description: 'x'.repeat(10001) }, { title: {} }]) assert.throws(() => page({ ...video, ...patch }));
+  for (const patch of [{ reviewEligible: 'yes' }, { privacyStatus: 'everyone' }, { description: 'x'.repeat(10001) }, { title: {} }, { publicationMode: 'manual' }, { targetPrivacyStatus: 'private' }, { publicationMode: {} }]) assert.throws(() => page({ ...video, ...patch }));
 });
-test('review and privacy mutations remain bounded single-attempt BFF requests', () => {
+test('retired review endpoint cannot mutate metadata and privacy actions retain explicit consent', () => {
   const source = path => readFileSync(new URL(path, import.meta.url), 'utf8');
   const route = source('../app/api/admin/youtube/videos/[id]/review/route.ts');
-  assert.match(route, /readPreviewMutationJson\(request, 32_768\)/);
-  assert.match(route, /youtubeVideoReviewBody/); assert.match(route, /replayAfterRefresh: false/);
+  assert.match(route, /YOUTUBE_REVIEW_REMOVED/); assert.match(route, /status: 410/);
+  assert.match(route, /"Cache-Control": "no-store"/);
+  assert.doesNotMatch(route, /proxyJsonWithAdminAuth|fetch\(|request\.json|youtubeVideoReviewBody/);
   for (const action of ['revoke', 'erase-data', 'acknowledge-revocation']) assert.match(source(`../app/api/admin/youtube/${action}/route.ts`), /youtubeProxy/);
-  const review = source('../app/components/youtube/YouTubeReviewDialog.tsx');
-  assert.match(review, /useState\(false\)/); assert.match(review, /setConsent\(false\)/);
-  assert.match(review, /www\.youtube\.com\/t\/terms/); assert.match(review, /assetinsightvaluator\.com\/privacy/);
-  assert.match(review, /video\.metadataOmitted/); assert.match(review, /original report text will remain unchanged/);
-  assert.doesNotMatch(review, /maxLength|\.slice\(/);
   const settings = source('../app/components/youtube/YouTubeSettings.tsx');
   assert.match(settings, /policyConsent: true/); assert.doesNotMatch(settings, /publicationConsent: true/);
+  assert.match(settings, /authorize automatic public publication/);
+  assert.match(settings, /without a separate per-video review/);
+  assert.match(settings, /www\.youtube\.com\/t\/terms/); assert.match(settings, /assetinsightvaluator\.com\/privacy/);
   assert.match(settings, /!eraseConfirmed/); assert.match(settings, /myaccount\.google\.com\/connections/);
   assert.match(settings, /fetch\("\/api\/admin\/youtube\/revoke"/);
   assert.match(settings, /!acknowledgeConfirmed/); assert.match(settings, /!status\.canAcknowledgeRevocation/);
@@ -154,7 +153,7 @@ test('YouTube guidance retains the original Excel layout without regeneration ad
   const source = path => readFileSync(new URL(path, import.meta.url), 'utf8');
   const settings = source('../app/components/youtube/YouTubeSettings.tsx');
   assert.match(settings, /Excel keeps its original column layout without a YouTube column/);
-  for (const file of ['YouTubeSettings', 'YouTubeVideos', 'YouTubeReviewDialog']) {
+  for (const file of ['YouTubeSettings', 'YouTubeVideos']) {
     const text = source(`../app/components/youtube/${file}.tsx`);
     assert.doesNotMatch(text, /regenerate[^.]*Excel links|regenerate[^.]*YouTube links in Excel|link may appear in report Excel exports/i);
   }
@@ -178,6 +177,9 @@ test('route and UI boundaries preserve roles, single attempts and credential str
   assert.match(source('../app/youtube/callback/page.tsx'), /requireOperationalAdminPage/);
   const callback = source('../app/components/youtube/YouTubeCallback.tsx');
   assert.match(callback, /history\.replaceState/); assert.match(callback, /credentials\.current = null/);
+  assert.match(callback, /publish to Public automatically after report release/);
+  assert.match(callback, /already in the queue may resume automatically/);
+  assert.doesNotMatch(callback, /Future reviewed|does not upload or publish existing reports/);
   assert.doesNotMatch(callback, /localStorage|sessionStorage|console\./);
   assert.match(source('../app/components/common/AdminNavbarV2.tsx'), /href: "\/youtube"/);
   assert.match(source('../middleware.ts'), /renderUrl\.search = ""/);
@@ -209,7 +211,7 @@ test('upload retry and automatic retry timing are explicit server capabilities',
   assert.doesNotMatch(JSON.stringify(removed), /secret/);
 });
 test('video action failures explain known causes without provider bodies or raw status codes', () => {
-  for (const code of ['YOUTUBE_REVIEW_INVALID', 'YOUTUBE_REVIEW_UNAVAILABLE', 'YOUTUBE_REVIEW_CHANGED', 'YOUTUBE_RETRY_INVALID', 'YOUTUBE_VIDEO_NOT_FOUND', 'YOUTUBE_RETRY_UNAVAILABLE', 'YOUTUBE_RETRY_CHANGED', 'YOUTUBE_RECONCILIATION_REQUIRED', 'YOUTUBE_RETRY_UNCONFIRMED']) {
+  for (const code of ['YOUTUBE_REVIEW_REMOVED', 'YOUTUBE_RETRY_INVALID', 'YOUTUBE_VIDEO_NOT_FOUND', 'YOUTUBE_RETRY_UNAVAILABLE', 'YOUTUBE_RETRY_CHANGED', 'YOUTUBE_RECONCILIATION_REQUIRED', 'YOUTUBE_RETRY_UNCONFIRMED']) {
     const issue = youtubeVideoFailure({ code, message: 'secret provider URL', access_token: 'secret token' }, 409);
     assert.equal(issue.code, code); assert.doesNotMatch(issue.message, /secret|HTTP|409/);
   }
@@ -222,19 +224,38 @@ test('video action failures explain known causes without provider bodies or raw 
     assert.equal(issue.code, undefined); assert.doesNotMatch(issue.message, /secret|HTTP|500/);
   }
 });
-test('video review and retry BFF and UI use safe errors without replaying requests', () => {
+test('automatic publication status never claims target visibility as confirmed', () => {
+  const row = patch => parseYouTubeVideoPage({ items: [{ id: 'a'.repeat(64), reportId: 'b'.repeat(24), reportType: 'asset', lotNumber: '1', status: 'queued', url: null, lastError: null, updatedAt: '2026-10-18T12:00:00Z', retryEligible: false, privacyStatus: 'public', publicationMode: 'automatic_public', targetPrivacyStatus: 'public', ...patch }], page: 1, total: 1, totalPages: 1 }).items[0];
+  for (const status of ['queued', 'pending_review']) {
+    assert.equal(youtubeVideoStatusLabel(row({ status })), 'Queued for automatic publication');
+    assert.match(youtubeVideoStatusMessage(row({ status })), /Report release, channel authorization and YouTube confirmation/);
+  }
+  for (const status of ['private', 'unlisted']) {
+    const video = row({ status });
+    assert.equal(youtubeVideoStatusLabel(video), status === 'private' ? 'Private' : 'Unlisted');
+    assert.match(youtubeVideoStatusMessage(video), /not yet confirmed/);
+    assert.equal(video.url, null);
+  }
+  assert.equal(youtubeVideoStatusLabel(row({ status: 'public' })), 'Public');
+  assert.match(youtubeVideoStatusMessage(row({ status: 'public' })), /confirmed by YouTube/);
+  assert.equal(youtubeVideoStatusMessage(row({ status: 'needs_attention', lastError: 'Reconnect the channel.' })), 'Reconnect the channel.');
+  assert.equal(youtubeVideoStatusLabel(row({ status: 'uploading', nextAttemptAt: '2026-10-18T14:00:00Z' })), 'Waiting to resume');
+});
+test('retry BFF and review-free UI use safe errors without replaying requests', () => {
   const source = path => readFileSync(new URL(path, import.meta.url), 'utf8');
-  for (const action of ['review', 'retry-publication']) {
+  for (const action of ['retry-publication']) {
     const route = source(`../app/api/admin/youtube/videos/[id]/${action}/route.ts`);
     assert.match(route, /youtubeVideoFailure/); assert.match(route, /replayAfterRefresh: false/);
     assert.doesNotMatch(route, /message: (?:payload|body|result)\.message/);
   }
   const ui = source('../app/components/youtube/YouTubeVideos.tsx');
-  assert.match(ui, /Resume reviewed upload/); assert.match(ui, /Waiting to resume/);
-  assert.match(ui, /An automatic attempt is scheduled/); assert.match(ui, /youtubeVideoFailure\(result, response.status\)/);
+  assert.match(ui, /Resume upload/); assert.match(ui, /youtubeVideoStatusLabel/);
+  assert.match(ui, /An automatic attempt is scheduled/); assert.match(ui, /youtubeVideoFailure\(await response.json\(\).catch\(\(\) => null\), response.status\)/);
   assert.match(ui, /JSON\.stringify\(\{ updatedAt: video.updatedAt \}\)/);
   assert.match(ui, /Refresh retrieves saved worker status/);
   assert.match(ui, /md: "minmax\(0,1fr\) max-content minmax\(0,1\.6fr\) auto"/);
   assert.doesNotMatch(ui, /110px minmax/);
   assert.doesNotMatch(ui, /result\.message|setInterval/);
+  assert.doesNotMatch(ui, /YouTubeReviewDialog|submitReview|setReview|\/review`|Review required|Review video|Edit YouTube settings/);
+  assert.match(ui, /no separate video review/);
 });

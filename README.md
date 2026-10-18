@@ -92,7 +92,8 @@ and API fixtures, not customer data or production access. No deployment performe
 
 `/youtube` lets admin and superadmin connect one YouTube channel through Google.
 The channel owner reviews the integration/privacy/YouTube terms before connecting,
-including access for other authorized administrators to this shared channel. The
+including shared administrator access and automatic Public publication of eligible
+Asset/Lot videos after report release, without a separate per-video review. The
 OAuth redirect is the exact admin origin plus `/youtube/callback`; this page
 removes the authorization query immediately and requires **Finish connecting**.
 The one-time code is sent only to the same-origin HttpOnly BFF; Google credentials
@@ -129,54 +130,53 @@ same exact revision/confirm shape to `/acknowledge-revocation`. The resulting
 `manually_confirmed` state is explicitly administrator-reported, never presented
 as a Google-verified revocation. Ordinary revoke/erase cannot bypass this state.
 
-Future explicitly reviewed Asset/Lot submissions create pending review entries,
-not YouTube uploads. **Review video** submits exact title, description, selected
-private/unlisted/public visibility, saved `updatedAt` and `policyConsent:true` to
-`/videos/:id/review`. No video bytes are sent before this explicit admin review.
-The title is at most 100 Unicode code points; the description at most 5,000 UTF-8
-bytes. No truncation or trimming occurs; angle brackets, malformed surrogate text
-and unsupported controls are rejected. Editing any field clears consent. Both
-the modal and server require a current channel/report revision; ambiguous replies
-or conflicts close the stale review and require refresh, without replay.
-Oversized proposed report text is explicitly marked `metadataOmitted` and both
-review fields start blank, with a warning to enter replacement YouTube text.
-The original report text is preserved; the proposal is never silently shortened
-or uploaded. This keeps one long description from breaking the inventory page.
+Eligible Asset/Lot videos are queued for automatic Public publication by the
+backend. The inventory has no metadata/visibility review dialog or **Review video**
+action. Legacy `pending_review` and new `queued` rows show **Queued for automatic
+publication**; legacy capability flags cannot restore the removed controls.
+POST `/videos/:id/review` is retired: its BFF returns `410 YOUTUBE_REVIEW_REMOVED`
+without forwarding a request or changing video metadata. Optional backend
+`publicationMode:"automatic_public"` and `targetPrivacyStatus:"public"` fields
+are validated and projected without exposing stored source/provider fields.
+Existing queued receipts are handled by the backend; opening or refreshing this
+page never starts an upload. Original report text and media remain unchanged.
 
 Public/unlisted visibility follows the existing report release gate. Report file
 generation does not wait for YouTube. Confirmed public/unlisted links remain in
 the video list. Excel keeps its original column layout without a YouTube column;
-video review never regenerates report files automatically. Existing files and
+video publication never regenerates report files automatically. Existing files and
 stored video links are not rewritten or recovered by this layout change.
-Connecting does not backfill historical reports. Publication depends on channel
+Eligible submitted videos already in the queue may resume automatically;
+connecting does not create uploads for historical reports. Publication depends on channel
 authorization, processing and YouTube's confirmed visibility; a requested public
 setting does not prove publication. The UI links Google's current upload
 requirements without inferring project verification or a private-only restriction.
 Backend setup/support must
 ship before this page. No additional admin environment secrets are required.
 
-The video status list requests 20 rows per page, without polling. Pending review,
+The video status list requests 20 rows per page, without polling. Queued,
 private, uploading, needs-attention, removed, confirmed unlisted and public outcomes
-remain separate. Only confirmed public/unlisted rows expose a watch link. An eligible **Retry reviewed request**
+remain separate. Only confirmed public/unlisted rows expose a watch link. Requested
+Public never replaces an actual Private or Unlisted visibility label before a
+confirmed provider response. An eligible **Retry publication**
 posts the exact saved `updatedAt` revision to `/videos/:id/retry-publication`.
 It requests metadata publication of an existing released video, never a second
-upload. An eligible **Resume reviewed upload** uses the same revision-bound endpoint
-for an already-reviewed initial transfer. The backend preserves the existing
+upload. An eligible **Resume upload** uses the same revision-bound endpoint
+for the saved initial transfer. The backend preserves the existing
 resumable session, byte offset and final-attempt evidence, checking its outcome
-before sending more bytes. This is not new publication consent or confirmation.
+before sending more bytes. This is not a duplicate upload or publication confirmation.
 Uploading rows with a saved future `nextAttemptAt` show **Waiting to resume** and
 the scheduled automatic retry time instead of a terminal needs-attention label.
 Refreshing the list retrieves saved worker status, not a live YouTube probe.
-Known review/retry error codes map to static correction guidance; arbitrary
+Known retry error codes map to static correction guidance; arbitrary
 provider messages and credentials remain private. Conflicts and uncertain
 responses require manual refresh; provider/error rows remain visible. Ordinary
 report submission/release remains authoritative. Backend capability support
 must precede this admin build; older servers retain publication-only retries.
 
-Review/erasure mutations share same-origin guards and never replay on 401. The
-review body has a 32 KiB transport bound to allow JSON escaping of valid 5 KiB text;
-connect/privacy bodies remain 1 KiB. Parsers strip tokens, private source URLs and
-provider error data. New controls require backend support before this admin build.
+Retry/erasure mutations share same-origin guards and never replay on 401.
+Connect/privacy bodies remain 1 KiB. Parsers strip tokens, private source URLs and
+provider error data. Backend automatic-public support must precede this admin build.
 
 Focused policy checks: `node --test tests/youtube.test.mjs`. Rendered QA must use
 an isolated backend fixture; do not connect or publish to a real channel as a test.

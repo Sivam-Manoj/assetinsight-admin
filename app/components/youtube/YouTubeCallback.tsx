@@ -45,7 +45,7 @@ export default function YouTubeCallback() {
     <Paper sx={{ p: { xs: 2, sm: 3 }, width: "100%", maxWidth: 520 }}>
       <Stack gap={2}>
         <Typography component="h1" variant="h5" fontWeight={700}>Connect YouTube</Typography>
-        {error ? <Alert severity="error" sx={{ overflowWrap: "anywhere" }}>{error}</Alert> : channel ? <Alert severity="success">Connected to {channel}. Future reviewed videos will follow the report release rules.</Alert> : <Typography color="text.secondary">Finish connecting the channel you selected with Google. This does not upload or publish existing reports.</Typography>}
+        {error ? <Alert severity="error" sx={{ overflowWrap: "anywhere" }}>{error}</Alert> : channel ? <Alert severity="success">Connected to {channel}. Eligible report videos publish to Public automatically after report release, with no separate video review.</Alert> : <Typography color="text.secondary">Finish connecting the channel you selected with Google. Eligible submitted videos already in the queue may resume automatically. Connecting does not create uploads for historical reports.</Typography>}
         {ready || busy ? <Button variant="contained" sx={{ bgcolor: "primary.dark" }} disabled={!ready || busy} onClick={() => void complete()}>{busy ? "Confirming connection…" : "Finish connecting"}</Button> : null}
         <Button component={Link} href="/youtube" color="inherit" variant="outlined" disabled={busy}>Return to YouTube settings</Button>
       </Stack>
