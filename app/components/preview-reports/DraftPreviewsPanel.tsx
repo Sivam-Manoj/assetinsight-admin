@@ -47,6 +47,8 @@ import type {
 
 type Props = {
   onOpenPreview: (reportId: string) => void;
+  /** Superadmin only (owner, 2026-11-04): an admin sees the drafts, not Delete. */
+  canDelete?: boolean;
 };
 
 const STATUS_META: Record<
@@ -165,11 +167,13 @@ function DraftCard({
   onOpenPreview,
   onDelete,
   deleting,
+  showDelete,
 }: {
   draft: DraftPreviewSummary;
   onOpenPreview: () => void;
   onDelete: () => void;
   deleting: boolean;
+  showDelete: boolean;
 }) {
   const canOpen = isCurrentPreview(draft);
   const canDelete = !["queued", "processing"].includes(draft.previewStatus);
@@ -245,6 +249,7 @@ function DraftCard({
             </Button>
           </span>
         </Tooltip>
+        {showDelete ? (
         <Tooltip title={canDelete ? "Permanently delete this saved draft" : "Active draft previews cannot be deleted."}>
           <span>
             <Button
@@ -259,12 +264,13 @@ function DraftCard({
             </Button>
           </span>
         </Tooltip>
+        ) : null}
       </Stack>
     </Box>
   );
 }
 
-export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
+export default function DraftPreviewsPanel({ onOpenPreview, canDelete = true }: Props) {
   const [data, setData] = useState<DraftPreviewsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -352,7 +358,7 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
   }
 
   async function deleteDraft() {
-    if (!deleteTarget || deletingId) return;
+    if (!canDelete || !deleteTarget || deletingId) return;
     setDeletingId(deleteTarget.id);
     setError("");
     try {
@@ -505,6 +511,7 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
                   onOpenPreview={() => draft.previewReportId && onOpenPreview(draft.previewReportId)}
                   onDelete={() => setDeleteTarget(draft)}
                   deleting={deletingId === draft.id}
+                  showDelete={canDelete}
                 />
               ))}
             </Box>
@@ -603,7 +610,7 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
                                 </Button>
                               </span>
                             </Tooltip>
-                            <Tooltip title={["queued", "processing"].includes(draft.previewStatus) ? "Active draft previews cannot be deleted." : "Permanently delete saved draft"}>
+                            {canDelete ? <Tooltip title={["queued", "processing"].includes(draft.previewStatus) ? "Active draft previews cannot be deleted." : "Permanently delete saved draft"}>
                               <span>
                               <Button
                                 variant="outlined"
@@ -616,7 +623,7 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
                                 {deletingId === draft.id ? <CircularProgress size={15} color="inherit" /> : <Trash2 size={16} />}
                               </Button>
                               </span>
-                            </Tooltip>
+                            </Tooltip> : null}
                           </Stack>
                         </TableCell>
                       </TableRow>
@@ -665,7 +672,7 @@ export default function DraftPreviewsPanel({ onOpenPreview }: Props) {
         </Stack>
       ) : null}
 
-      <Dialog open={Boolean(deleteTarget)} onClose={deletingId ? undefined : () => setDeleteTarget(null)} maxWidth="xs" fullWidth>
+      <Dialog open={canDelete && Boolean(deleteTarget)} onClose={deletingId ? undefined : () => setDeleteTarget(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete saved draft?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
